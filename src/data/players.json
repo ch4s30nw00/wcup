@@ -1,0 +1,332 @@
+[
+  {
+    "id": "kor_01",
+    "name": "김승규",
+    "team": "KOR",
+    "number": 1,
+    "position": "GK",
+    "roles": ["GK"],
+    "attributes": {
+      "technical": { "shooting": 20, "passing": 65 },
+      "mental": { "decisions": 80, "composure": 82 },
+      "physical": { "pace": 55, "stamina": 70 }
+    },
+    "overall": 79,
+    "condition": 100
+  },
+  {
+    "id": "kor_15",
+    "name": "김문환",
+    "team": "KOR",
+    "number": 15,
+    "position": "DF",
+    "roles": ["RB"],
+    "attributes": {
+      "technical": { "shooting": 48, "passing": 70 },
+      "mental": { "decisions": 72, "composure": 70 },
+      "physical": { "pace": 78, "stamina": 80 }
+    },
+    "overall": 73,
+    "condition": 100
+  },
+  {
+    "id": "kor_04",
+    "name": "김민재",
+    "team": "KOR",
+    "number": 4,
+    "position": "DF",
+    "roles": ["CB"],
+    "attributes": {
+      "technical": { "shooting": 40, "passing": 78 },
+      "mental": { "decisions": 85, "composure": 86 },
+      "physical": { "pace": 76, "stamina": 82 }
+    },
+    "overall": 84,
+    "condition": 100
+  },
+  {
+    "id": "kor_20",
+    "name": "권경원",
+    "team": "KOR",
+    "number": 20,
+    "position": "DF",
+    "roles": ["CB"],
+    "attributes": {
+      "technical": { "shooting": 42, "passing": 72 },
+      "mental": { "decisions": 74, "composure": 73 },
+      "physical": { "pace": 68, "stamina": 78 }
+    },
+    "overall": 72,
+    "condition": 100
+  },
+  {
+    "id": "kor_03",
+    "name": "김진수",
+    "team": "KOR",
+    "number": 3,
+    "position": "DF",
+    "roles": ["LB"],
+    "attributes": {
+      "technical": { "shooting": 55, "passing": 74 },
+      "mental": { "decisions": 73, "composure": 72 },
+      "physical": { "pace": 79, "stamina": 83 }
+    },
+    "overall": 75,
+    "condition": 100
+  },
+  {
+    "id": "kor_05",
+    "name": "정우영",
+    "team": "KOR",
+    "number": 5,
+    "position": "MF",
+    "roles": ["DM", "CM"],
+    "attributes": {
+      "technical": { "shooting": 58, "passing": 79 },
+      "mental": { "decisions": 78, "composure": 76 },
+      "physical": { "pace": 62, "stamina": 81 }
+    },
+    "overall": 75,
+    "condition": 100
+  },
+  {
+    "id": "kor_06",
+    "name": "황인범",
+    "team": "KOR",
+    "number": 6,
+    "position": "MF",
+    "roles": ["CM", "CAM"],
+    "attributes": {
+      "technical": { "shooting": 70, "passing": 84 },
+      "mental": { "decisions": 81, "composure": 79 },
+      "physical": { "pace": 72, "stamina": 85 }
+    },
+    "overall": 78,
+    "condition": 100
+  },
+  {
+    "id": "kor_18",
+    "name": "이강인",
+    "team": "KOR",
+    "number": 18,
+    "position": "MF",
+    "roles": ["RW", "CAM"],
+    "attributes": {
+      "technical": { "shooting": 76, "passing": 88 },
+      "mental": { "decisions": 80, "composure": 83 },
+      "physical": { "pace": 74, "stamina": 76 }
+    },
+    "overall": 80,
+    "condition": 100
+  },
+  {
+    "id": "kor_10",
+    "name": "이재성",
+    "team": "KOR",
+    "number": 10,
+    "position": "MF",
+    "roles": ["CAM", "LW", "RW"],
+    "attributes": {
+      "technical": { "shooting": 72, "passing": 81 },
+      "mental": { "decisions": 82, "composure": 78 },
+      "physical": { "pace": 75, "stamina": 84 }
+    },
+    "overall": 77,
+    "condition": 100
+  },
+  {
+    "id": "kor_07",
+    "name": "손흥민",
+    "team": "KOR",
+    "number": 7,
+    "position": "FW",
+    "roles": ["LW", "ST"],
+    "attributes": {
+      "technical": { "shooting": 89, "passing": 82 },
+      "mental": { "decisions": 85, "composure": 88 },
+      "physical": { "pace": 87, "stamina": 78 }
+    },
+    "overall": 85,
+    "condition": 100
+  },
+  {
+    "id": "kor_09",
+    "name": "조규성",
+    "team": "KOR",
+    "number": 9,
+    "position": "FW",
+    "roles": ["ST"],
+    "attributes": {
+      "technical": { "shooting": 78, "passing": 68 },
+      "mental": { "decisions": 74, "composure": 75 },
+      "physical": { "pace": 77, "stamina": 82 }
+    },
+    "overall": 76,
+    "condition": 100
+  },
+  {
+    "id": "por_22",
+    "name": "디오구 코스타",
+    "team": "POR",
+    "number": 22,
+    "position": "GK",
+    "roles": ["GK"],
+    "attributes": {
+      "technical": { "shooting": 20, "passing": 72 },
+      "mental": { "decisions": 82, "composure": 84 },
+      "physical": { "pace": 58, "stamina": 70 }
+    },
+    "overall": 82,
+    "condition": 100
+  },
+  {
+    "id": "por_02",
+    "name": "디오구 달로트",
+    "team": "POR",
+    "number": 2,
+    "position": "DF",
+    "roles": ["RB"],
+    "attributes": {
+      "technical": { "shooting": 55, "passing": 76 },
+      "mental": { "decisions": 76, "composure": 75 },
+      "physical": { "pace": 82, "stamina": 84 }
+    },
+    "overall": 79,
+    "condition": 100
+  },
+  {
+    "id": "por_03",
+    "name": "페페",
+    "team": "POR",
+    "number": 3,
+    "position": "DF",
+    "roles": ["CB"],
+    "attributes": {
+      "technical": { "shooting": 40, "passing": 74 },
+      "mental": { "decisions": 86, "composure": 84 },
+      "physical": { "pace": 62, "stamina": 72 }
+    },
+    "overall": 80,
+    "condition": 100
+  },
+  {
+    "id": "por_24",
+    "name": "안토니우 실바",
+    "team": "POR",
+    "number": 24,
+    "position": "DF",
+    "roles": ["CB"],
+    "attributes": {
+      "technical": { "shooting": 38, "passing": 75 },
+      "mental": { "decisions": 76, "composure": 78 },
+      "physical": { "pace": 72, "stamina": 80 }
+    },
+    "overall": 76,
+    "condition": 100
+  },
+  {
+    "id": "por_20",
+    "name": "주앙 칸셀루",
+    "team": "POR",
+    "number": 20,
+    "position": "DF",
+    "roles": ["LB", "RB"],
+    "attributes": {
+      "technical": { "shooting": 68, "passing": 85 },
+      "mental": { "decisions": 80, "composure": 79 },
+      "physical": { "pace": 83, "stamina": 84 }
+    },
+    "overall": 84,
+    "condition": 100
+  },
+  {
+    "id": "por_14",
+    "name": "윌리암 카르발류",
+    "team": "POR",
+    "number": 14,
+    "position": "MF",
+    "roles": ["DM"],
+    "attributes": {
+      "technical": { "shooting": 58, "passing": 80 },
+      "mental": { "decisions": 79, "composure": 78 },
+      "physical": { "pace": 58, "stamina": 78 }
+    },
+    "overall": 77,
+    "condition": 100
+  },
+  {
+    "id": "por_18",
+    "name": "후벤 네베스",
+    "team": "POR",
+    "number": 18,
+    "position": "MF",
+    "roles": ["DM", "CM"],
+    "attributes": {
+      "technical": { "shooting": 74, "passing": 87 },
+      "mental": { "decisions": 82, "composure": 81 },
+      "physical": { "pace": 65, "stamina": 82 }
+    },
+    "overall": 81,
+    "condition": 100
+  },
+  {
+    "id": "por_10",
+    "name": "주앙 마리우",
+    "team": "POR",
+    "number": 10,
+    "position": "MF",
+    "roles": ["RW", "CM"],
+    "attributes": {
+      "technical": { "shooting": 68, "passing": 82 },
+      "mental": { "decisions": 79, "composure": 77 },
+      "physical": { "pace": 74, "stamina": 85 }
+    },
+    "overall": 78,
+    "condition": 100
+  },
+  {
+    "id": "por_16",
+    "name": "비티냐",
+    "team": "POR",
+    "number": 16,
+    "position": "MF",
+    "roles": ["CAM", "CM"],
+    "attributes": {
+      "technical": { "shooting": 70, "passing": 86 },
+      "mental": { "decisions": 81, "composure": 80 },
+      "physical": { "pace": 76, "stamina": 83 }
+    },
+    "overall": 80,
+    "condition": 100
+  },
+  {
+    "id": "por_21",
+    "name": "히카르두 오르타",
+    "team": "POR",
+    "number": 21,
+    "position": "FW",
+    "roles": ["LW", "ST"],
+    "attributes": {
+      "technical": { "shooting": 76, "passing": 77 },
+      "mental": { "decisions": 76, "composure": 76 },
+      "physical": { "pace": 80, "stamina": 80 }
+    },
+    "overall": 77,
+    "condition": 100
+  },
+  {
+    "id": "por_07",
+    "name": "크리스티아누 호날두",
+    "team": "POR",
+    "number": 7,
+    "position": "FW",
+    "roles": ["ST", "LW"],
+    "attributes": {
+      "technical": { "shooting": 90, "passing": 78 },
+      "mental": { "decisions": 83, "composure": 89 },
+      "physical": { "pace": 80, "stamina": 74 }
+    },
+    "overall": 85,
+    "condition": 100
+  }
+]

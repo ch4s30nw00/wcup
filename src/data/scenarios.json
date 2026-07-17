@@ -1,0 +1,17 @@
+{
+  "match_id": "kor_por_2022",
+  "title": "2022 카타르 월드컵 H조 3차전 — 대한민국 vs 포르투갈",
+  "home": "KOR",
+  "away": "POR",
+  "actual": { "score": [2, 1], "formation": "4-2-3-1" },
+  "moments": [
+    {
+      "id": "m91_counter",
+      "minute": 91,
+      "score": [1, 1],
+      "situation": "후반 추가시간, 코너킥 클리어 직후 역습 기회. 비기면 탈락, 이겨야 16강.",
+      "objective": "이 역습을 골로 연결하라",
+      "ball": "kor_07"
+    }
+  ]
+}

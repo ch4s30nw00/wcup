@@ -1,0 +1,287 @@
+.app {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 20px 24px 40px;
+}
+
+header h1 {
+  font-size: 26px;
+  margin: 0 0 12px;
+}
+header h1 .sub {
+  font-size: 14px;
+  font-weight: 400;
+  color: #9aa3b5;
+  margin-left: 8px;
+}
+
+.mission-card {
+  background: #1b2230;
+  border: 1px solid #2c3648;
+  border-left: 4px solid #ffd23e;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+.mission-title {
+  font-size: 13px;
+  color: #9aa3b5;
+  margin-bottom: 4px;
+}
+.mission-body {
+  font-size: 15px;
+}
+
+.board-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.commentary-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.commentary-row .commentary {
+  flex: 1 1 320px;
+}
+.ctrl {
+  padding: 0 18px;
+  border-radius: 8px;
+  border: 1px solid #2c3648;
+  background: #232c3d;
+  color: #e8ecf4;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ctrl:hover {
+  background: #2c3648;
+}
+
+.bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+
+.tactics-board {
+  width: 100%;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  touch-action: none;
+  user-select: none;
+}
+
+.commentary {
+  background: #10141c;
+  border: 1px solid #2c3648;
+  border-radius: 8px;
+  padding: 10px 16px;
+  text-align: center;
+  font-size: 15px;
+  color: #9aa3b5;
+  min-height: 22px;
+  overflow: hidden;
+}
+.commentary.live {
+  color: #f2f5fa;
+  border-color: #3d4a63;
+}
+.commentary span {
+  display: inline-block;
+  animation: cap-in 0.25s ease;
+}
+@keyframes cap-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.tactics-board .player {
+  cursor: grab;
+}
+.tactics-board .ball {
+  cursor: grab;
+}
+.tactics-board .handle {
+  cursor: grab;
+}
+
+.panel {
+  background: #1b2230;
+  border: 1px solid #2c3648;
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.panel h2 {
+  font-size: 14px;
+  margin: 0 0 10px;
+  color: #9aa3b5;
+}
+
+.help {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.muted {
+  color: #6b7385;
+  font-size: 14px;
+  margin: 0;
+}
+
+.player-card .player-name {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.player-card .pos {
+  font-size: 12px;
+  font-weight: 400;
+  color: #9aa3b5;
+}
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+.stats div {
+  background: #232c3d;
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: center;
+}
+.stats dt {
+  font-size: 11px;
+  color: #9aa3b5;
+}
+.stats dd {
+  margin: 2px 0 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.actions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.action-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 5px 0;
+  border-bottom: 1px dashed #2c3648;
+}
+.action-row:last-child {
+  border-bottom: none;
+}
+.action-row.off-ball {
+  color: #9aa3b5;
+}
+.action-row button {
+  background: none;
+  border: none;
+  color: #6b7385;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.action-row button:hover {
+  color: #ff8a7d;
+}
+
+.kickoff {
+  padding: 0 26px;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 700;
+  color: #10141c;
+  background: #ffd23e;
+  border: none;
+  border-radius: 8px;
+}
+.kickoff:hover {
+  background: #ffdd6b;
+}
+.kickoff:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.kickoff:disabled:hover {
+  background: #ffd23e;
+}
+
+.result {
+  margin-top: 0;
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+.result.goal {
+  background: rgba(46, 160, 67, 0.18);
+  border: 1px solid rgba(46, 160, 67, 0.5);
+}
+.result.miss {
+  background: rgba(200, 16, 46, 0.15);
+  border: 1px solid rgba(200, 16, 46, 0.45);
+}
+.result .outcome {
+  font-size: 22px;
+  font-weight: 800;
+}
+.result .rate {
+  margin-top: 4px;
+  font-size: 14px;
+}
+.result .reason {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #9aa3b5;
+}
+.steps {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 12.5px;
+  text-align: left;
+}
+.steps li {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+.steps .step-ok {
+  color: #5fce7b;
+}
+.steps .step-fail {
+  color: #ff8a7d;
+}
+.steps .step-skip {
+  color: #6b7385;
+}
+.seed {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: #4d5568;
+}
+
+@media (max-width: 860px) {
+  .commentary-row .kickoff {
+    flex: 1 1 100%;
+    padding: 12px;
+  }
+}

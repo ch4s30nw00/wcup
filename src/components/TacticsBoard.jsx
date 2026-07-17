@@ -1,0 +1,373 @@
+import { useRef, useState } from 'react'
+import { quadPoint, handleFromCtrl } from '../engine/geometry'
+
+// StatsBomb 좌표계와 동일한 120x80 피치. x: 0(우리 골대) → 120(상대 골대)
+const PITCH_W = 120
+const PITCH_H = 80
+const DOT_R = 1.4
+const BALL_OFFSET = { x: 1.3, y: -1.3 } // 공을 소유자 발밑에 그리는 오프셋
+const LEG_COLOR = { dribble: '#dbe4f2', pass: '#ffd23e', shot: '#ff6b5e' }
+const LEG_MARKER = { dribble: 'url(#ah-move)', pass: 'url(#ah-pass)', shot: 'url(#ah-shot)' }
+
+function clamp(v, min, max) {
+  return Math.min(max, Math.max(min, v))
+}
+
+function qPath(from, ctrl, to) {
+  return `M ${from.x} ${from.y} Q ${ctrl.x} ${ctrl.y} ${to.x} ${to.y}`
+}
+
+export default function TacticsBoard({
+  players,
+  opponents,
+  runLegs, // 오프볼 런 legs: [{ id, from, to, ctrl }] — from은 체인 반영 앵커
+  chain, // 공 전개 체인 legs (App에서 유도, index 포함)
+  planPos, // 계획상 각 선수의 최종 위치 (id → {x,y})
+  carrierId, // 체인 끝에서 공을 갖게 될 선수 — 이 선수를 드래그하면 드리블
+  shotTaken,
+  ballPos,
+  displayHome, // 재생 중 애니메이션 위치 (id → {x,y}), 평시 null
+  displayOpp,
+  interactive,
+  defRadius,
+  selectedId,
+  onPlayerClick,
+  onRunSet,
+  onRunRemove,
+  onRunHandle,
+  onDribbleSet, // (pt, isFirst)
+  onDribbleDrop, // (pt)
+  onChainHandle, // (chainIndex, handlePt)
+  onPassCommit, // (receiverId | 'GOAL', toForGoal)
+}) {
+  const svgRef = useRef(null)
+  const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
+  const [ballDrag, setBallDrag] = useState(null)
+  const [dragging, setDragging] = useState(false)
+
+  const baseOf = Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }]))
+  const homePos = (p) => (displayHome ? (displayHome[p.id] ?? baseOf[p.id]) : planPos[p.id])
+  const oppPos = (o) => (displayOpp ? (displayOpp[o.id] ?? { x: o.x, y: o.y }) : { x: o.x, y: o.y })
+
+  function toPitch(e) {
+    const rect = svgRef.current.getBoundingClientRect()
+    return {
+      x: clamp(((e.clientX - rect.left) / rect.width) * PITCH_W, 1.5, PITCH_W - 1.5),
+      y: clamp(((e.clientY - rect.top) / rect.height) * PITCH_H, 1.5, PITCH_H - 1.5),
+    }
+  }
+
+  function startDrag(e, kind, key) {
+    if (!interactive) return
+    e.stopPropagation()
+    e.target.setPointerCapture(e.pointerId)
+    dragRef.current = { kind, key, startX: e.clientX, startY: e.clientY, moved: false }
+  }
+
+  function handleMove(e) {
+    const d = dragRef.current
+    if (!d) return
+    // 살짝 흔들린 클릭은 드래그로 치지 않는다
+    if (!d.moved) {
+      if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 4) return
+      d.moved = true
+      setDragging(true)
+    }
+    const pt = toPitch(e)
+    if (d.kind === 'run') {
+      onRunSet(d.key, pt, !d.began)
+      d.began = true
+    } else if (d.kind === 'dribble') {
+      onDribbleSet(pt, !d.began)
+      d.began = true
+    } else if (d.kind === 'ball') setBallDrag(pt)
+    else if (d.kind === 'rhandle') onRunHandle(d.key, pt)
+    else if (d.kind === 'chandle') onChainHandle(d.key, pt)
+  }
+
+  function endDrag(e) {
+    const d = dragRef.current
+    dragRef.current = null
+    setDragging(false)
+    if (!d) return
+    if (d.kind === 'run') {
+      if (!d.moved) return onPlayerClick(d.key)
+      // 목표 원을 출발 지점(앵커) 근처로 되돌리면 지시 취소 — 방금 편집한(마지막) 런 기준
+      const rls = runLegs.filter((r) => r.id === d.key)
+      const rl = rls[rls.length - 1]
+      if (rl && Math.hypot(rl.to.x - rl.from.x, rl.to.y - rl.from.y) < 3.5) onRunRemove(rl.key)
+    } else if (d.kind === 'dribble') {
+      if (!d.moved) return onPlayerClick(d.key)
+      onDribbleDrop(toPitch(e))
+    } else if (d.kind === 'ball') {
+      setBallDrag(null)
+      if (!d.moved) return
+      const pt = toPitch(e)
+      if (pt.x >= 106 && pt.y >= 26 && pt.y <= 54) {
+        // 골문 근처에 놓으면 슛 — 조준한 y를 골문 안으로 스냅
+        onPassCommit('GOAL', { x: 119, y: clamp(pt.y, 36.5, 43.5) })
+      } else {
+        // 가장 가까운 동료(계획상 최종 위치 기준)에게 패스로 스냅
+        let best = null
+        for (const p of players) {
+          if (p.id === carrierId) continue
+          const fp = planPos[p.id]
+          const dd = Math.hypot(fp.x - pt.x, fp.y - pt.y)
+          if (dd < 9 && (!best || dd < best.d)) best = { d: dd, id: p.id }
+        }
+        if (best) onPassCommit(best.id, null)
+      }
+    }
+  }
+
+  const showAuras = interactive && (dragging || ballDrag)
+
+  return (
+    <svg
+      ref={svgRef}
+      className="tactics-board"
+      viewBox={`0 0 ${PITCH_W} ${PITCH_H}`}
+      onPointerMove={handleMove}
+      onPointerUp={endDrag}
+    >
+      <defs>
+        {['ah-pass', 'ah-move', 'ah-shot'].map((id) => (
+          <marker
+            key={id}
+            id={id}
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="4"
+            markerHeight="4"
+            orient="auto-start-reverse"
+          >
+            <path
+              d="M 0 0 L 10 5 L 0 10 z"
+              fill={id === 'ah-pass' ? '#ffd23e' : id === 'ah-shot' ? '#ff6b5e' : '#dbe4f2'}
+            />
+          </marker>
+        ))}
+        <filter id="ghostBlur" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="0.3" />
+        </filter>
+      </defs>
+
+      {/* 잔디 */}
+      <rect width={PITCH_W} height={PITCH_H} fill="#2f7d3f" />
+      {[0, 2, 4, 6, 8].map((i) => (
+        <rect key={i} x={i * 24} width={12} height={PITCH_H} fill="#2a7339" />
+      ))}
+
+      {/* 라인 */}
+      <g stroke="#e6f2e6" strokeWidth="0.5" fill="none" opacity="0.9">
+        <rect x="1" y="1" width={PITCH_W - 2} height={PITCH_H - 2} />
+        <line x1="60" y1="1" x2="60" y2={PITCH_H - 1} />
+        <circle cx="60" cy="40" r="9.15" />
+        <circle cx="60" cy="40" r="0.6" fill="#e6f2e6" />
+        {/* 페널티박스 (좌/우) */}
+        <rect x="1" y="18" width="17" height="44" />
+        <rect x={PITCH_W - 18} y="18" width="17" height="44" />
+        <rect x="1" y="30" width="5.5" height="20" />
+        <rect x={PITCH_W - 6.5} y="30" width="5.5" height="20" />
+        <circle cx="13" cy="40" r="0.6" fill="#e6f2e6" />
+        <circle cx={PITCH_W - 13} cy="40" r="0.6" fill="#e6f2e6" />
+      </g>
+
+      {/* 상대 골문 */}
+      <rect x={118.6} y={36.34} width={1.4} height={7.32} fill="#10141c" stroke="#e6f2e6" strokeWidth="0.35" />
+
+      {/* 수비 반경 오라 — 궤적 입력 중에만 흐리게 표시 */}
+      {showAuras &&
+        opponents.map((o) => {
+          const pos = oppPos(o)
+          return (
+            <circle
+              key={`aura-${o.id}`}
+              cx={pos.x}
+              cy={pos.y}
+              r={defRadius}
+              fill="rgba(255, 107, 94, 0.10)"
+              stroke="rgba(255, 107, 94, 0.4)"
+              strokeWidth="0.25"
+              strokeDasharray="1.4 1"
+            />
+          )
+        })}
+
+      {/* 공 드래그 중 슛 존 안내 */}
+      {ballDrag && !shotTaken && (
+        <g pointerEvents="none">
+          <rect
+            x={106}
+            y={26}
+            width={13}
+            height={28}
+            fill="rgba(255, 210, 62, 0.08)"
+            stroke="rgba(255, 210, 62, 0.5)"
+            strokeWidth="0.3"
+            strokeDasharray="1.6 1"
+            rx="1.5"
+          />
+          <text x={112.5} y={24.4} textAnchor="middle" fontSize="2.4" fill="#ffd23e">
+            여기 놓으면 슛
+          </text>
+        </g>
+      )}
+
+      {/* 오프볼 런 지시 (점선) — 앵커(체인 반영 위치)에서 출발 */}
+      {runLegs.map((rl) => (
+        <path
+          key={`run-${rl.key}`}
+          d={qPath(rl.from, rl.ctrl, rl.to)}
+          fill="none"
+          stroke="#dbe4f2"
+          strokeWidth="0.5"
+          strokeDasharray="1.5 1.1"
+          markerEnd="url(#ah-move)"
+          opacity={interactive ? 0.85 : 0.25}
+          pointerEvents="none"
+        />
+      ))}
+
+      {/* 공 전개 체인 (드리블/패스/슛) */}
+      {chain.map((leg, i) => {
+        const badge = quadPoint(leg.from, leg.ctrl, leg.to, 0.3)
+        return (
+          <g key={`leg-${i}`} pointerEvents="none" opacity={interactive ? 1 : 0.3}>
+            <path
+              d={qPath(leg.from, leg.ctrl, leg.to)}
+              fill="none"
+              stroke={LEG_COLOR[leg.type]}
+              strokeWidth="0.6"
+              strokeDasharray="1.8 1.1"
+              markerEnd={LEG_MARKER[leg.type]}
+            />
+            <circle cx={badge.x} cy={badge.y} r="1.1" fill="#10141c" stroke={LEG_COLOR[leg.type]} strokeWidth="0.25" />
+            <text x={badge.x} y={badge.y + 0.6} textAnchor="middle" fontSize="1.7" fontWeight="700" fill={LEG_COLOR[leg.type]}>
+              {i + 1}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* 상대팀 (조작 불가) */}
+      {opponents.map((o) => {
+        const pos = oppPos(o)
+        return (
+          <g key={o.id} transform={`translate(${pos.x}, ${pos.y})`} opacity="0.9">
+            <circle r={DOT_R} fill={o.position === 'GK' ? '#3f6f2f' : '#1e3a6e'} stroke="#cdd6e8" strokeWidth="0.28" />
+            <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill="#fff">
+              {o.number}
+            </text>
+            <text y={DOT_R + 2} textAnchor="middle" fontSize="1.6" fill="#dde4f0" stroke="#1a3a22" strokeWidth="0.25" paintOrder="stroke">
+              {o.name}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* 지시로 자리를 옮긴 선수의 원래 자리 = 고스트 */}
+      {interactive &&
+        players.map((p) => {
+          const moved = Math.hypot(planPos[p.id].x - p.x, planPos[p.id].y - p.y) > 0.5
+          return moved ? (
+            <g
+              key={`ghost-${p.id}`}
+              transform={`translate(${p.x}, ${p.y})`}
+              filter="url(#ghostBlur)"
+              opacity="0.45"
+              pointerEvents="none"
+            >
+              <circle r={DOT_R} fill="#8892a4" stroke="#c3cad8" strokeWidth="0.35" strokeDasharray="1.1 0.8" />
+              <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill="#e8ecf4">
+                {p.number}
+              </text>
+            </g>
+          ) : null
+        })}
+
+      {/* 아군 선수 — 공 가진 선수 드래그 = 드리블, 나머지 = 오프볼 이동 */}
+      {players.map((p) => {
+        const isGK = p.position === 'GK'
+        const isSelected = p.id === selectedId
+        const pos = homePos(p)
+        return (
+          <g
+            key={p.id}
+            className="player"
+            transform={`translate(${pos.x}, ${pos.y})`}
+            onPointerDown={(e) => startDrag(e, p.id === carrierId ? 'dribble' : 'run', p.id)}
+          >
+            <circle r={DOT_R + 1.4} fill="transparent" />
+            {isSelected && <circle r={DOT_R + 0.8} fill="none" stroke="#ffd23e" strokeWidth="0.4" />}
+            {interactive && p.id === carrierId && (
+              <circle r={DOT_R + 0.9} fill="none" stroke="#fff" strokeWidth="0.25" strokeDasharray="0.9 0.7" />
+            )}
+            <circle r={DOT_R} fill={isGK ? '#e8a020' : '#c8102e'} stroke="#fff" strokeWidth="0.3" />
+            <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill="#fff">
+              {p.number}
+            </text>
+            <text y={DOT_R + 2} textAnchor="middle" fontSize="1.6" fill="#f0f4f0" stroke="#1a3a22" strokeWidth="0.25" paintOrder="stroke">
+              {p.name}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* 곡률 핸들 (궤적 가운데 점 — 끌면 휘어짐) */}
+      {interactive && (
+        <g>
+          {runLegs.map((rl) => {
+            const h = handleFromCtrl(rl.from, rl.ctrl, rl.to)
+            return (
+              <g key={`rh-${rl.key}`} className="handle" onPointerDown={(e) => startDrag(e, 'rhandle', rl.key)}>
+                <circle cx={h.x} cy={h.y} r="2" fill="transparent" />
+                <circle cx={h.x} cy={h.y} r="0.75" fill="#fff" stroke="#10141c" strokeWidth="0.25" />
+              </g>
+            )
+          })}
+          {chain.map((leg, i) => {
+            const h = handleFromCtrl(leg.from, leg.ctrl, leg.to)
+            return (
+              <g key={`ch-${i}`} className="handle" onPointerDown={(e) => startDrag(e, 'chandle', leg.index)}>
+                <circle cx={h.x} cy={h.y} r="2" fill="transparent" />
+                <circle cx={h.x} cy={h.y} r="0.75" fill={LEG_COLOR[leg.type]} stroke="#10141c" strokeWidth="0.25" />
+              </g>
+            )
+          })}
+        </g>
+      )}
+
+      {/* 패스 드래그 미리보기 */}
+      {ballDrag && (
+        <g pointerEvents="none">
+          <line
+            x1={ballPos.x + BALL_OFFSET.x}
+            y1={ballPos.y + BALL_OFFSET.y}
+            x2={ballDrag.x}
+            y2={ballDrag.y}
+            stroke="#ffd23e"
+            strokeWidth="0.45"
+            strokeDasharray="1.3 1"
+            opacity="0.8"
+          />
+          <circle cx={ballDrag.x} cy={ballDrag.y} r="0.95" fill="#fff" stroke="#10141c" strokeWidth="0.25" opacity="0.7" />
+        </g>
+      )}
+
+      {/* 공 — 드래그하면 패스/슛. 소유자 원에 가려지지 않게 발밑으로 살짝 오프셋 */}
+      {ballPos && (
+        <g
+          className="ball"
+          transform={`translate(${ballPos.x + BALL_OFFSET.x}, ${ballPos.y + BALL_OFFSET.y})`}
+          onPointerDown={(e) => !shotTaken && startDrag(e, 'ball')}
+        >
+          <circle r="1.5" fill="transparent" />
+          <circle r="0.95" fill="#fff" stroke="#10141c" strokeWidth="0.25" />
+          <circle r="0.38" fill="#10141c" />
+        </g>
+      )}
+    </svg>
+  )
+}
