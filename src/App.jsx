@@ -11,10 +11,12 @@ import './App.css'
 const slots = formations['4-2-3-1']
 const homeSquad = playersData.filter((p) => p.team === scenario.home)
 const awaySquad = playersData.filter((p) => p.team === scenario.away)
-const basePlayers = homeSquad.map((p, i) => ({ ...p, x: slots[i].x, y: slots[i].y }))
-// 상대팀은 같은 포메이션을 좌우 반전해서 배치 (추후 scenarios.json이 위치를 직접 지정할 수 있음)
-const opponents = awaySquad.map((p, i) => ({ ...p, x: 120 - slots[i].x, y: 80 - slots[i].y }))
 const moment = scenario.moments[0]
+// 모먼트가 위치를 직접 지정하면 그 좌표가 곧 그 시점의 온필드 명단(교체 반영, 로스터의 나머지는 벤치),
+// 없으면 로스터 앞 11명을 포메이션 기본값으로 (상대는 좌우 반전)
+const onPitch = (squad) => (moment.positions ? squad.filter((p) => moment.positions[p.id]) : squad)
+const basePlayers = onPitch(homeSquad).map((p, i) => ({ ...p, x: slots[i]?.x, y: slots[i]?.y, ...moment.positions?.[p.id] }))
+const opponents = onPitch(awaySquad).map((p, i) => ({ ...p, x: 120 - (slots[i]?.x ?? 0), y: 80 - (slots[i]?.y ?? 0), ...moment.positions?.[p.id] }))
 const byId = Object.fromEntries([...basePlayers, ...opponents].map((p) => [p.id, p]))
 
 // URL ?seed= 가 있으면 그 시드로 — 같은 링크 = 같은 결과 (재현 보장)
@@ -90,6 +92,18 @@ function App() {
   const shotTaken = chainActs.some((a) => a.type === 'shot')
   const ballPlanPos = chain.length ? chain[chain.length - 1].to : basePos(moment.ball)
 
+  // 이스터에그 — 실제 경기 재현 감지: 골로 끝났고, 마지막 슛을 실제 득점자가 쐈고,
+  // 그에게 간 마지막 패스를 실제 도움 선수가 줬으면 "그날의 장면" 팝업을 띄운다.
+  const egg = moment.easterEgg
+  const [eggClosed, setEggClosed] = useState(false)
+  const eggMatched = useMemo(() => {
+    if (!egg || result?.outcome !== 'GOAL') return false
+    const shot = chain[chain.length - 1]
+    if (shot?.type !== 'shot' || shot.actorId !== egg.scorerId) return false
+    const lastPass = chain.findLast((l) => l.type === 'pass')
+    return lastPass?.actorId === egg.passerId && lastPass?.receiverId === egg.scorerId
+  }, [egg, result, chain])
+
   // --- 오프볼 런 지시 ---
   // 드래그 시작(isFirst) 때 한 번만 판단: 이 선수의 마지막 런이 아직 체인에 "소비"되지
   // 않았으면(그 뒤로 받거나 준 적 없음) 그 런을 조정, 소비됐으면 새 런을 추가.
@@ -143,6 +157,7 @@ function App() {
     const actions = chain.map((leg) => ({ ...leg, actor: byId[leg.actorId] }))
     const res = resolveSequence(actions, { opponents, seed: SEED })
     setResult(res)
+    setEggClosed(false)
     setPhase('playing')
     playbackRef.current = playSequence({
       actions,
@@ -174,6 +189,13 @@ function App() {
 
   return (
     <div className="app">
+      {/* 터치 기기 + 세로 화면일 때만 CSS로 표시 */}
+      <div className="rotate-hint">
+        <div className="rotate-hint-phone">📱</div>
+        <p>화면을 옆으로 돌려주세요</p>
+        <span>전술보드는 가로 화면에 최적화되어 있어요</span>
+      </div>
+
       <header>
         <h1>⚽ 터치라인 <span className="sub">전술보드 프로토타입</span></h1>
         <div className="mission-card">
@@ -312,6 +334,29 @@ function App() {
           </section>
         </div>
       </main>
+
+      {/* 이스터에그 — 실제 경기와 같은 전개로 골: 그날의 실제 장면 팝업 */}
+      {phase === 'done' && eggMatched && !eggClosed && (
+        <div className="egg-overlay" onClick={() => setEggClosed(true)}>
+          <div className="egg-card" onClick={(e) => e.stopPropagation()}>
+            <div className="egg-badge">🏆 재현 성공 — 실제 역사와 같은 전개!</div>
+            <h3>{egg.title}</h3>
+            <div className="egg-photos">
+              {egg.images?.length ? (
+                egg.images.map((src) => <img key={src} src={src} alt={egg.title} />)
+              ) : (
+                <div className="egg-placeholder">
+                  <span>📸</span>
+                  <p>실제 장면 이미지 자리</p>
+                  <small>public/moments/에 이미지를 넣고 scenarios.json의 easterEgg.images에 경로(예: "/moments/m91_goal.jpg")를 추가하면 여기에 표시됩니다.</small>
+                </div>
+              )}
+            </div>
+            <p className="egg-caption">{egg.caption}</p>
+            <button className="ctrl egg-close" onClick={() => setEggClosed(true)}>닫기 ✕</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

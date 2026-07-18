@@ -5,9 +5,16 @@ import { quadPoint, handleFromCtrl } from '../engine/geometry'
 const PITCH_W = 120
 const PITCH_H = 80
 const DOT_R = 1.4
-const BALL_OFFSET = { x: 1.3, y: -1.3 } // 공을 소유자 발밑에 그리는 오프셋
 const LEG_COLOR = { dribble: '#dbe4f2', pass: '#ffd23e', shot: '#ff6b5e' }
 const LEG_MARKER = { dribble: 'url(#ah-move)', pass: 'url(#ah-pass)', shot: 'url(#ah-shot)' }
+
+// 터치 화면은 손가락 기준 — 보이지 않는 히트 영역과 클릭/드래그 판정 거리를 키운다.
+// 공은 소유자에게서 조금 더 떨어뜨려 그려 드리블(선수)과 패스(공) 터치를 분리한다.
+const COARSE = window.matchMedia?.('(pointer: coarse)').matches ?? false
+const BALL_OFFSET = COARSE ? { x: 2.3, y: -2.3 } : { x: 1.3, y: -1.3 } // 공을 소유자 발밑에 그리는 오프셋
+const HIT = COARSE
+  ? { player: DOT_R + 3.2, ball: 2.5, handle: 3.2, slopPx: 7 }
+  : { player: DOT_R + 1.4, ball: 1.5, handle: 2, slopPx: 4 }
 
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v))
@@ -69,7 +76,7 @@ export default function TacticsBoard({
     if (!d) return
     // 살짝 흔들린 클릭은 드래그로 치지 않는다
     if (!d.moved) {
-      if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 4) return
+      if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < HIT.slopPx) return
       d.moved = true
       setDragging(true)
     }
@@ -120,6 +127,13 @@ export default function TacticsBoard({
     }
   }
 
+  // 터치가 시스템 제스처 등으로 취소되면 진행 중이던 드래그를 커밋 없이 버린다
+  function cancelDrag() {
+    dragRef.current = null
+    setDragging(false)
+    setBallDrag(null)
+  }
+
   const showAuras = interactive && (dragging || ballDrag)
 
   return (
@@ -129,6 +143,7 @@ export default function TacticsBoard({
       viewBox={`0 0 ${PITCH_W} ${PITCH_H}`}
       onPointerMove={handleMove}
       onPointerUp={endDrag}
+      onPointerCancel={cancelDrag}
     >
       <defs>
         {['ah-pass', 'ah-move', 'ah-shot'].map((id) => (
@@ -299,7 +314,7 @@ export default function TacticsBoard({
             transform={`translate(${pos.x}, ${pos.y})`}
             onPointerDown={(e) => startDrag(e, p.id === carrierId ? 'dribble' : 'run', p.id)}
           >
-            <circle r={DOT_R + 1.4} fill="transparent" />
+            <circle r={HIT.player} fill="transparent" />
             {isSelected && <circle r={DOT_R + 0.8} fill="none" stroke="#ffd23e" strokeWidth="0.4" />}
             {interactive && p.id === carrierId && (
               <circle r={DOT_R + 0.9} fill="none" stroke="#fff" strokeWidth="0.25" strokeDasharray="0.9 0.7" />
@@ -322,7 +337,7 @@ export default function TacticsBoard({
             const h = handleFromCtrl(rl.from, rl.ctrl, rl.to)
             return (
               <g key={`rh-${rl.key}`} className="handle" onPointerDown={(e) => startDrag(e, 'rhandle', rl.key)}>
-                <circle cx={h.x} cy={h.y} r="2" fill="transparent" />
+                <circle cx={h.x} cy={h.y} r={HIT.handle} fill="transparent" />
                 <circle cx={h.x} cy={h.y} r="0.75" fill="#fff" stroke="#10141c" strokeWidth="0.25" />
               </g>
             )
@@ -331,7 +346,7 @@ export default function TacticsBoard({
             const h = handleFromCtrl(leg.from, leg.ctrl, leg.to)
             return (
               <g key={`ch-${i}`} className="handle" onPointerDown={(e) => startDrag(e, 'chandle', leg.index)}>
-                <circle cx={h.x} cy={h.y} r="2" fill="transparent" />
+                <circle cx={h.x} cy={h.y} r={HIT.handle} fill="transparent" />
                 <circle cx={h.x} cy={h.y} r="0.75" fill={LEG_COLOR[leg.type]} stroke="#10141c" strokeWidth="0.25" />
               </g>
             )
@@ -363,10 +378,22 @@ export default function TacticsBoard({
           transform={`translate(${ballPos.x + BALL_OFFSET.x}, ${ballPos.y + BALL_OFFSET.y})`}
           onPointerDown={(e) => !shotTaken && startDrag(e, 'ball')}
         >
-          <circle r="1.5" fill="transparent" />
+          <circle r={HIT.ball} fill="transparent" />
           <circle r="0.95" fill="#fff" stroke="#10141c" strokeWidth="0.25" />
           <circle r="0.38" fill="#10141c" />
         </g>
+      )}
+
+      {/* 터치 전용: 공 히트 영역이 소유자 점을 가리지 않도록, 소유자 중심을 최상위에서 드리블로 잡는다 */}
+      {COARSE && interactive && ballPos && carrierId && planPos[carrierId] && (
+        <circle
+          className="player"
+          cx={planPos[carrierId].x}
+          cy={planPos[carrierId].y}
+          r={DOT_R + 0.7}
+          fill="transparent"
+          onPointerDown={(e) => startDrag(e, 'dribble', carrierId)}
+        />
       )}
     </svg>
   )

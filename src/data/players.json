@@ -5,11 +5,25 @@
     "team": "KOR",
     "number": 1,
     "position": "GK",
-    "roles": ["GK"],
+    "roles": [
+      "GK"
+    ],
     "attributes": {
-      "technical": { "shooting": 20, "passing": 65 },
-      "mental": { "decisions": 80, "composure": 82 },
-      "physical": { "pace": 55, "stamina": 70 }
+      "technical": {
+        "shooting": 20,
+        "passing": 65,
+        "dribbling": 51,
+        "tackle": 30
+      },
+      "mental": {
+        "decisions": 80,
+        "composure": 82,
+        "vision": 68
+      },
+      "physical": {
+        "pace": 55,
+        "stamina": 70
+      }
     },
     "overall": 79,
     "condition": 100
@@ -20,11 +34,25 @@
     "team": "KOR",
     "number": 15,
     "position": "DF",
-    "roles": ["RB"],
+    "roles": [
+      "RB"
+    ],
     "attributes": {
-      "technical": { "shooting": 48, "passing": 70 },
-      "mental": { "decisions": 72, "composure": 70 },
-      "physical": { "pace": 78, "stamina": 80 }
+      "technical": {
+        "shooting": 48,
+        "passing": 70,
+        "dribbling": 68,
+        "tackle": 77
+      },
+      "mental": {
+        "decisions": 72,
+        "composure": 70,
+        "vision": 67
+      },
+      "physical": {
+        "pace": 78,
+        "stamina": 80
+      }
     },
     "overall": 73,
     "condition": 100
@@ -35,11 +63,25 @@
     "team": "KOR",
     "number": 4,
     "position": "DF",
-    "roles": ["CB"],
+    "roles": [
+      "CB"
+    ],
     "attributes": {
-      "technical": { "shooting": 40, "passing": 78 },
-      "mental": { "decisions": 85, "composure": 86 },
-      "physical": { "pace": 76, "stamina": 82 }
+      "technical": {
+        "shooting": 40,
+        "passing": 78,
+        "dribbling": 75,
+        "tackle": 83
+      },
+      "mental": {
+        "decisions": 85,
+        "composure": 86,
+        "vision": 80
+      },
+      "physical": {
+        "pace": 76,
+        "stamina": 82
+      }
     },
     "overall": 84,
     "condition": 100
@@ -50,11 +92,25 @@
     "team": "KOR",
     "number": 20,
     "position": "DF",
-    "roles": ["CB"],
+    "roles": [
+      "CB"
+    ],
     "attributes": {
-      "technical": { "shooting": 42, "passing": 72 },
-      "mental": { "decisions": 74, "composure": 73 },
-      "physical": { "pace": 68, "stamina": 78 }
+      "technical": {
+        "shooting": 42,
+        "passing": 72,
+        "dribbling": 65,
+        "tackle": 76
+      },
+      "mental": {
+        "decisions": 74,
+        "composure": 73,
+        "vision": 69
+      },
+      "physical": {
+        "pace": 68,
+        "stamina": 78
+      }
     },
     "overall": 72,
     "condition": 100
@@ -65,11 +121,25 @@
     "team": "KOR",
     "number": 3,
     "position": "DF",
-    "roles": ["LB"],
+    "roles": [
+      "LB"
+    ],
     "attributes": {
-      "technical": { "shooting": 55, "passing": 74 },
-      "mental": { "decisions": 73, "composure": 72 },
-      "physical": { "pace": 79, "stamina": 83 }
+      "technical": {
+        "shooting": 55,
+        "passing": 74,
+        "dribbling": 70,
+        "tackle": 78
+      },
+      "mental": {
+        "decisions": 73,
+        "composure": 72,
+        "vision": 68
+      },
+      "physical": {
+        "pace": 79,
+        "stamina": 83
+      }
     },
     "overall": 75,
     "condition": 100
@@ -80,11 +150,26 @@
     "team": "KOR",
     "number": 5,
     "position": "MF",
-    "roles": ["DM", "CM"],
+    "roles": [
+      "DM",
+      "CM"
+    ],
     "attributes": {
-      "technical": { "shooting": 58, "passing": 79 },
-      "mental": { "decisions": 78, "composure": 76 },
-      "physical": { "pace": 62, "stamina": 81 }
+      "technical": {
+        "shooting": 58,
+        "passing": 79,
+        "dribbling": 73,
+        "tackle": 62
+      },
+      "mental": {
+        "decisions": 78,
+        "composure": 76,
+        "vision": 83
+      },
+      "physical": {
+        "pace": 62,
+        "stamina": 81
+      }
     },
     "overall": 75,
     "condition": 100
@@ -95,11 +180,26 @@
     "team": "KOR",
     "number": 6,
     "position": "MF",
-    "roles": ["CM", "CAM"],
+    "roles": [
+      "CM",
+      "CAM"
+    ],
     "attributes": {
-      "technical": { "shooting": 70, "passing": 84 },
-      "mental": { "decisions": 81, "composure": 79 },
-      "physical": { "pace": 72, "stamina": 85 }
+      "technical": {
+        "shooting": 70,
+        "passing": 84,
+        "dribbling": 80,
+        "tackle": 64
+      },
+      "mental": {
+        "decisions": 81,
+        "composure": 79,
+        "vision": 86
+      },
+      "physical": {
+        "pace": 72,
+        "stamina": 85
+      }
     },
     "overall": 78,
     "condition": 100
@@ -110,11 +210,26 @@
     "team": "KOR",
     "number": 18,
     "position": "MF",
-    "roles": ["RW", "CAM"],
+    "roles": [
+      "RW",
+      "CAM"
+    ],
     "attributes": {
-      "technical": { "shooting": 76, "passing": 88 },
-      "mental": { "decisions": 80, "composure": 83 },
-      "physical": { "pace": 74, "stamina": 76 }
+      "technical": {
+        "shooting": 76,
+        "passing": 88,
+        "dribbling": 83,
+        "tackle": 65
+      },
+      "mental": {
+        "decisions": 80,
+        "composure": 83,
+        "vision": 85
+      },
+      "physical": {
+        "pace": 74,
+        "stamina": 76
+      }
     },
     "overall": 80,
     "condition": 100
@@ -125,11 +240,27 @@
     "team": "KOR",
     "number": 10,
     "position": "MF",
-    "roles": ["CAM", "LW", "RW"],
+    "roles": [
+      "CAM",
+      "LW",
+      "RW"
+    ],
     "attributes": {
-      "technical": { "shooting": 72, "passing": 81 },
-      "mental": { "decisions": 82, "composure": 78 },
-      "physical": { "pace": 75, "stamina": 84 }
+      "technical": {
+        "shooting": 72,
+        "passing": 81,
+        "dribbling": 81,
+        "tackle": 63
+      },
+      "mental": {
+        "decisions": 82,
+        "composure": 78,
+        "vision": 87
+      },
+      "physical": {
+        "pace": 75,
+        "stamina": 84
+      }
     },
     "overall": 77,
     "condition": 100
@@ -140,11 +271,26 @@
     "team": "KOR",
     "number": 7,
     "position": "FW",
-    "roles": ["LW", "ST"],
+    "roles": [
+      "LW",
+      "ST"
+    ],
     "attributes": {
-      "technical": { "shooting": 89, "passing": 82 },
-      "mental": { "decisions": 85, "composure": 88 },
-      "physical": { "pace": 87, "stamina": 78 }
+      "technical": {
+        "shooting": 89,
+        "passing": 82,
+        "dribbling": 95,
+        "tackle": 46
+      },
+      "mental": {
+        "decisions": 85,
+        "composure": 88,
+        "vision": 87
+      },
+      "physical": {
+        "pace": 87,
+        "stamina": 78
+      }
     },
     "overall": 85,
     "condition": 100
@@ -155,13 +301,57 @@
     "team": "KOR",
     "number": 9,
     "position": "FW",
-    "roles": ["ST"],
+    "roles": [
+      "ST"
+    ],
     "attributes": {
-      "technical": { "shooting": 78, "passing": 68 },
-      "mental": { "decisions": 74, "composure": 75 },
-      "physical": { "pace": 77, "stamina": 82 }
+      "technical": {
+        "shooting": 78,
+        "passing": 68,
+        "dribbling": 85,
+        "tackle": 41
+      },
+      "mental": {
+        "decisions": 74,
+        "composure": 75,
+        "vision": 76
+      },
+      "physical": {
+        "pace": 77,
+        "stamina": 82
+      }
     },
     "overall": 76,
+    "condition": 100
+  },
+  {
+    "id": "kor_11",
+    "name": "황희찬",
+    "team": "KOR",
+    "number": 11,
+    "position": "FW",
+    "roles": [
+      "LW",
+      "ST"
+    ],
+    "attributes": {
+      "technical": {
+        "shooting": 80,
+        "passing": 71,
+        "dribbling": 81,
+        "tackle": 44
+      },
+      "mental": {
+        "decisions": 75,
+        "composure": 79,
+        "vision": 70
+      },
+      "physical": {
+        "pace": 88,
+        "stamina": 85
+      }
+    },
+    "overall": 78,
     "condition": 100
   },
   {
@@ -170,11 +360,25 @@
     "team": "POR",
     "number": 22,
     "position": "GK",
-    "roles": ["GK"],
+    "roles": [
+      "GK"
+    ],
     "attributes": {
-      "technical": { "shooting": 20, "passing": 72 },
-      "mental": { "decisions": 82, "composure": 84 },
-      "physical": { "pace": 58, "stamina": 70 }
+      "technical": {
+        "shooting": 20,
+        "passing": 72,
+        "dribbling": 53,
+        "tackle": 32
+      },
+      "mental": {
+        "decisions": 82,
+        "composure": 84,
+        "vision": 70
+      },
+      "physical": {
+        "pace": 58,
+        "stamina": 70
+      }
     },
     "overall": 82,
     "condition": 100
@@ -185,11 +389,25 @@
     "team": "POR",
     "number": 2,
     "position": "DF",
-    "roles": ["RB"],
+    "roles": [
+      "RB"
+    ],
     "attributes": {
-      "technical": { "shooting": 55, "passing": 76 },
-      "mental": { "decisions": 76, "composure": 75 },
-      "physical": { "pace": 82, "stamina": 84 }
+      "technical": {
+        "shooting": 55,
+        "passing": 76,
+        "dribbling": 73,
+        "tackle": 80
+      },
+      "mental": {
+        "decisions": 76,
+        "composure": 75,
+        "vision": 71
+      },
+      "physical": {
+        "pace": 82,
+        "stamina": 84
+      }
     },
     "overall": 79,
     "condition": 100
@@ -200,11 +418,25 @@
     "team": "POR",
     "number": 3,
     "position": "DF",
-    "roles": ["CB"],
+    "roles": [
+      "CB"
+    ],
     "attributes": {
-      "technical": { "shooting": 40, "passing": 74 },
-      "mental": { "decisions": 86, "composure": 84 },
-      "physical": { "pace": 62, "stamina": 72 }
+      "technical": {
+        "shooting": 40,
+        "passing": 74,
+        "dribbling": 67,
+        "tackle": 81
+      },
+      "mental": {
+        "decisions": 86,
+        "composure": 84,
+        "vision": 81
+      },
+      "physical": {
+        "pace": 62,
+        "stamina": 72
+      }
     },
     "overall": 80,
     "condition": 100
@@ -215,11 +447,25 @@
     "team": "POR",
     "number": 24,
     "position": "DF",
-    "roles": ["CB"],
+    "roles": [
+      "CB"
+    ],
     "attributes": {
-      "technical": { "shooting": 38, "passing": 75 },
-      "mental": { "decisions": 76, "composure": 78 },
-      "physical": { "pace": 72, "stamina": 80 }
+      "technical": {
+        "shooting": 38,
+        "passing": 75,
+        "dribbling": 69,
+        "tackle": 79
+      },
+      "mental": {
+        "decisions": 76,
+        "composure": 78,
+        "vision": 71
+      },
+      "physical": {
+        "pace": 72,
+        "stamina": 80
+      }
     },
     "overall": 76,
     "condition": 100
@@ -230,11 +476,26 @@
     "team": "POR",
     "number": 20,
     "position": "DF",
-    "roles": ["LB", "RB"],
+    "roles": [
+      "LB",
+      "RB"
+    ],
     "attributes": {
-      "technical": { "shooting": 68, "passing": 85 },
-      "mental": { "decisions": 80, "composure": 79 },
-      "physical": { "pace": 83, "stamina": 84 }
+      "technical": {
+        "shooting": 68,
+        "passing": 85,
+        "dribbling": 75,
+        "tackle": 83
+      },
+      "mental": {
+        "decisions": 80,
+        "composure": 79,
+        "vision": 75
+      },
+      "physical": {
+        "pace": 83,
+        "stamina": 84
+      }
     },
     "overall": 84,
     "condition": 100
@@ -245,11 +506,25 @@
     "team": "POR",
     "number": 14,
     "position": "MF",
-    "roles": ["DM"],
+    "roles": [
+      "DM"
+    ],
     "attributes": {
-      "technical": { "shooting": 58, "passing": 80 },
-      "mental": { "decisions": 79, "composure": 78 },
-      "physical": { "pace": 58, "stamina": 78 }
+      "technical": {
+        "shooting": 58,
+        "passing": 80,
+        "dribbling": 72,
+        "tackle": 63
+      },
+      "mental": {
+        "decisions": 79,
+        "composure": 78,
+        "vision": 84
+      },
+      "physical": {
+        "pace": 58,
+        "stamina": 78
+      }
     },
     "overall": 77,
     "condition": 100
@@ -260,11 +535,26 @@
     "team": "POR",
     "number": 18,
     "position": "MF",
-    "roles": ["DM", "CM"],
+    "roles": [
+      "DM",
+      "CM"
+    ],
     "attributes": {
-      "technical": { "shooting": 74, "passing": 87 },
-      "mental": { "decisions": 82, "composure": 81 },
-      "physical": { "pace": 65, "stamina": 82 }
+      "technical": {
+        "shooting": 74,
+        "passing": 87,
+        "dribbling": 77,
+        "tackle": 66
+      },
+      "mental": {
+        "decisions": 82,
+        "composure": 81,
+        "vision": 87
+      },
+      "physical": {
+        "pace": 65,
+        "stamina": 82
+      }
     },
     "overall": 81,
     "condition": 100
@@ -275,11 +565,26 @@
     "team": "POR",
     "number": 10,
     "position": "MF",
-    "roles": ["RW", "CM"],
+    "roles": [
+      "RW",
+      "CM"
+    ],
     "attributes": {
-      "technical": { "shooting": 68, "passing": 82 },
-      "mental": { "decisions": 79, "composure": 77 },
-      "physical": { "pace": 74, "stamina": 85 }
+      "technical": {
+        "shooting": 68,
+        "passing": 82,
+        "dribbling": 80,
+        "tackle": 64
+      },
+      "mental": {
+        "decisions": 79,
+        "composure": 77,
+        "vision": 84
+      },
+      "physical": {
+        "pace": 74,
+        "stamina": 85
+      }
     },
     "overall": 78,
     "condition": 100
@@ -290,11 +595,26 @@
     "team": "POR",
     "number": 16,
     "position": "MF",
-    "roles": ["CAM", "CM"],
+    "roles": [
+      "CAM",
+      "CM"
+    ],
     "attributes": {
-      "technical": { "shooting": 70, "passing": 86 },
-      "mental": { "decisions": 81, "composure": 80 },
-      "physical": { "pace": 76, "stamina": 83 }
+      "technical": {
+        "shooting": 70,
+        "passing": 86,
+        "dribbling": 82,
+        "tackle": 65
+      },
+      "mental": {
+        "decisions": 81,
+        "composure": 80,
+        "vision": 86
+      },
+      "physical": {
+        "pace": 76,
+        "stamina": 83
+      }
     },
     "overall": 80,
     "condition": 100
@@ -305,11 +625,26 @@
     "team": "POR",
     "number": 21,
     "position": "FW",
-    "roles": ["LW", "ST"],
+    "roles": [
+      "LW",
+      "ST"
+    ],
     "attributes": {
-      "technical": { "shooting": 76, "passing": 77 },
-      "mental": { "decisions": 76, "composure": 76 },
-      "physical": { "pace": 80, "stamina": 80 }
+      "technical": {
+        "shooting": 76,
+        "passing": 77,
+        "dribbling": 87,
+        "tackle": 41
+      },
+      "mental": {
+        "decisions": 76,
+        "composure": 76,
+        "vision": 78
+      },
+      "physical": {
+        "pace": 80,
+        "stamina": 80
+      }
     },
     "overall": 77,
     "condition": 100
@@ -320,11 +655,26 @@
     "team": "POR",
     "number": 7,
     "position": "FW",
-    "roles": ["ST", "LW"],
+    "roles": [
+      "ST",
+      "LW"
+    ],
     "attributes": {
-      "technical": { "shooting": 90, "passing": 78 },
-      "mental": { "decisions": 83, "composure": 89 },
-      "physical": { "pace": 80, "stamina": 74 }
+      "technical": {
+        "shooting": 90,
+        "passing": 78,
+        "dribbling": 94,
+        "tackle": 46
+      },
+      "mental": {
+        "decisions": 83,
+        "composure": 89,
+        "vision": 85
+      },
+      "physical": {
+        "pace": 80,
+        "stamina": 74
+      }
     },
     "overall": 85,
     "condition": 100
