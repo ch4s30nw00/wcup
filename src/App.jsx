@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import TacticsBoard from './components/TacticsBoard'
 import { TitleScreen, MatchSelect } from './components/Intro'
-import { resolveSequence, DEF_RADIUS } from './engine/resolve'
+import { resolveSequence, planOffside, DEF_RADIUS } from './engine/resolve'
 import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
 import playersData from './data/players.json'
@@ -31,6 +31,7 @@ const OUTCOME_LABEL = {
   ADVANCE: '✅ 전개 성공',
   INTERCEPTED: '🛡️ 차단당함',
   MISS: '❌ 무산...',
+  OFFSIDE: '🚩 오프사이드',
 }
 
 function App() {
@@ -93,6 +94,14 @@ function App() {
 
   const shotTaken = chainActs.some((a) => a.type === 'shot')
   const ballPlanPos = chain.length ? chain[chain.length - 1].to : basePos(moment.ball)
+
+  // 오프사이드 경고 (하이브리드 (a) 단계) — 설계는 막지 않고 빨간 점멸로만 알린다.
+  // 실행 시의 확정 실패 판정과 같은 함수·같은 좌표를 쓴다 (engine/offside.js).
+  const offsideWarn = useMemo(
+    () => (chain.length ? planOffside(chain, { opponents, players: basePlayers }) : []),
+    [chain],
+  )
+  const offsideIds = useMemo(() => new Set(offsideWarn.map((w) => w.receiverId)), [offsideWarn])
 
   // 이스터에그 — 실제 경기 재현 감지: 골로 끝났고, 마지막 슛을 실제 득점자가 쐈고,
   // 그에게 간 마지막 패스를 실제 도움 선수가 줬으면 "그날의 장면" 팝업을 띄운다.
@@ -242,6 +251,9 @@ function App() {
               displayOpp={phase === 'plan' ? null : frame?.opp}
               interactive={phase === 'plan'}
               defRadius={DEF_RADIUS}
+              offsideIds={offsideIds}
+              offsideLineX={offsideWarn[0]?.lineX ?? null}
+              offsideFx={phase !== 'plan' ? frame?.fx : null}
               selectedId={selectedId}
               onPlayerClick={(id) => setSelectedId((prev) => (prev === id ? null : id))}
               onRunSet={setRunTarget}
@@ -276,14 +288,23 @@ function App() {
           <section className="panel">
             <h2>실행 결과</h2>
             {result && phase === 'done' ? (
-              <div className={`result ${result.outcome === 'GOAL' || result.outcome === 'ADVANCE' ? 'goal' : 'miss'}`}>
+              <div
+                className={`result ${
+                  result.outcome === 'GOAL' || result.outcome === 'ADVANCE'
+                    ? 'goal'
+                    : result.outcome === 'OFFSIDE'
+                      ? 'offside'
+                      : 'miss'
+                }`}
+              >
                 <div className="outcome">{OUTCOME_LABEL[result.outcome]}</div>
                 <div className="rate">시퀀스 전체 성공 확률 {(result.pTotal * 100).toFixed(0)}%</div>
                 <ul className="steps">
                   {result.steps.map((s, i) => (
                     <li key={i} className={s.success === null ? 'step-skip' : s.success ? 'step-ok' : 'step-fail'}>
-                      <span>{i + 1}. {TYPE_LABEL[s.type]}</span>
-                      <span>{(s.p * 100).toFixed(0)}% {s.success === null ? '―' : s.success ? '✓' : '✗'}</span>
+                      <span>{i + 1}. {TYPE_LABEL[s.type]}{s.offside ? ' 🚩' : ''}</span>
+                      {/* 오프사이드는 확률 판정을 거치지 않은 확정 실패 — %를 보여주면 오해를 부른다 */}
+                      <span>{s.offside ? '오프사이드 ✗' : `${(s.p * 100).toFixed(0)}% ${s.success === null ? '―' : s.success ? '✓' : '✗'}`}</span>
                     </li>
                   ))}
                 </ul>
@@ -312,6 +333,12 @@ function App() {
                     )}
                   </li>
                 ))}
+                {chain.length > 0 && offsideWarn.length > 0 && phase === 'plan' && (
+                  <li className="offside-note">
+                    🚩 {offsideWarn.map((w) => byId[w.receiverId]?.name).join(', ')} — 패스가 떠나는 순간 최후방 2번째
+                    수비수보다 앞서 있습니다. 이대로 실행하면 오프사이드로 깃발이 올라갑니다.
+                  </li>
+                )}
                 {runLegs.map((rl) => (
                   <li key={`m${rl.key}`} className="action-row off-ball">
                     <span>

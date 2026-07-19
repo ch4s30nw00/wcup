@@ -4,7 +4,8 @@
 // 3) 수비 재배치가 만드는 "수비 붕괴"의 창발 (고정 수비 대비 비교)
 // 을 확인한다. 실패 시 exit 1.
 
-import { calcShot, calcPass, calcDribble, resolveSequence } from '../src/engine/resolve.js'
+import { calcShot, calcPass, calcDribble, resolveSequence, planOffside } from '../src/engine/resolve.js'
+import { checkOffside, offsideLineX } from '../src/engine/offside.js'
 import { initDefense, advanceDefense } from '../src/engine/defense.js'
 import { matchScore } from '../src/engine/match.js'
 import { midpoint } from '../src/engine/geometry.js'
@@ -141,6 +142,70 @@ console.log('[수비 재배치] 결정론 — 같은 입력 두 번 = 같은 좌
     return d.map((x) => `${x.x.toFixed(6)},${x.y.toFixed(6)}`).join(';')
   }
   checkDir('결정론 유지', mk() === mk())
+}
+
+// ── 3b. 오프사이드 (순수 기하) ───────────────────────────────────────
+console.log('\n[오프사이드] 최후방 2번째 수비수 라인 판정')
+{
+  // 백4(x=90,92,94,96) + GK(116.5). 내림차순 116.5, 96, 94, 92, 90 → 라인 = 96
+  const line4 = [defAt(90, 30), defAt(92, 38), defAt(94, 46), defAt(96, 54), { ...defAt(116.5, 40), position: 'GK' }]
+  check('라인 = 최후방 2번째 (GK 포함 정렬)', offsideLineX(line4), 96, 0.001)
+
+  const at = (rx, ball = { x: 70, y: 40 }) => checkOffside({ receiver: { x: rx, y: 40 }, opponents: line4, ball })
+  checkDir('라인 뒤(x=98) → 오프사이드', at(98).offside === true)
+  checkDir('라인 앞(x=94) → 온사이드', at(94).offside === false)
+  checkDir('동일선상(x=96) → 온사이드 (실축 규칙)', at(96).offside === false)
+
+  // 우리 진영에서는 오프사이드가 없다 — 라인을 넘겨도 x ≤ 60이면 성립 안 함
+  const ownHalf = [defAt(50, 30), defAt(52, 40), defAt(55, 50)]
+  checkDir(
+    '우리 진영(x=58)은 라인을 넘어도 온사이드',
+    checkOffside({ receiver: { x: 58, y: 40 }, opponents: ownHalf, ball: { x: 40, y: 40 } }).offside === false,
+  )
+
+  // 공보다 뒤에 있으면 온사이드 (백패스는 절대 오프사이드가 아니다)
+  checkDir(
+    '공보다 뒤(백패스) → 온사이드',
+    checkOffside({ receiver: { x: 98, y: 40 }, opponents: line4, ball: { x: 105, y: 40 } }).offside === false,
+  )
+
+  // 수비수가 1명 이하면 라인이 정의되지 않는다
+  checkDir('수비 1명 → 라인 없음(판정 불가)', offsideLineX([defAt(90, 40)]) === null)
+}
+
+console.log('[오프사이드] resolveSequence 통합 — 확정 실패 + 턴오버')
+{
+  const defs = [defAt(90, 30), defAt(92, 38), defAt(94, 46), defAt(96, 54), { ...defAt(116.5, 40), position: 'GK' }]
+  // 판정 기준은 "패스가 떠나는 순간 리시버가 서 있던 자리"(players의 좌표)이지 도착점이 아니다.
+  const mkPass = (toX) => ({
+    type: 'pass', actorId: 'a1', receiverId: 'a2', actor: neutral(),
+    from: { x: 70, y: 40 }, to: { x: toX, y: 40 }, ctrl: midpoint({ x: 70, y: 40 }, { x: toX, y: 40 }),
+  })
+  // (i) 리시버가 이미 라인(96) 뒤에 서 있다 → 오프사이드
+  const standingOff = [{ id: 'a1', x: 70, y: 40 }, { id: 'a2', x: 104, y: 40 }]
+  const off = resolveSequence([mkPass(104)], { opponents: defs, players: standingOff, seed: 1 })
+  checkDir(`라인 뒤에 서 있는 리시버 → outcome=OFFSIDE (${off.outcome})`, off.outcome === 'OFFSIDE')
+  checkDir('오프사이드 스텝은 확정 실패', off.steps[0].success === false && off.steps[0].offside === true)
+  checkDir(`오프사이드면 pTotal=0 (${off.pTotal})`, off.pTotal === 0)
+
+  // (ii) 리시버가 라인 앞에서 출발해 공을 향해 달려든다 → 도착점이 라인 뒤여도 온사이드.
+  //      역습 스루패스가 성립하는 근거 — 90+1 장면 재현이 오프사이드로 막히면 안 된다.
+  const runningOn = [{ id: 'a1', x: 70, y: 40 }, { id: 'a2', x: 70, y: 44 }]
+  const thru = resolveSequence([mkPass(104)], { opponents: defs, players: runningOn, seed: 1 })
+  checkDir(`침투 패스(뒤에서 출발) → 온사이드 (${thru.outcome})`, thru.steps[0].offside === false && thru.outcome !== 'OFFSIDE')
+
+  const on = resolveSequence([mkPass(92)], { opponents: defs, players: runningOn, seed: 1 })
+  checkDir(`라인 앞 패스는 오프사이드 아님 (${on.outcome})`, on.steps[0].offside === false && on.outcome !== 'OFFSIDE')
+
+  // 계획 단계 경고는 판정과 같은 좌표를 본다 (하이브리드 (a) 단계)
+  const warn = planOffside([mkPass(104)], { opponents: defs, players: standingOff })
+  checkDir('planOffside가 같은 패스를 경고', warn.length === 1 && warn[0].receiverId === 'a2')
+  checkDir('침투 패스는 경고 없음', planOffside([mkPass(104)], { opponents: defs, players: runningOn }).length === 0)
+  checkDir('온사이드 패스는 경고 없음', planOffside([mkPass(92)], { opponents: defs, players: runningOn }).length === 0)
+
+  // 드리블·슛은 오프사이드 대상이 아니다
+  const drib = { type: 'dribble', actorId: 'a1', actor: neutral(), from: { x: 70, y: 40 }, to: { x: 104, y: 40 }, ctrl: midpoint({ x: 70, y: 40 }, { x: 104, y: 40 }) }
+  checkDir('드리블은 오프사이드 판정 대상 아님', planOffside([drib], { opponents: defs, players: standingOff }).length === 0)
 }
 
 // ── 4. 실제 시나리오 스모크: 90+1 역습 재현 체인 ─────────────────────

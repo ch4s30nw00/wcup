@@ -159,6 +159,10 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
   const goalTime = shotLeg && shotLeg.step.success ? shotLeg.start + shotLeg.dur : null
   const scorerId = shotLeg?.actorId
   const turnoverTime = failStep ? (interceptor ? interceptor.end : lastLeg.start + lastLeg.dur) : null
+  // 오프사이드는 공이 리시버에 닿는 순간 휘슬 — 그때부터 깃발 표식과 사운드 신호를 띄운다
+  const offsideTime = failStep?.offside ? lastLeg.start + lastLeg.dur : null
+  const offsideLineX = failStep?.offsideLineX ?? null
+  if (offsideTime) total = Math.max(total, offsideTime + 2000)
   const turnoverLoose = failStep ? failStep.type !== 'shot' : false // 패스류 실패 → 공 주변 쟁탈
   // 리액션이 보일 시간 확보 (세리머니/공수 전환)
   if (goalTime) total = Math.max(total, goalTime + 2200)
@@ -179,7 +183,10 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       d: leg.step.interceptorId ? byId[leg.step.interceptorId].name : undefined,
     }
     captions.push({ t: leg.start, text: commentaryFor(leg.type, names, rngC) })
-    if (leg.step.success === false) {
+    if (leg.step.offside) {
+      // 오프사이드: 패스는 그대로 날아가고, 공이 닿는 순간 부심 깃발 + 휘슬
+      captions.push({ t: leg.start + leg.dur, text: commentaryFor('offside', names, rngC) })
+    } else if (leg.step.success === false) {
       const when = leg.start + leg.dur * (leg.step.interceptFrac ?? 1) + 100
       captions.push({ t: when, text: commentaryFor(FAIL_EVENT[leg.type][names.d ? 'cut' : 'miss'], names, rngC) })
     } else if (leg.type === 'shot' && i === legs.length - 1) {
@@ -519,6 +526,9 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       dy: shake * 4 * Math.cos(el * 0.117),
       flash: goalTime != null && el >= goalTime && el < goalTime + 260 ? 1 - (el - goalTime) / 260 : 0,
       slowmo,
+      // 오프사이드 깃발: 휘슬 순간부터 재생이 끝날 때까지 표시 (라인도 함께 그린다)
+      offside: offsideTime != null && el >= offsideTime,
+      offsideLineX,
     }
     onFrame({ home, opp, ball, caption, fx, ballTrail: trail.length > 1 ? [...trail] : null })
     if (el < total) rafId = requestAnimationFrame(tick)
