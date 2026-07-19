@@ -4,6 +4,21 @@
   padding: 20px 24px 40px;
 }
 
+.header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.header-row h1 {
+  margin: 0;
+}
+.board-back {
+  padding: 2px 12px;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
 header h1 {
   font-size: 26px;
   margin: 0 0 12px;
@@ -436,6 +451,227 @@ header h1 .sub {
   padding: 10px 0;
 }
 
+/* --- 인트로 · 경기 선택 화면 --- */
+.screen {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 30%, #17202e 0%, #10141c 60%);
+  animation: screen-in 0.45s ease;
+}
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.intro-pitch-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: #ffffff;
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+.intro-content {
+  position: relative;
+  text-align: center;
+  max-width: 640px;
+}
+.intro-kicker {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: #ffd23e;
+  margin-bottom: 14px;
+}
+.intro-title {
+  font-size: clamp(44px, 9vw, 76px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin: 0 0 18px;
+  text-shadow: 0 8px 40px rgba(255, 210, 62, 0.15);
+}
+.intro-tagline {
+  font-size: clamp(15px, 2.5vw, 19px);
+  line-height: 1.7;
+  color: #9aa3b5;
+  margin: 0 0 36px;
+}
+.intro-play {
+  padding: 14px 52px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #10141c;
+  background: #ffd23e;
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 0 0 0 rgba(255, 210, 62, 0.45);
+  animation: play-pulse 2.2s ease-out infinite;
+}
+.intro-play:hover {
+  background: #ffdd6b;
+}
+@keyframes play-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 210, 62, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 16px rgba(255, 210, 62, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 210, 62, 0);
+  }
+}
+
+/* 경기 선택 */
+.select-screen {
+  align-items: flex-start;
+}
+.select-content {
+  position: relative;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding-top: 4vh;
+}
+.select-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.select-head h2 {
+  font-size: 24px;
+  margin: 0;
+}
+.select-back {
+  padding: 6px 14px;
+}
+
+.match-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.match-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+  background: #1b2230;
+  border: 1px solid #2c3648;
+  border-radius: 12px;
+  padding: 18px 20px;
+  color: #e8ecf4;
+  font: inherit;
+}
+.match-card.playable {
+  border-color: #3d4a63;
+  border-top: 4px solid #ffd23e;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.match-card.playable:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.match-card.locked {
+  opacity: 0.55;
+}
+.match-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.match-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.match-badge.live {
+  color: #10141c;
+  background: #ffd23e;
+}
+.match-badge.soon {
+  color: #9aa3b5;
+  background: #232c3d;
+  border: 1px solid #2c3648;
+}
+.match-minute {
+  font-size: 13px;
+  font-weight: 700;
+  color: #9aa3b5;
+}
+.match-title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.match-score {
+  font-size: 14px;
+  color: #9aa3b5;
+}
+.match-score b {
+  font-size: 18px;
+  color: #e8ecf4;
+  margin: 0 4px;
+}
+.match-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #9aa3b5;
+  margin: 0;
+  flex: 1;
+}
+.match-objective {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffd23e;
+}
+.match-cta {
+  text-align: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: #10141c;
+  background: #ffd23e;
+  border-radius: 8px;
+  padding: 10px 0;
+  transition: background 0.15s ease;
+}
+.match-card.playable:hover .match-cta {
+  background: #ffdd6b;
+}
+.match-lock {
+  text-align: center;
+  font-size: 20px;
+  padding: 6px 0;
+}
+
+@media (max-width: 640px) {
+  .select-content {
+    padding-top: 1vh;
+  }
+}
+
 @keyframes phone-tilt {
   0%,
   25% {
@@ -454,6 +690,13 @@ header h1 .sub {
   }
   header h1 {
     display: none;
+  }
+  .header-row {
+    margin-bottom: 6px;
+  }
+  .board-back {
+    padding: 1px 10px;
+    font-size: 15px;
   }
   .mission-card {
     padding: 6px 12px;

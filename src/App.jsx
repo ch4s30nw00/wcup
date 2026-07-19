@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import TacticsBoard from './components/TacticsBoard'
+import { TitleScreen, MatchSelect } from './components/Intro'
 import { resolveSequence, DEF_RADIUS } from './engine/resolve'
 import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
@@ -20,10 +21,9 @@ const opponents = onPitch(awaySquad).map((p, i) => ({ ...p, x: 120 - (slots[i]?.
 const byId = Object.fromEntries([...basePlayers, ...opponents].map((p) => [p.id, p]))
 
 // URL ?seed= 가 있으면 그 시드로 — 같은 링크 = 같은 결과 (재현 보장)
-const SEED = (() => {
-  const n = Number(new URLSearchParams(window.location.search).get('seed'))
-  return Number.isFinite(n) && n > 0 ? n : Math.floor(Math.random() * 1e9)
-})()
+const SEED_PARAM = Number(new URLSearchParams(window.location.search).get('seed'))
+const HAS_SEED_LINK = Number.isFinite(SEED_PARAM) && SEED_PARAM > 0
+const SEED = HAS_SEED_LINK ? SEED_PARAM : Math.floor(Math.random() * 1e9)
 
 const TYPE_LABEL = { dribble: '드리블', pass: '패스', shot: '슛' }
 const OUTCOME_LABEL = {
@@ -34,6 +34,8 @@ const OUTCOME_LABEL = {
 }
 
 function App() {
+  // 화면 흐름: intro → select → board. seed 공유 링크는 재현이 목적이므로 인트로를 건너뛴다.
+  const [screen, setScreen] = useState(HAS_SEED_LINK ? 'board' : 'intro')
   // 공 전개 체인 (순서 있는 액션 리스트) — 같은 선수가 여러 번 드리블/수신 가능
   // { type:'dribble', to, ctrl } | { type:'pass'|'shot', receiverId, to(슛만), ctrl }
   const [chainActs, setChainActs] = useState([])
@@ -188,9 +190,18 @@ function App() {
 
   const selected = selectedId ? byId[selectedId] : null
 
+  // 보드에서 경기 선택으로 — 재생 중이면 끊고 결과를 정리 (전술 설계는 유지)
+  function goToSelect() {
+    backToPlan()
+    setScreen('select')
+  }
+
+  if (screen === 'intro') return <TitleScreen onStart={() => setScreen('select')} />
+  if (screen === 'select') return <MatchSelect onPick={() => setScreen('board')} onBack={() => setScreen('intro')} />
+
   return (
     <div className="app">
-      {/* 터치 기기 + 세로 화면일 때만 CSS로 표시 */}
+      {/* 터치 기기 + 세로 화면일 때만 CSS로 표시 (인트로·선택 화면은 세로도 허용) */}
       <div className="rotate-hint">
         <div className="rotate-hint-phone">📱</div>
         <p>화면을 옆으로 돌려주세요</p>
@@ -198,7 +209,10 @@ function App() {
       </div>
 
       <header>
-        <h1>⚽ 터치라인 <span className="sub">전술보드 프로토타입</span></h1>
+        <div className="header-row">
+          <button className="ctrl board-back" onClick={goToSelect} title="경기 선택으로 돌아가기">‹</button>
+          <h1>⚽ 터치라인 <span className="sub">전술보드 프로토타입</span></h1>
+        </div>
         <div className="mission-card">
           <div className="mission-title">{scenario.title}</div>
           <div className="mission-body">
