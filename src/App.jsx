@@ -4,6 +4,7 @@ import { TitleScreen, MatchSelect } from './components/Intro'
 import { resolveSequence, DEF_RADIUS } from './engine/resolve'
 import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
+import { actionDuration, reachRadius, clampToReach } from './engine/sheets'
 import playersData from './data/players.json'
 import formations from './data/formations.json'
 import scenario from './data/scenarios.json'
@@ -44,6 +45,12 @@ function App() {
   // 받고→넘기고→또 뛰는 것처럼 같은 선수가 시점이 다른 런을 여러 개 가질 수 있다.
   const [runs, setRuns] = useState([])
   const [selectedId, setSelectedId] = useState(null)
+  // 시트(페이즈) 모드 — 기존 원샷 설계와 병행하는 프로토타입 토글.
+  // sheetCount = 확정된 시트 수. 그 인덱스의 시트가 지금 편집 중인 시트다.
+  // viewSheet = 열람 중인 시트 (null이면 편집 중인 시트를 본다).
+  const [sheetMode, setSheetMode] = useState(false)
+  const [sheetCount, setSheetCount] = useState(0)
+  const [viewSheet, setViewSheet] = useState(null)
   const [phase, setPhase] = useState('plan') // plan | playing | done
   const [result, setResult] = useState(null)
   const [frame, setFrame] = useState(null) // 재생 중 위치: { home, opp, ball, caption }
@@ -54,7 +61,7 @@ function App() {
   // 체인 + 런을 시간 순서대로 걸어가며 좌표를 유도.
   // 선수 위치가 체인을 따라 갱신되므로 "드리블→패스→되받아→다시 드리블",
   // "드리블→패스→오프볼 런→다시 받기"가 모두 이어진다.
-  const { chain, runLegs, planPos, carrierId } = useMemo(() => {
+  const { chain, runLegs, planPos, carrierId, snaps, carrierAt } = useMemo(() => {
     const pos = {} // 진행 중 선수별 현재 위치
     const posOf = (id) => pos[id] ?? basePos(id)
     const runLegMap = {}
@@ -68,8 +75,15 @@ function App() {
         }
       })
     }
+    // 시트 i가 "시작되기 직전"의 전원 좌표 스냅샷 — 시트 확정 시 위치가 굳는다는 게
+    // 곧 이 스냅샷이다. 가동범위 동심원의 중심이자 이전 시트 열람의 표시 좌표.
+    const snaps = []
+    const carrierAt = []
+    const snapshot = () => Object.fromEntries(basePlayers.map((p) => [p.id, posOf(p.id)]))
     let carrier = moment.ball
     const chain = chainActs.map((act, index) => {
+      snaps.push(snapshot())
+      carrierAt.push(carrier)
       applyRunsAt(index)
       const cur = posOf(carrier)
       if (act.type === 'dribble') {
@@ -85,14 +99,52 @@ function App() {
       }
       return leg
     })
+    snaps.push(snapshot())
+    carrierAt.push(carrier)
     applyRunsAt(len)
     const planPos = {}
     for (const p of basePlayers) planPos[p.id] = posOf(p.id)
-    return { chain, runLegs: Object.values(runLegMap), planPos, carrierId: carrier }
+    return { chain, runLegs: Object.values(runLegMap), planPos, carrierId: carrier, snaps, carrierAt }
   }, [chainActs, runs])
 
   const shotTaken = chainActs.some((a) => a.type === 'shot')
   const ballPlanPos = chain.length ? chain[chain.length - 1].to : basePos(moment.ball)
+
+  // --- 시트 모드 파생값 ---
+  // 편집 중인 시트 = sheetCount 인덱스. 그 시트의 공 액션이 걸리는 시간이
+  // 이번 시트에서 모두가 움직일 수 있는 시간 예산 = 동심원 반경의 근거.
+  const editIndex = sheetCount
+  const editLeg = chain[editIndex] ?? null
+  const sheetDur = actionDuration(editLeg)
+  const totalSheets = Math.max(chain.length, sheetCount + 1)
+  // 열람 중인 시트 (null = 편집 중인 시트). 마지막 시트만 편집 가능.
+  const shownSheet = viewSheet ?? editIndex
+  const isViewingPast = viewSheet != null && viewSheet < editIndex
+
+  // 가동범위 동심원 — 이번 시트 시작 좌표를 중심으로, 전력(100%)·여유(70%) 두 겹.
+  // 공 액션을 아직 안 그렸으면 시간 예산이 0이라 원도 없다 (그리면 그때 나타난다).
+  const reachCircles = useMemo(() => {
+    if (!sheetMode || isViewingPast || phase !== 'plan' || !(sheetDur > 0)) return null
+    const at = snaps[editIndex] ?? planPos
+    return basePlayers
+      .filter((p) => p.id !== carrierAt[editIndex]) // 공 소유자는 액션 본인이라 제외
+      .map((p) => ({ id: p.id, ...at[p.id], r: reachRadius(p, sheetDur) }))
+  }, [sheetMode, isViewingPast, phase, sheetDur, snaps, editIndex, planPos, carrierAt])
+
+  // 시트 확정 — 이번 시트에 공 액션이 있어야 넘어갈 수 있다
+  const canConfirmSheet = sheetMode && phase === 'plan' && !isViewingPast && chain.length > sheetCount
+  const confirmSheet = () => {
+    if (!canConfirmSheet) return
+    setSheetCount((n) => n + 1)
+    setViewSheet(null)
+  }
+  // 시트 삭제 = 그 시트부터 뒤로 전부 삭제 (체인이므로)
+  const deleteSheetFrom = (i) => {
+    setChainActs((cs) => cs.slice(0, i))
+    setRuns((rs) => rs.filter((r) => r.afterIndex < i))
+    setSheetCount(Math.min(sheetCount, i))
+    setViewSheet(null)
+  }
 
   // 이스터에그 — 실제 경기 재현 감지: 골로 끝났고, 마지막 슛을 실제 득점자가 쐈고,
   // 그에게 간 마지막 패스를 실제 도움 선수가 줬으면 "그날의 장면" 팝업을 띄운다.
@@ -110,7 +162,19 @@ function App() {
   // 드래그 시작(isFirst) 때 한 번만 판단: 이 선수의 마지막 런이 아직 체인에 "소비"되지
   // 않았으면(그 뒤로 받거나 준 적 없음) 그 런을 조정, 소비됐으면 새 런을 추가.
   // 소비된 런을 건드리면 그 위치로 유도된 패스 선들이 전부 따라 움직이기 때문.
-  const setRunTarget = (id, to, isFirst) =>
+  const setRunTarget = (id, to, isFirst) => {
+    // 시트 모드: 이번 시트의 런은 이번 시트 시작 좌표에서 출발하고,
+    // 공 액션이 걸리는 시간 안에 갈 수 있는 거리(동심원) 밖으로는 못 나간다.
+    if (sheetMode) {
+      const from = (snaps[editIndex] ?? planPos)[id]
+      const player = byId[id]
+      if (from && player && sheetDur > 0) to = clampToReach(from, to, reachRadius(player, sheetDur))
+      return setRuns((rs) => {
+        const mine = rs.findLastIndex((r) => r.id === id && r.afterIndex === editIndex)
+        if (mine === -1) return [...rs, { id, to, ctrl: null, afterIndex: editIndex }]
+        return rs.map((r, i) => (i === mine ? { ...r, to, ctrl: null } : r))
+      })
+    }
     setRuns((rs) => {
       const lastIdx = rs.findLastIndex((r) => r.id === id)
       if (isFirst) {
@@ -121,6 +185,7 @@ function App() {
       }
       return rs.map((r, i) => (i === lastIdx ? { ...r, to, ctrl: null } : r))
     })
+  }
   const removeRun = (key) => setRuns((rs) => rs.filter((_, i) => i !== key))
   const setRunHandle = (key, h) => {
     const leg = runLegs.find((r) => r.key === key)
@@ -134,6 +199,11 @@ function App() {
   const setDribble = (pt, isFirst) =>
     setChainActs((cs) => {
       const last = cs[cs.length - 1]
+      // 시트 모드: 이번 시트에 이미 드리블이 있으면 그걸 조정, 다른 액션이면 무시
+      if (sheetMode && cs.length > sheetCount) {
+        if (last?.type !== 'dribble') return cs
+        return cs.map((c, i) => (i === cs.length - 1 ? { ...c, to: pt, ctrl: isFirst ? null : c.ctrl } : c))
+      }
       if (isFirst && last?.type !== 'dribble') return [...cs, { type: 'dribble', to: pt, ctrl: null }]
       return cs.map((c, i) => (i === cs.length - 1 ? { ...c, to: pt, ctrl: isFirst ? null : c.ctrl } : c))
     })
@@ -143,14 +213,26 @@ function App() {
       setChainActs((cs) => cs.slice(0, -1)) // 제자리로 되돌리면 드리블 취소
     }
   }
-  const addPass = (receiverId, to) =>
+  // 시트 모드에서는 시트 1장에 공 액션 1개 — 이미 그렸으면 확정하고 넘어가야 한다
+  const sheetFull = sheetMode && chain.length > sheetCount
+  const addPass = (receiverId, to) => {
+    if (sheetFull) return
     setChainActs((cs) => [...cs, { type: receiverId === 'GOAL' ? 'shot' : 'pass', receiverId, to, ctrl: null }])
+  }
   const setChainHandle = (i, h) => {
     const leg = chain[i]
     if (!leg) return
     setChainActs((cs) => cs.map((c, idx) => (idx === i ? { ...c, ctrl: ctrlFromHandle(leg.from, leg.to, h) } : c)))
   }
-  const removeChainFrom = (i) => setChainActs((cs) => cs.slice(0, i)) // 체인이므로 그 뒤도 함께 삭제
+  // 체인이므로 그 뒤도 함께 삭제. 시트 모드면 확정 시트 수도 되돌린다.
+  const removeChainFrom = (i) => {
+    setChainActs((cs) => cs.slice(0, i))
+    if (sheetMode) {
+      setRuns((rs) => rs.filter((r) => r.afterIndex < i))
+      setSheetCount((n) => Math.min(n, i))
+      setViewSheet(null)
+    }
+  }
 
   // --- 확정 → 판정 → 재생 ---
   // 판정은 resolveSequence(스냅샷 1회), 연출은 playSequence(engine/playback.js)가 전담
@@ -186,6 +268,8 @@ function App() {
     backToPlan()
     setChainActs([])
     setRuns([])
+    setSheetCount(0)
+    setViewSheet(null)
   }
 
   const selected = selectedId ? byId[selectedId] : null
@@ -223,6 +307,62 @@ function App() {
 
       <main>
         <div className="board-col">
+          {/* 설계 모드 전환 + 시트 탭 — 기존 원샷 모드를 대체하지 않는 병행 프로토타입 */}
+          <div className="sheet-bar">
+            <button
+              className={`mode-toggle${sheetMode ? ' on' : ''}`}
+              onClick={() => {
+                setSheetMode((v) => !v)
+                setViewSheet(null)
+                setSheetCount(chainActs.length)
+              }}
+              disabled={phase !== 'plan'}
+              title="시트 모드: 액션 1개 + 오프볼 런 = 시트 1장씩 확정해 나가는 설계"
+            >
+              {sheetMode ? '📑 시트 모드' : '📄 원샷 모드'}
+            </button>
+            {sheetMode && (
+              <>
+                <div className="sheet-tabs">
+                  {Array.from({ length: totalSheets }, (_, i) => (
+                    <button
+                      key={i}
+                      className={`sheet-tab${shownSheet === i ? ' active' : ''}${i < sheetCount ? ' locked' : ''}`}
+                      onClick={() => setViewSheet(i === editIndex ? null : i)}
+                      title={i < sheetCount ? '확정된 시트 (열람만)' : '편집 중인 시트'}
+                    >
+                      시트 {i + 1}
+                      {i < sheetCount ? ' 🔒' : ''}
+                    </button>
+                  ))}
+                </div>
+                {canConfirmSheet && (
+                  <button className="ctrl sheet-confirm" onClick={confirmSheet}>
+                    시트 {editIndex + 1} 확정 → 다음 ▶
+                  </button>
+                )}
+                {isViewingPast && (
+                  <button className="ctrl" onClick={() => setViewSheet(null)}>
+                    편집 중인 시트로 ↩
+                  </button>
+                )}
+                {sheetCount > 0 && !isViewingPast && (
+                  <button className="ctrl sheet-del" onClick={() => deleteSheetFrom(editIndex - 1)}>
+                    이전 시트 삭제
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+          {sheetMode && phase === 'plan' && (
+            <p className="sheet-hint">
+              {isViewingPast
+                ? `시트 ${shownSheet + 1} 열람 중 — 확정된 시트는 수정할 수 없습니다.`
+                : sheetFull
+                  ? `이 시트의 공 액션을 그렸습니다. 오프볼 런을 더 넣거나, 확정해 다음 시트로 넘어가세요.`
+                  : `시트 ${editIndex + 1}: 공 액션(드리블/패스/슛) 하나를 그리면 동심원(그 시간 안에 갈 수 있는 범위)이 나타납니다.`}
+            </p>
+          )}
           {/* 셰이크(슛·골·차단 순간)는 이 래퍼의 transform으로 — 보드 내부 좌표는 불변 */}
           <div
             className={`board-wrap${frame?.fx?.slowmo ? ' slowmo' : ''}`}
@@ -231,16 +371,18 @@ function App() {
             <TacticsBoard
               players={basePlayers}
               opponents={opponents}
-              runLegs={runLegs}
-              chain={chain}
-              planPos={planPos}
-              carrierId={carrierId}
+              // 이전 시트를 열람 중이면 그 시점까지의 체인·좌표만 보여준다
+              runLegs={isViewingPast ? runLegs.filter((r) => r.afterIndex <= shownSheet) : runLegs}
+              chain={isViewingPast ? chain.slice(0, shownSheet + 1) : chain}
+              planPos={isViewingPast ? (snaps[shownSheet + 1] ?? planPos) : planPos}
+              carrierId={isViewingPast ? (carrierAt[shownSheet + 1] ?? carrierId) : carrierId}
               shotTaken={shotTaken}
+              reachCircles={reachCircles}
               ballPos={phase === 'plan' ? ballPlanPos : frame?.ball}
               ballTrail={phase === 'plan' ? null : frame?.ballTrail}
               displayHome={phase === 'plan' ? null : frame?.home}
               displayOpp={phase === 'plan' ? null : frame?.opp}
-              interactive={phase === 'plan'}
+              interactive={phase === 'plan' && !isViewingPast}
               defRadius={DEF_RADIUS}
               selectedId={selectedId}
               onPlayerClick={(id) => setSelectedId((prev) => (prev === id ? null : id))}

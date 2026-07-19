@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react'
 import { quadPoint, handleFromCtrl } from '../engine/geometry'
+import { K } from '../engine/constants'
+
+const REACH_EASY = K.SHEET.EASY_FRAC // 안쪽 동심원(여유) 비율
 
 // StatsBomb 좌표계와 동일한 120x80 피치. x: 0(우리 골대) → 120(상대 골대)
 const PITCH_W = 120
@@ -38,6 +41,7 @@ export default function TacticsBoard({
   planPos, // 계획상 각 선수의 최종 위치 (id → {x,y})
   carrierId, // 체인 끝에서 공을 갖게 될 선수 — 이 선수를 드래그하면 드리블
   shotTaken,
+  reachCircles, // 시트 모드 가동범위: [{ id, x, y, r }] — 이번 시트 시간 안에 갈 수 있는 거리
   ballPos,
   ballTrail, // 재생 중 공 트레일 [{x,y}] — 빠른 패스·슛의 혜성 꼬리 (평시 null)
   displayHome, // 재생 중 애니메이션 위치 (id → {x,y,a}), 평시 null
@@ -269,6 +273,23 @@ export default function TacticsBoard({
             />
           )
         })}
+
+      {/* 가동범위 동심원 (시트 모드) — 이번 시트의 공 액션이 걸리는 시간 동안
+          그 선수가 갈 수 있는 거리. 바깥 = 전력 100%, 안쪽 = 여유 70%.
+          오프볼 런 목표는 바깥 원 안으로 클램프된다. */}
+      {reachCircles?.map((c) => (
+        <g key={`reach-${c.id}`} pointerEvents="none">
+          <circle
+            cx={c.x} cy={c.y} r={c.r}
+            fill="rgba(120, 200, 255, 0.05)" stroke="rgba(120, 200, 255, 0.45)"
+            strokeWidth="0.22" strokeDasharray="1.2 1"
+          />
+          <circle
+            cx={c.x} cy={c.y} r={c.r * REACH_EASY}
+            fill="none" stroke="rgba(120, 200, 255, 0.3)" strokeWidth="0.18" strokeDasharray="0.7 0.9"
+          />
+        </g>
+      ))}
 
       {/* 오프볼 런 지시 (점선) — 앵커(체인 반영 위치)에서 출발 */}
       {runLegs.map((rl) => (
