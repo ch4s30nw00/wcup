@@ -8,23 +8,26 @@
     "roles": [
       "GK"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 20,
-        "passing": 65,
-        "dribbling": 51,
-        "tackle": 30
-      },
-      "mental": {
-        "decisions": 80,
-        "composure": 82,
-        "vision": 68
-      },
-      "physical": {
-        "pace": 55,
-        "stamina": 70
-      }
+    "heightCm": 189,
+    "stats": {
+      "flair": 10,
+      "finishing": 1,
+      "dribbling": 1,
+      "longshots": 2,
+      "crossing": 1,
+      "passing": 10,
+      "heading": 10,
+      "strength": 12,
+      "acceleration": 9,
+      "pace": 9,
+      "jumping": 13,
+      "balance": 12,
+      "marking": 1,
+      "tackle": 3,
+      "positioning": 12,
+      "anticipation": 13
     },
+    "statSource": "fm26",
     "overall": 79,
     "condition": 100
   },
@@ -37,23 +40,26 @@
     "roles": [
       "RB"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 48,
-        "passing": 70,
-        "dribbling": 68,
-        "tackle": 77
-      },
-      "mental": {
-        "decisions": 72,
-        "composure": 70,
-        "vision": 67
-      },
-      "physical": {
-        "pace": 78,
-        "stamina": 80
-      }
+    "heightCm": 173,
+    "stats": {
+      "flair": 12,
+      "finishing": 8,
+      "dribbling": 11,
+      "longshots": 8,
+      "crossing": 10,
+      "passing": 12,
+      "heading": 10,
+      "strength": 12,
+      "acceleration": 12,
+      "pace": 13,
+      "jumping": 10,
+      "balance": 13,
+      "marking": 13,
+      "tackle": 12,
+      "positioning": 12,
+      "anticipation": 12
     },
+    "statSource": "fm26",
     "overall": 73,
     "condition": 100
   },
@@ -66,23 +72,26 @@
     "roles": [
       "CB"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 40,
-        "passing": 78,
-        "dribbling": 75,
-        "tackle": 83
-      },
-      "mental": {
-        "decisions": 85,
-        "composure": 86,
-        "vision": 80
-      },
-      "physical": {
-        "pace": 76,
-        "stamina": 82
-      }
+    "heightCm": 190,
+    "stats": {
+      "flair": 12,
+      "finishing": 6,
+      "dribbling": 10,
+      "longshots": 7,
+      "crossing": 7,
+      "passing": 14,
+      "heading": 15,
+      "strength": 16,
+      "acceleration": 14,
+      "pace": 14,
+      "jumping": 16,
+      "balance": 16,
+      "marking": 16,
+      "tackle": 16,
+      "positioning": 16,
+      "anticipation": 16
     },
+    "statSource": "fm26",
     "overall": 84,
     "condition": 100
   },
@@ -95,23 +104,26 @@
     "roles": [
       "CB"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 42,
-        "passing": 72,
-        "dribbling": 65,
-        "tackle": 76
-      },
-      "mental": {
-        "decisions": 74,
-        "composure": 73,
-        "vision": 69
-      },
-      "physical": {
-        "pace": 68,
-        "stamina": 78
-      }
+    "heightCm": 189,
+    "stats": {
+      "flair": 7,
+      "finishing": 6,
+      "dribbling": 8,
+      "longshots": 6,
+      "crossing": 5,
+      "passing": 12,
+      "heading": 14,
+      "strength": 14,
+      "acceleration": 10,
+      "pace": 11,
+      "jumping": 14,
+      "balance": 12,
+      "marking": 13,
+      "tackle": 13,
+      "positioning": 13,
+      "anticipation": 12
     },
+    "statSource": "estimate",
     "overall": 72,
     "condition": 100
   },
@@ -124,23 +136,26 @@
     "roles": [
       "LB"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 55,
-        "passing": 74,
-        "dribbling": 70,
-        "tackle": 78
-      },
-      "mental": {
-        "decisions": 73,
-        "composure": 72,
-        "vision": 68
-      },
-      "physical": {
-        "pace": 79,
-        "stamina": 83
-      }
+    "heightCm": 177,
+    "stats": {
+      "flair": 12,
+      "finishing": 7,
+      "dribbling": 12,
+      "longshots": 8,
+      "crossing": 13,
+      "passing": 13,
+      "heading": 10,
+      "strength": 12,
+      "acceleration": 12,
+      "pace": 13,
+      "jumping": 11,
+      "balance": 12,
+      "marking": 12,
+      "tackle": 12,
+      "positioning": 12,
+      "anticipation": 12
     },
+    "statSource": "estimate",
     "overall": 75,
     "condition": 100
   },
@@ -154,23 +169,26 @@
       "DM",
       "CM"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 58,
-        "passing": 79,
-        "dribbling": 73,
-        "tackle": 62
-      },
-      "mental": {
-        "decisions": 78,
-        "composure": 76,
-        "vision": 83
-      },
-      "physical": {
-        "pace": 62,
-        "stamina": 81
-      }
+    "heightCm": 173,
+    "stats": {
+      "flair": 11,
+      "finishing": 6,
+      "dribbling": 10,
+      "longshots": 9,
+      "crossing": 8,
+      "passing": 13,
+      "heading": 8,
+      "strength": 11,
+      "acceleration": 9,
+      "pace": 9,
+      "jumping": 9,
+      "balance": 12,
+      "marking": 12,
+      "tackle": 13,
+      "positioning": 14,
+      "anticipation": 13
     },
+    "statSource": "estimate",
     "overall": 75,
     "condition": 100
   },
@@ -184,23 +202,26 @@
       "CM",
       "CAM"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 70,
-        "passing": 84,
-        "dribbling": 80,
-        "tackle": 64
-      },
-      "mental": {
-        "decisions": 81,
-        "composure": 79,
-        "vision": 86
-      },
-      "physical": {
-        "pace": 72,
-        "stamina": 85
-      }
+    "heightCm": 177,
+    "stats": {
+      "flair": 16,
+      "finishing": 9,
+      "dribbling": 14,
+      "longshots": 12,
+      "crossing": 11,
+      "passing": 16,
+      "heading": 8,
+      "strength": 8,
+      "acceleration": 13,
+      "pace": 11,
+      "jumping": 8,
+      "balance": 12,
+      "marking": 9,
+      "tackle": 8,
+      "positioning": 12,
+      "anticipation": 14
     },
+    "statSource": "fm26",
     "overall": 78,
     "condition": 100
   },
@@ -214,23 +235,26 @@
       "RW",
       "CAM"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 76,
-        "passing": 88,
-        "dribbling": 83,
-        "tackle": 65
-      },
-      "mental": {
-        "decisions": 80,
-        "composure": 83,
-        "vision": 85
-      },
-      "physical": {
-        "pace": 74,
-        "stamina": 76
-      }
+    "heightCm": 173,
+    "stats": {
+      "flair": 16,
+      "finishing": 13,
+      "dribbling": 16,
+      "longshots": 15,
+      "crossing": 13,
+      "passing": 15,
+      "heading": 8,
+      "strength": 10,
+      "acceleration": 14,
+      "pace": 13,
+      "jumping": 8,
+      "balance": 13,
+      "marking": 6,
+      "tackle": 6,
+      "positioning": 8,
+      "anticipation": 14
     },
+    "statSource": "fm26",
     "overall": 80,
     "condition": 100
   },
@@ -245,23 +269,26 @@
       "LW",
       "RW"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 72,
-        "passing": 81,
-        "dribbling": 81,
-        "tackle": 63
-      },
-      "mental": {
-        "decisions": 82,
-        "composure": 78,
-        "vision": 87
-      },
-      "physical": {
-        "pace": 75,
-        "stamina": 84
-      }
+    "heightCm": 180,
+    "stats": {
+      "flair": 14,
+      "finishing": 12,
+      "dribbling": 13,
+      "longshots": 10,
+      "crossing": 11,
+      "passing": 13,
+      "heading": 15,
+      "strength": 9,
+      "acceleration": 13,
+      "pace": 12,
+      "jumping": 12,
+      "balance": 10,
+      "marking": 10,
+      "tackle": 12,
+      "positioning": 11,
+      "anticipation": 14
     },
+    "statSource": "fm26",
     "overall": 77,
     "condition": 100
   },
@@ -275,23 +302,26 @@
       "LW",
       "ST"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 89,
-        "passing": 82,
-        "dribbling": 95,
-        "tackle": 46
-      },
-      "mental": {
-        "decisions": 85,
-        "composure": 88,
-        "vision": 87
-      },
-      "physical": {
-        "pace": 87,
-        "stamina": 78
-      }
+    "heightCm": 183,
+    "stats": {
+      "flair": 17,
+      "finishing": 16,
+      "dribbling": 11,
+      "longshots": 16,
+      "crossing": 12,
+      "passing": 12,
+      "heading": 5,
+      "strength": 10,
+      "acceleration": 15,
+      "pace": 15,
+      "jumping": 10,
+      "balance": 12,
+      "marking": 5,
+      "tackle": 6,
+      "positioning": 7,
+      "anticipation": 15
     },
+    "statSource": "fm26",
     "overall": 85,
     "condition": 100
   },
@@ -304,23 +334,26 @@
     "roles": [
       "ST"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 78,
-        "passing": 68,
-        "dribbling": 85,
-        "tackle": 41
-      },
-      "mental": {
-        "decisions": 74,
-        "composure": 75,
-        "vision": 76
-      },
-      "physical": {
-        "pace": 77,
-        "stamina": 82
-      }
+    "heightCm": 188,
+    "stats": {
+      "flair": 12,
+      "finishing": 14,
+      "dribbling": 12,
+      "longshots": 12,
+      "crossing": 9,
+      "passing": 11,
+      "heading": 15,
+      "strength": 14,
+      "acceleration": 11,
+      "pace": 13,
+      "jumping": 14,
+      "balance": 13,
+      "marking": 10,
+      "tackle": 5,
+      "positioning": 7,
+      "anticipation": 13
     },
+    "statSource": "fm26",
     "overall": 76,
     "condition": 100
   },
@@ -334,23 +367,26 @@
       "LW",
       "ST"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 80,
-        "passing": 71,
-        "dribbling": 81,
-        "tackle": 44
-      },
-      "mental": {
-        "decisions": 75,
-        "composure": 79,
-        "vision": 70
-      },
-      "physical": {
-        "pace": 88,
-        "stamina": 85
-      }
+    "heightCm": 177,
+    "stats": {
+      "flair": 13,
+      "finishing": 15,
+      "dribbling": 14,
+      "longshots": 10,
+      "crossing": 10,
+      "passing": 11,
+      "heading": 11,
+      "strength": 11,
+      "acceleration": 15,
+      "pace": 14,
+      "jumping": 11,
+      "balance": 13,
+      "marking": 6,
+      "tackle": 8,
+      "positioning": 9,
+      "anticipation": 12
     },
+    "statSource": "fm26",
     "overall": 78,
     "condition": 100
   },
@@ -363,23 +399,26 @@
     "roles": [
       "GK"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 20,
-        "passing": 72,
-        "dribbling": 53,
-        "tackle": 32
-      },
-      "mental": {
-        "decisions": 82,
-        "composure": 84,
-        "vision": 70
-      },
-      "physical": {
-        "pace": 58,
-        "stamina": 70
-      }
+    "heightCm": 188,
+    "stats": {
+      "flair": 13,
+      "finishing": 2,
+      "dribbling": 3,
+      "longshots": 2,
+      "crossing": 2,
+      "passing": 14,
+      "heading": 5,
+      "strength": 12,
+      "acceleration": 12,
+      "pace": 12,
+      "jumping": 13,
+      "balance": 12,
+      "marking": 3,
+      "tackle": 1,
+      "positioning": 12,
+      "anticipation": 16
     },
+    "statSource": "fm26",
     "overall": 82,
     "condition": 100
   },
@@ -392,23 +431,26 @@
     "roles": [
       "RB"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 55,
-        "passing": 76,
-        "dribbling": 73,
-        "tackle": 80
-      },
-      "mental": {
-        "decisions": 76,
-        "composure": 75,
-        "vision": 71
-      },
-      "physical": {
-        "pace": 82,
-        "stamina": 84
-      }
+    "heightCm": 183,
+    "stats": {
+      "flair": 14,
+      "finishing": 8,
+      "dribbling": 13,
+      "longshots": 8,
+      "crossing": 13,
+      "passing": 13,
+      "heading": 12,
+      "strength": 14,
+      "acceleration": 14,
+      "pace": 15,
+      "jumping": 13,
+      "balance": 13,
+      "marking": 12,
+      "tackle": 13,
+      "positioning": 14,
+      "anticipation": 13
     },
+    "statSource": "fm26",
     "overall": 79,
     "condition": 100
   },
@@ -421,23 +463,26 @@
     "roles": [
       "CB"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 40,
-        "passing": 74,
-        "dribbling": 67,
-        "tackle": 81
-      },
-      "mental": {
-        "decisions": 86,
-        "composure": 84,
-        "vision": 81
-      },
-      "physical": {
-        "pace": 62,
-        "stamina": 72
-      }
+    "heightCm": 187,
+    "stats": {
+      "flair": 10,
+      "finishing": 7,
+      "dribbling": 9,
+      "longshots": 6,
+      "crossing": 5,
+      "passing": 13,
+      "heading": 15,
+      "strength": 16,
+      "acceleration": 9,
+      "pace": 10,
+      "jumping": 14,
+      "balance": 12,
+      "marking": 15,
+      "tackle": 15,
+      "positioning": 16,
+      "anticipation": 16
     },
+    "statSource": "estimate",
     "overall": 80,
     "condition": 100
   },
@@ -450,23 +495,26 @@
     "roles": [
       "CB"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 38,
-        "passing": 75,
-        "dribbling": 69,
-        "tackle": 79
-      },
-      "mental": {
-        "decisions": 76,
-        "composure": 78,
-        "vision": 71
-      },
-      "physical": {
-        "pace": 72,
-        "stamina": 80
-      }
+    "heightCm": 187,
+    "stats": {
+      "flair": 11,
+      "finishing": 6,
+      "dribbling": 10,
+      "longshots": 5,
+      "crossing": 5,
+      "passing": 13,
+      "heading": 14,
+      "strength": 13,
+      "acceleration": 10,
+      "pace": 11,
+      "jumping": 13,
+      "balance": 12,
+      "marking": 14,
+      "tackle": 14,
+      "positioning": 14,
+      "anticipation": 14
     },
+    "statSource": "estimate",
     "overall": 76,
     "condition": 100
   },
@@ -480,23 +528,26 @@
       "LB",
       "RB"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 68,
-        "passing": 85,
-        "dribbling": 75,
-        "tackle": 83
-      },
-      "mental": {
-        "decisions": 80,
-        "composure": 79,
-        "vision": 75
-      },
-      "physical": {
-        "pace": 83,
-        "stamina": 84
-      }
+    "heightCm": 182,
+    "stats": {
+      "flair": 17,
+      "finishing": 12,
+      "dribbling": 16,
+      "longshots": 13,
+      "crossing": 16,
+      "passing": 16,
+      "heading": 10,
+      "strength": 12,
+      "acceleration": 14,
+      "pace": 13,
+      "jumping": 11,
+      "balance": 14,
+      "marking": 9,
+      "tackle": 13,
+      "positioning": 11,
+      "anticipation": 15
     },
+    "statSource": "fm26",
     "overall": 84,
     "condition": 100
   },
@@ -509,23 +560,26 @@
     "roles": [
       "DM"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 58,
-        "passing": 80,
-        "dribbling": 72,
-        "tackle": 63
-      },
-      "mental": {
-        "decisions": 79,
-        "composure": 78,
-        "vision": 84
-      },
-      "physical": {
-        "pace": 58,
-        "stamina": 78
-      }
+    "heightCm": 187,
+    "stats": {
+      "flair": 12,
+      "finishing": 8,
+      "dribbling": 11,
+      "longshots": 11,
+      "crossing": 9,
+      "passing": 15,
+      "heading": 12,
+      "strength": 14,
+      "acceleration": 8,
+      "pace": 8,
+      "jumping": 11,
+      "balance": 12,
+      "marking": 12,
+      "tackle": 13,
+      "positioning": 14,
+      "anticipation": 14
     },
+    "statSource": "estimate",
     "overall": 77,
     "condition": 100
   },
@@ -539,23 +593,26 @@
       "DM",
       "CM"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 74,
-        "passing": 87,
-        "dribbling": 77,
-        "tackle": 66
-      },
-      "mental": {
-        "decisions": 82,
-        "composure": 81,
-        "vision": 87
-      },
-      "physical": {
-        "pace": 65,
-        "stamina": 82
-      }
+    "heightCm": 180,
+    "stats": {
+      "flair": 17,
+      "finishing": 11,
+      "dribbling": 12,
+      "longshots": 15,
+      "crossing": 13,
+      "passing": 17,
+      "heading": 9,
+      "strength": 12,
+      "acceleration": 12,
+      "pace": 11,
+      "jumping": 10,
+      "balance": 14,
+      "marking": 10,
+      "tackle": 13,
+      "positioning": 14,
+      "anticipation": 14
     },
+    "statSource": "fm26",
     "overall": 81,
     "condition": 100
   },
@@ -569,23 +626,26 @@
       "RW",
       "CM"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 68,
-        "passing": 82,
-        "dribbling": 80,
-        "tackle": 64
-      },
-      "mental": {
-        "decisions": 79,
-        "composure": 77,
-        "vision": 84
-      },
-      "physical": {
-        "pace": 74,
-        "stamina": 85
-      }
+    "heightCm": 179,
+    "stats": {
+      "flair": 14,
+      "finishing": 10,
+      "dribbling": 13,
+      "longshots": 11,
+      "crossing": 12,
+      "passing": 14,
+      "heading": 8,
+      "strength": 11,
+      "acceleration": 12,
+      "pace": 12,
+      "jumping": 9,
+      "balance": 13,
+      "marking": 10,
+      "tackle": 10,
+      "positioning": 11,
+      "anticipation": 13
     },
+    "statSource": "estimate",
     "overall": 78,
     "condition": 100
   },
@@ -599,23 +659,26 @@
       "CAM",
       "CM"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 70,
-        "passing": 86,
-        "dribbling": 82,
-        "tackle": 65
-      },
-      "mental": {
-        "decisions": 81,
-        "composure": 80,
-        "vision": 86
-      },
-      "physical": {
-        "pace": 76,
-        "stamina": 83
-      }
+    "heightCm": 172,
+    "stats": {
+      "flair": 16,
+      "finishing": 12,
+      "dribbling": 17,
+      "longshots": 14,
+      "crossing": 13,
+      "passing": 17,
+      "heading": 7,
+      "strength": 11,
+      "acceleration": 13,
+      "pace": 13,
+      "jumping": 8,
+      "balance": 16,
+      "marking": 15,
+      "tackle": 14,
+      "positioning": 15,
+      "anticipation": 16
     },
+    "statSource": "fm26",
     "overall": 80,
     "condition": 100
   },
@@ -629,23 +692,26 @@
       "LW",
       "ST"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 76,
-        "passing": 77,
-        "dribbling": 87,
-        "tackle": 41
-      },
-      "mental": {
-        "decisions": 76,
-        "composure": 76,
-        "vision": 78
-      },
-      "physical": {
-        "pace": 80,
-        "stamina": 80
-      }
+    "heightCm": 173,
+    "stats": {
+      "flair": 14,
+      "finishing": 13,
+      "dribbling": 14,
+      "longshots": 12,
+      "crossing": 12,
+      "passing": 13,
+      "heading": 9,
+      "strength": 10,
+      "acceleration": 13,
+      "pace": 13,
+      "jumping": 10,
+      "balance": 13,
+      "marking": 7,
+      "tackle": 7,
+      "positioning": 9,
+      "anticipation": 12
     },
+    "statSource": "estimate",
     "overall": 77,
     "condition": 100
   },
@@ -659,23 +725,26 @@
       "ST",
       "LW"
     ],
-    "attributes": {
-      "technical": {
-        "shooting": 90,
-        "passing": 78,
-        "dribbling": 94,
-        "tackle": 46
-      },
-      "mental": {
-        "decisions": 83,
-        "composure": 89,
-        "vision": 85
-      },
-      "physical": {
-        "pace": 80,
-        "stamina": 74
-      }
+    "heightCm": 187,
+    "stats": {
+      "flair": 17,
+      "finishing": 18,
+      "dribbling": 13,
+      "longshots": 15,
+      "crossing": 11,
+      "passing": 13,
+      "heading": 19,
+      "strength": 15,
+      "acceleration": 11,
+      "pace": 10,
+      "jumping": 15,
+      "balance": 13,
+      "marking": 3,
+      "tackle": 5,
+      "positioning": 4,
+      "anticipation": 18
     },
+    "statSource": "fm26",
     "overall": 85,
     "condition": 100
   }

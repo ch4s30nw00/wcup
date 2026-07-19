@@ -155,7 +155,8 @@ function App() {
   function handleConfirm() {
     if (!chain.length || phase === 'playing') return
     const actions = chain.map((leg) => ({ ...leg, actor: byId[leg.actorId] }))
-    const res = resolveSequence(actions, { opponents, seed: SEED })
+    // players: 수비 재배치의 마킹 대상 (계획 시작 좌표 기준 — 런 반영은 액션 진행 중 근사)
+    const res = resolveSequence(actions, { opponents, players: basePlayers, seed: SEED })
     setResult(res)
     setEggClosed(false)
     setPhase('playing')
@@ -208,29 +209,37 @@ function App() {
 
       <main>
         <div className="board-col">
-          <TacticsBoard
-            players={basePlayers}
-            opponents={opponents}
-            runLegs={runLegs}
-            chain={chain}
-            planPos={planPos}
-            carrierId={carrierId}
-            shotTaken={shotTaken}
-            ballPos={phase === 'plan' ? ballPlanPos : frame?.ball}
-            displayHome={phase === 'plan' ? null : frame?.home}
-            displayOpp={phase === 'plan' ? null : frame?.opp}
-            interactive={phase === 'plan'}
-            defRadius={DEF_RADIUS}
-            selectedId={selectedId}
-            onPlayerClick={(id) => setSelectedId((prev) => (prev === id ? null : id))}
-            onRunSet={setRunTarget}
-            onRunRemove={removeRun}
-            onRunHandle={setRunHandle}
-            onDribbleSet={setDribble}
-            onDribbleDrop={dropDribble}
-            onChainHandle={setChainHandle}
-            onPassCommit={addPass}
-          />
+          {/* 셰이크(슛·골·차단 순간)는 이 래퍼의 transform으로 — 보드 내부 좌표는 불변 */}
+          <div
+            className={`board-wrap${frame?.fx?.slowmo ? ' slowmo' : ''}`}
+            style={frame?.fx ? { transform: `translate(${frame.fx.dx}px, ${frame.fx.dy}px)` } : undefined}
+          >
+            <TacticsBoard
+              players={basePlayers}
+              opponents={opponents}
+              runLegs={runLegs}
+              chain={chain}
+              planPos={planPos}
+              carrierId={carrierId}
+              shotTaken={shotTaken}
+              ballPos={phase === 'plan' ? ballPlanPos : frame?.ball}
+              ballTrail={phase === 'plan' ? null : frame?.ballTrail}
+              displayHome={phase === 'plan' ? null : frame?.home}
+              displayOpp={phase === 'plan' ? null : frame?.opp}
+              interactive={phase === 'plan'}
+              defRadius={DEF_RADIUS}
+              selectedId={selectedId}
+              onPlayerClick={(id) => setSelectedId((prev) => (prev === id ? null : id))}
+              onRunSet={setRunTarget}
+              onRunRemove={removeRun}
+              onRunHandle={setRunHandle}
+              onDribbleSet={setDribble}
+              onDribbleDrop={dropDribble}
+              onChainHandle={setChainHandle}
+              onPassCommit={addPass}
+            />
+            {frame?.fx?.flash > 0 && <div className="board-flash" style={{ opacity: frame.fx.flash * 0.55 }} />}
+          </div>
           <div className="commentary-row">
             <div className={`commentary ${phase !== 'plan' && frame?.caption ? 'live' : ''}`}>
               <span key={frame?.caption ?? 'idle'}>
@@ -307,15 +316,25 @@ function App() {
             {selected ? (
               <div className="player-card">
                 <div className="player-name">
-                  #{selected.number} {selected.name} <span className="pos">{selected.position} · {selected.roles.join('/')}</span>
+                  #{selected.number} {selected.name}{' '}
+                  <span className="pos">
+                    {selected.position} · {selected.roles.join('/')} · {selected.heightCm}cm
+                    {selected.statSource === 'estimate' ? ' · 추정치' : ''}
+                  </span>
                 </div>
                 <dl className="stats">
-                  <div><dt>슈팅</dt><dd>{selected.attributes.technical.shooting}</dd></div>
-                  <div><dt>패스</dt><dd>{selected.attributes.technical.passing}</dd></div>
-                  <div><dt>판단</dt><dd>{selected.attributes.mental.decisions}</dd></div>
-                  <div><dt>침착</dt><dd>{selected.attributes.mental.composure}</dd></div>
-                  <div><dt>스피드</dt><dd>{selected.attributes.physical.pace}</dd></div>
-                  <div><dt>체력</dt><dd>{selected.attributes.physical.stamina}</dd></div>
+                  <div><dt>개인기</dt><dd>{selected.stats.flair}</dd></div>
+                  <div><dt>드리블</dt><dd>{selected.stats.dribbling}</dd></div>
+                  <div><dt>패스</dt><dd>{selected.stats.passing}</dd></div>
+                  <div><dt>골결정</dt><dd>{selected.stats.finishing}</dd></div>
+                  <div><dt>중거리</dt><dd>{selected.stats.longshots}</dd></div>
+                  <div><dt>헤더</dt><dd>{selected.stats.heading}</dd></div>
+                  <div><dt>주력</dt><dd>{selected.stats.pace}</dd></div>
+                  <div><dt>몸싸움</dt><dd>{selected.stats.strength}</dd></div>
+                  <div><dt>태클</dt><dd>{selected.stats.tackle}</dd></div>
+                  <div><dt>마크</dt><dd>{selected.stats.marking}</dd></div>
+                  <div><dt>위치선정</dt><dd>{selected.stats.positioning}</dd></div>
+                  <div><dt>예측력</dt><dd>{selected.stats.anticipation}</dd></div>
                 </dl>
               </div>
             ) : (
