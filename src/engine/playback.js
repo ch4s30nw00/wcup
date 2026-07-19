@@ -11,15 +11,16 @@
 import { mulberry32 } from './resolve.js'
 import { commentaryFor } from './commentary.js'
 import { midpoint, samplePath, pathLength, pointAtLength } from './geometry.js'
+import { K } from './constants.js'
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
-// 이동/공 속도 (피치 단위 ≈ m/s)
-const SPEED = { run: 9, dribble: 6.5, pass: 22, shot: 30 }
+// 이동/공 속도 (피치 단위 ≈ m/s) — 판정의 수비 이동 예산(resolve.js)과 공유
+const SPEED = K.SPEED
 const durFor = (len, v) => clamp((len / v) * 1000, 400, 6000)
 const ease = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
 
-const ROW_K_HOME = { GK: 0.06, DF: 0.3, MF: 0.5, FW: 0.68 } // 공 전진량을 얼마나 따라 올라가나
-const ROW_K_OPP = { GK: 0.05, DF: 0.25, MF: 0.4, FW: 0.5 } // 공 전진 시 얼마나 내려앉나
+const ROW_K_HOME = { GK: 0.08, DF: 0.42, MF: 0.65, FW: 0.85 } // 공 전진량을 얼마나 따라 올라가나
+const ROW_K_OPP = { GK: 0.05, DF: 0.3, MF: 0.48, FW: 0.58 } // 공 전진 시 얼마나 내려앉나
 
 export function playSequence({ actions, result, runLegs, players, opponents, byId, ballOwnerId, seed, onFrame, onDone }) {
   const basePos = (id) => ({ x: byId[id].x, y: byId[id].y })
@@ -128,7 +129,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
   const noiseOf = {}
   const ringOf = {} // 골 세리머니 때 득점자 주변에 모이는 자리
   for (const p of [...players, ...opponents]) {
-    noiseOf[p.id] = { a: 0.7 + jrng() * 0.8, w1: 0.3 + jrng() * 0.5, w2: 0.3 + jrng() * 0.5, p1: jrng() * 6.283, p2: jrng() * 6.283 }
+    noiseOf[p.id] = { a: 1.1 + jrng() * 1.1, w1: 0.5 + jrng() * 0.7, w2: 0.5 + jrng() * 0.7, p1: jrng() * 6.283, p2: jrng() * 6.283 }
     const ang = jrng() * 6.283
     ringOf[p.id] = { x: Math.cos(ang) * (2 + jrng() * 3.5), y: Math.sin(ang) * (2 + jrng() * 3.5) }
   }
@@ -189,13 +190,49 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     captions.push({ t: chainEnd - 150, text: commentaryFor('advance', {}, rngC) })
   }
 
+  // 템포·지원 런 상태 (프레임 간 유지)
+  let prevBall = null // 공 속도 계산용 직전 프레임 공 위치
+  let tempo = 0 // 공 속도 EMA 0~1 — 역습·긴 패스 국면일수록 1에 가깝다
+  let supPrev = new Set() // 직전 프레임 지원 런 담당 (히스테리시스용)
+
+  // 바라보는 방향 (라디안) — 움직이면 진행 방향, 서 있으면 공 방향. 급회전 방지용 각도 lerp.
+  const facePrev = {}
+  const faceAng = {}
+  const updateFace = (id, x, y, ball, dt) => {
+    const prev = facePrev[id]
+    facePrev[id] = { x, y }
+    let target
+    if (prev && Math.hypot(x - prev.x, y - prev.y) > 0.03) {
+      target = Math.atan2(y - prev.y, x - prev.x)
+    } else if (ball) {
+      target = Math.atan2(ball.y - y, ball.x - x)
+    } else {
+      return faceAng[id] ?? 0
+    }
+    let cur = faceAng[id] ?? target
+    let d = target - cur
+    while (d > Math.PI) d -= 2 * Math.PI
+    while (d < -Math.PI) d += 2 * Math.PI
+    cur += d * Math.min(1, dt * 9)
+    faceAng[id] = cur
+    return cur
+  }
+
   let rafId = null
   const t0 = performance.now()
   let lastNow = t0
+  let warped = 0 // 연출 시간 (ms) — 슬로모션 구간에선 실제 시간보다 느리게 흐른다
+  const trail = [] // 볼 트레일 (빠르게 나는 동안의 최근 궤적)
+  const ball0x = basePos(ballOwnerId).x // 이번 공격 시작 시점의 공 x — 아군 전진량 기준점
   const tick = (now) => {
-    const el = now - t0
-    const dt = Math.min(Math.max((now - lastNow) / 1000, 0), 0.05)
+    const realDt = Math.min(Math.max((now - lastNow) / 1000, 0), 0.05)
     lastNow = now
+    // 슬로모션: 슛이 발을 떠나기 직전부터 골라인 도달까지 시간 자체를 0.35배로.
+    // 모든 타임라인이 warped 기준이라 판정·자막·이동이 함께 늦춰진다 (판정 결과는 불변).
+    const slowmo = !!(shotLeg && warped >= shotLeg.start - 120 && warped <= shotLeg.start + shotLeg.dur)
+    warped += realDt * 1000 * (slowmo ? 0.35 : 1)
+    const el = warped
+    const dt = realDt * (slowmo ? 0.35 : 1)
     const sec = el / 1000
 
     // 1) 스크립트 구간: 지시 경로가 시뮬 상태를 덮어쓴다 (끝나면 시뮬이 이어받음)
@@ -265,7 +302,22 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
             : 'reset'
           : 'live'
     const freeze = shotLeg && el >= shotLeg.start && el < shotLeg.start + 280 // 슛 순간 전원 멈칫
-    const adv = ballSteer.x - 60 // 하프라인 기준 공의 전진량
+    const adv = ballSteer.x - 60 // 하프라인 기준 공의 전진량 (상대 라인다운용)
+    // 아군 라인업은 "이번 공격 시작점 대비" 전진량 — 자기 진영에서 시작해도 후퇴하지 않고
+    // 공격 방향(오른쪽)으로만 밀고 올라간다
+    const advHome = Math.max(0, ballSteer.x - ball0x)
+
+    // 템포: 공 속도 EMA — 공이 빠르게 움직이는 국면(역습·긴 패스)엔 오프볼 전원이 급해진다.
+    // 실제 축구에서 볼 템포와 오프볼 스프린트 강도가 함께 오르는 것의 근사.
+    const ballSpd = prevBall && dt > 0.001 ? Math.hypot(ballSteer.x - prevBall.x, ballSteer.y - prevBall.y) / dt : 0
+    prevBall = ballSteer
+    tempo += (clamp(ballSpd / 14, 0, 1) - tempo) * Math.min(1, dt * 3)
+    const urgency = 1 + 0.9 * tempo // 오프볼 속도 배율 1.0 ~ 1.9
+
+    // 판정 엔진(resolve.js)이 액션마다 계산해둔 수비 좌표 — 진행 중인 레그의 목표 좌표.
+    // 100% 강제가 아니라 조향 목표로만 쓴다(압박·노이즈가 위에 얹힘) — 보는 경험 우선.
+    let defWaypoint = null
+    for (const leg of legs) if (el >= leg.start) defWaypoint = leg.step.defPos ?? defWaypoint
 
     // 압박: 공과 가까운 자유 상태 상대 2명이 공을 향해 다가간다
     const pressers = new Set()
@@ -276,6 +328,23 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         .sort((a, b) => a.d - b.d)
       for (const c of cands.slice(0, 2)) if (c.d < 30) pressers.add(c.id)
     }
+
+    // 지원 런: 공과 가까운 자유 아군 2명이 공보다 앞 공간으로 침투해 패스 옵션을 만든다.
+    // 판정에 안 쓰이는 순수 연출이라 자유롭게 뛴다. 히스테리시스(-4m 보정)로 역할 깜빡임 방지.
+    const supporters = new Set()
+    if (mode === 'live') {
+      players
+        .filter((p) => !scripted.has(p.id))
+        .map((p) => {
+          const d = Math.hypot(sim[p.id].x - ballSteer.x, sim[p.id].y - ballSteer.y)
+          return { id: p.id, d: supPrev.has(p.id) ? d - 4 : d }
+        })
+        .filter((c) => c.d > 3 && c.d < 45) // 공 소유자(발밑)와 너무 먼 선수는 제외
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 3)
+        .forEach((c) => supporters.add(c.id))
+    }
+    supPrev = supporters
 
     // 조향 적분: 목표를 향해 가속하되 가속 한계·도착 감속으로 무게감을 준다
     const integrate = (id, rawTarget, maxSpeed) => {
@@ -320,10 +389,10 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         // 약속 장소(런 출발점·패스 수신점)에 미리 가서 못 박혀 있지 않는다 —
         // 이동 소요시간이 임박할 때까지는 아래 일반 무빙을 계속하다가 그때 출발
         const s = sim[p.id]
-        const need = (Math.hypot(pending.point.x - s.x, pending.point.y - s.y) / 4.5) * 1000
+        const need = (Math.hypot(pending.point.x - s.x, pending.point.y - s.y) / 5.5) * 1000
         if (pending.t - el <= need + 500) {
           target = pending.point
-          spd = 5.5
+          spd = 6.5
         }
       }
       if (!target) {
@@ -334,10 +403,16 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         } else if (mode === 'turnover' || mode === 'reset') {
           target = { x: p.x, y: p.y } // 대형 복귀
           spd = 3.2
+        } else if (supporters.has(p.id)) {
+          // 지원 런: 공의 앞(골 쪽), 자기 쪽 사이드로 벌려 침투 — 패스 받을 공간 만들기
+          const side = sim[p.id].y >= ballSteer.y ? 1 : -1
+          target = { x: Math.min(ballSteer.x + 10, 113), y: clamp(ballSteer.y + side * 10, 4, 76) }
+          spd = 7.5 * urgency
         } else {
           const anchor = lastPast(p.id) ?? { x: p.x, y: p.y }
-          const k = ROW_K_HOME[p.position] ?? 0.4
-          target = { x: anchor.x + k * adv, y: anchor.y + 0.15 * (ballSteer.y - anchor.y) }
+          const k = ROW_K_HOME[p.position] ?? 0.5
+          target = { x: anchor.x + k * advHome, y: anchor.y + 0.25 * (ballSteer.y - anchor.y) }
+          spd = 5.5 * urgency // 템포가 오르면 라인 전체가 급해진다
         }
       }
       integrate(p.id, target, spd)
@@ -357,15 +432,48 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       } else if (mode === 'reset') {
         target = { x: o.x, y: o.y }
         spd = 2.5
+      } else if (shotLeg && o.position === 'GK' && el >= shotLeg.start && el <= shotLeg.start + shotLeg.dur + 450) {
+        // GK 다이브: 슛 궤적이 골라인에 닿을 지점으로 몸을 던진다 (순수 연출 — 판정 무관)
+        target = { x: 117.6, y: clamp(shotLeg.to.y, 35, 45) }
+        spd = 11
       } else if (pressers.has(o.id)) {
         const gx = 120 - ballSteer.x
         const gy = 40 - ballSteer.y
         const gl = Math.hypot(gx, gy) || 1
         target = { x: ballSteer.x + (gx / gl) * 2.2, y: ballSteer.y + (gy / gl) * 2.2 } // 공-골문 사이 압박 지점
-        spd = 7
+        spd = 7 * (1 + 0.3 * tempo)
+      } else if (defWaypoint?.[o.id]) {
+        const wp = defWaypoint[o.id]
+        const dwp = Math.hypot(sim[o.id].x - wp.x, sim[o.id].y - wp.y)
+        if (dwp > 1.6) {
+          // 판정과 같은 수비 이동: 엔진이 계산한 좌표로 급히 복귀 (템포 반영)
+          target = wp
+          spd = 6.5 * (1 + 0.4 * tempo)
+        } else {
+          // 도착 후 셰도잉: 근처 아군 공격수를 골사이드로 따라다니는 잔움직임.
+          // 판정 좌표에서 ≤2.5m — 화면과 판정이 어긋나 보이지 않는 안전 반경.
+          let near = null
+          for (const p of players) {
+            const hp = sim[p.id]
+            const d = Math.hypot(hp.x - wp.x, hp.y - wp.y)
+            if (d < 9 && (!near || d < near.d)) near = { d, p: hp }
+          }
+          if (near) {
+            let vx = near.p.x + 1.2 - wp.x // 골사이드: 공격수보다 자기 골문(x=120) 쪽
+            let vy = near.p.y - wp.y
+            const vl = Math.hypot(vx, vy)
+            if (vl > 3) {
+              vx = (vx / vl) * 3
+              vy = (vy / vl) * 3
+            }
+            target = { x: wp.x + vx, y: wp.y + vy }
+          } else target = wp
+          spd = 5.5 * urgency
+        }
       } else {
-        const k = ROW_K_OPP[o.position] ?? 0.35
-        target = { x: o.x + k * Math.max(0, adv), y: o.y + 0.25 * (ballSteer.y - 40) }
+        const k = ROW_K_OPP[o.position] ?? 0.4
+        target = { x: o.x + k * Math.max(0, adv), y: o.y + 0.3 * (ballSteer.y - 40) }
+        spd = 5 * urgency
         if (o.position === 'DF') {
           // 소프트 마킹: 근처 아군 선수 쪽으로 살짝 끌린다
           let best = null
@@ -380,15 +488,39 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       integrate(o.id, target, spd)
     }
 
-    // 5) 렌더 좌표 + 공 + 자막
+    // 5) 렌더 좌표(+바라보는 방향) + 공 + 자막
     const home = {}
     const opp = {}
     for (const p of players) home[p.id] = { x: sim[p.id].x, y: sim[p.id].y }
     for (const o of opponents) opp[o.id] = { x: sim[o.id].x, y: sim[o.id].y }
     const ball = ballAt((id) => home[id] ?? opp[id] ?? basePos(id))
+    for (const p of players) home[p.id].a = updateFace(p.id, home[p.id].x, home[p.id].y, ball, dt)
+    for (const o of opponents) opp[o.id].a = updateFace(o.id, opp[o.id].x, opp[o.id].y, ball, dt)
     let caption = null
     for (const c of captions) if (el >= c.t) caption = c.text
-    onFrame({ home, opp, ball, caption })
+
+    // 볼 트레일: 공이 빠르게 나는 동안(패스·슛)만 최근 궤적을 혜성 꼬리로 남긴다
+    const lastT = trail[trail.length - 1]
+    const ballV = lastT && dt > 0.001 ? Math.hypot(ball.x - lastT.x, ball.y - lastT.y) / dt : 0
+    if (!lastT || ballV > 13) trail.push({ x: ball.x, y: ball.y, t: el })
+    else if (ballV < 8) trail.length = 0 // 공이 느려지면 꼬리 소멸
+    while (trail.length && el - trail[0].t > 380) trail.shift()
+
+    // 화면 효과: 셰이크(슛 킥·골·차단 순간, 감쇠 진동) + 골 플래시 + 슬로모션 플래그
+    let shake = 0
+    const shakeFrom = (t, amp, durMs) => {
+      if (t != null && el >= t && el < t + durMs) shake = Math.max(shake, amp * (1 - (el - t) / durMs))
+    }
+    shakeFrom(shotLeg?.start, 0.35, 260)
+    shakeFrom(goalTime, 1, 700)
+    shakeFrom(turnoverTime, 0.55, 420)
+    const fx = {
+      dx: shake * 5 * Math.sin(el * 0.09),
+      dy: shake * 4 * Math.cos(el * 0.117),
+      flash: goalTime != null && el >= goalTime && el < goalTime + 260 ? 1 - (el - goalTime) / 260 : 0,
+      slowmo,
+    }
+    onFrame({ home, opp, ball, caption, fx, ballTrail: trail.length > 1 ? [...trail] : null })
     if (el < total) rafId = requestAnimationFrame(tick)
     else onDone()
   }

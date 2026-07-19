@@ -33,7 +33,8 @@ export default function TacticsBoard({
   carrierId, // 체인 끝에서 공을 갖게 될 선수 — 이 선수를 드래그하면 드리블
   shotTaken,
   ballPos,
-  displayHome, // 재생 중 애니메이션 위치 (id → {x,y}), 평시 null
+  ballTrail, // 재생 중 공 트레일 [{x,y}] — 빠른 패스·슛의 혜성 꼬리 (평시 null)
+  displayHome, // 재생 중 애니메이션 위치 (id → {x,y,a}), 평시 null
   displayOpp,
   interactive,
   defRadius,
@@ -55,6 +56,15 @@ export default function TacticsBoard({
   const baseOf = Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }]))
   const homePos = (p) => (displayHome ? (displayHome[p.id] ?? baseOf[p.id]) : planPos[p.id])
   const oppPos = (o) => (displayOpp ? (displayOpp[o.id] ?? { x: o.x, y: o.y }) : { x: o.x, y: o.y })
+
+  // 바라보는 방향 (도 단위) — 재생 중엔 playback이 넣어준 각도(pos.a), 계획 중엔
+  // 공 방향을 본다. 공 소유자는 공이 발밑이라 방향이 무의미 → 상대 골문을 본다.
+  const facingDeg = (pos, id) => {
+    if (pos.a != null) return (pos.a * 180) / Math.PI
+    if (!ballPos) return 0
+    const tgt = id === carrierId ? { x: 120, y: 40 } : ballPos
+    return (Math.atan2(tgt.y - pos.y, tgt.x - pos.x) * 180) / Math.PI
+  }
 
   function toPitch(e) {
     const rect = svgRef.current.getBoundingClientRect()
@@ -271,6 +281,12 @@ export default function TacticsBoard({
         const pos = oppPos(o)
         return (
           <g key={o.id} transform={`translate(${pos.x}, ${pos.y})`} opacity="0.9">
+            <path
+              d={`M ${DOT_R + 1.35} 0 L ${DOT_R + 0.25} -0.68 L ${DOT_R + 0.25} 0.68 Z`}
+              fill="#cdd6e8"
+              opacity="0.85"
+              transform={`rotate(${facingDeg(pos, o.id)})`}
+            />
             <circle r={DOT_R} fill={o.position === 'GK' ? '#3f6f2f' : '#1e3a6e'} stroke="#cdd6e8" strokeWidth="0.28" />
             <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill="#fff">
               {o.number}
@@ -319,6 +335,12 @@ export default function TacticsBoard({
             {interactive && p.id === carrierId && (
               <circle r={DOT_R + 0.9} fill="none" stroke="#fff" strokeWidth="0.25" strokeDasharray="0.9 0.7" />
             )}
+            <path
+              d={`M ${DOT_R + 1.35} 0 L ${DOT_R + 0.25} -0.68 L ${DOT_R + 0.25} 0.68 Z`}
+              fill="#fff"
+              opacity="0.85"
+              transform={`rotate(${facingDeg(pos, p.id)})`}
+            />
             <circle r={DOT_R} fill={isGK ? '#e8a020' : '#c8102e'} stroke="#fff" strokeWidth="0.3" />
             <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill="#fff">
               {p.number}
@@ -368,6 +390,22 @@ export default function TacticsBoard({
             opacity="0.8"
           />
           <circle cx={ballDrag.x} cy={ballDrag.y} r="0.95" fill="#fff" stroke="#10141c" strokeWidth="0.25" opacity="0.7" />
+        </g>
+      )}
+
+      {/* 볼 트레일 — 빠른 패스·슛의 혜성 꼬리 (재생 중 연출) */}
+      {ballTrail?.length > 1 && (
+        <g pointerEvents="none">
+          {ballTrail.map((p, i) => (
+            <circle
+              key={i}
+              cx={p.x}
+              cy={p.y}
+              r={0.25 + (0.55 * (i + 1)) / ballTrail.length}
+              fill="#fff"
+              opacity={(0.4 * (i + 1)) / ballTrail.length}
+            />
+          ))}
         </g>
       )}
 

@@ -93,6 +93,30 @@ header h1 .sub {
   -webkit-touch-callout: none;
 }
 
+/* 재생 연출: 셰이크 래퍼 + 골 플래시 + 슬로모션 비네트 */
+.board-wrap {
+  position: relative;
+  will-change: transform;
+}
+.board-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  border-radius: 10px;
+  pointer-events: none;
+}
+.board-wrap.slowmo .tactics-board {
+  filter: saturate(1.25) contrast(1.06);
+}
+.board-wrap.slowmo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  pointer-events: none;
+  box-shadow: inset 0 0 46px rgba(0, 0, 0, 0.55);
+}
+
 .commentary {
   background: #10141c;
   border: 1px solid #2c3648;

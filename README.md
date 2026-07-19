@@ -92,31 +92,33 @@ src/
 
 ### 선수 데이터 (`src/data/players.json`)
 
-현재 더미는 0~100 스케일 · 6스탯입니다. 항목 예시:
+**v2.1부터 데이터담당 CSV(FM 1~20 스케일, 16스탯 + 키)가 정식 반영됐습니다.** 항목 예시:
 
 ```json
 {
   "id": "kor_07", "name": "손흥민", "team": "KOR", "number": 7,
-  "position": "FW", "roles": ["LW"],
-  "attributes": {
-    "technical": { "shooting": 88, "passing": 84 },
-    "mental":    { "decisions": 85, "composure": 86 },
-    "physical":  { "pace": 90, "stamina": 85 }
+  "position": "FW", "roles": ["LW", "ST"], "heightCm": 183,
+  "stats": {
+    "flair": 17, "finishing": 16, "dribbling": 11, "longshots": 16,
+    "crossing": 12, "passing": 12, "heading": 5, "strength": 10,
+    "acceleration": 15, "pace": 15, "jumping": 10, "balance": 12,
+    "marking": 5, "tackle": 6, "positioning": 7, "anticipation": 15
   },
-  "overall": 87, "condition": 100
+  "statSource": "fm26", "overall": 85, "condition": 100
 }
 ```
 
+- 스탯 키 ↔ CSV 헤더: 개인기=flair · 골결=finishing · 드리블=dribbling · 중거리=longshots ·
+  크로스=crossing · 패스=passing · 헤더=heading · 몸싸움=strength · 가속도=acceleration ·
+  주력=pace · 점프거리=jumping · 균형감각=balance · 일대일마크=marking · 태클=tackle ·
+  수비위치선정=positioning · 예측력=anticipation. `norm()`은 부록 A대로 `v/20` 어댑터로 교체됨.
+- `statSource: "fm26"` = 데이터담당 CSV(worldcup_2026_fm26) 원본값,
+  `"estimate"` = 2026 명단에 없는 2022 출전 선수(권경원·김진수·정우영·페페·안토니우 실바·
+  윌리암 카르발류·주앙 마리우·오르타)의 추정치 — 데이터담당이 확정값으로 교체해 주세요.
 - `team`은 scenarios.json의 `home`/`away`와 매칭돼 자동으로 스쿼드가 갈립니다.
 - 배열 순서 = formations.json 슬롯 순서 (GK → DF → MF → FW). 단, moment에
   `positions`가 있으면 좌표·온필드 명단 모두 positions가 우선합니다 (아래 경기 데이터
   참고) — 로스터에 벤치 선수를 넣어둘 수 있다는 뜻입니다 (현재 이재성).
-- **스케일이 FM 1~20으로 바뀌면** [resolve.js](src/engine/resolve.js)의 `norm()` 한 줄만
-  `S/20` 기준으로 바꾸면 됩니다 (어댑터 패턴, 보고서 부록 A). 계수 재튜닝 불필요.
-- v2가 요구하는 스탯 중 `vision`(mental) · `dribbling`(technical) · `tackle`(technical)은
-  **더미값으로 추가돼 있습니다** (포지션·기존 스탯에서 유도). vision·dribbling은 엔진이
-  즉시 사용 중이고, tackle은 필드만 준비된 상태(반영은 보류 — 아래 수식 섹션 참고).
-  `technique`·`finishing`/`heading`은 아직 없음 (해당 항 비활성).
 
 ### 경기 데이터 (`src/data/scenarios.json`)
 
@@ -148,6 +150,26 @@ src/
   플레이스홀더 표시).
 - 지금은 첫 번째 moment만 로드합니다. 스테이지 시스템이 붙으면 moment 배열이 그대로
   스테이지 목록이 됩니다.
+
+### v2.1 변경 요약 (데이터 반영 + 수비 재배치)
+
+v2 산식 위에 데이터담당 요청사항과 수비 이동을 얹은 업데이트입니다.
+검증은 `node scripts/verify.mjs` — 보고서 v2 앵커 15개(스탯 중립 기준 유지) + 신규 메커니즘.
+
+| 변경 | 내용 | 파일 |
+|---|---|---|
+| FM 1~20 이관 | `norm(v)=0.3+0.7·v/20` 어댑터 교체, players.json 16스탯 | resolve.js, players.json |
+| 발 슛 | S_eff = **골결**(finishing) 단독 ("발로 찰 땐 골결") | resolve.js `calcShot` |
+| 중거리 | 거리 감쇠 완화: `B_DIST × (1 − 0.5·(norm(중거리)−0.7))` | `K.SHOT.LS_RELIEF` |
+| 크로스 | 측면→박스 18m+ 패스는 **크로스 스탯** + 예측력 보정 | `K.CROSS`, `calcPass` |
+| 헤더 | 크로스 직후 슛 = 헤더: 골결:헤더 **3:7** + 공중 듀얼(점프 50%+키 30%+몸싸움 20%) | `calcShot` |
+| 수비 스탯 | 압박 β를 수비수별 스케일: 패스차단=**수비위치선정**, 드리블=**마크+태클**, 블록=마크. **예측력 50% 상시 혼합** | `defScale` |
+| 몸싸움 듀얼 | 드리블 1v1에 (몸싸움+균형)/2 차이를 접촉 강도 비례로 가산 | `K.DRIB.B_BODY` |
+| **수비 재배치** | 액션마다 수비수가 볼에 반응해 이동(압박/마킹/조널 + 이동 시간 예산) → 다음 액션은 새 좌표로 판정. **수비 붕괴가 상수가 아니라 기하에서 창발** — 미끼로 끌고 반대로 전환하면 쉬워지고, 밀집지 재진입은 어려워짐 | **defense.js (신규)** |
+| FLOW 축소 | 수비 붕괴 상수 0.25 → 0.1 (잔여 "기세"만 담당) | `K.SEQ` |
+| 연출 | 수비수가 판정 웨이포인트(steps[k].defPos)를 향해 조향 + 모든 말에 **바라보는 방향 화살표** (FM식) | playback.js, TacticsBoard.jsx |
+| 오프볼 연출 | **지원 런**(공 근처 아군 3명이 앞 공간 침투) · **수비 셰도잉**(웨이포인트 복귀 후 근처 공격수 골사이드 추적, 판정 좌표 ±3m) · **템포**(공 속도에 비례해 오프볼 전원 속도 1.0~1.9×) — 전부 판정과 무관한 순수 연출 | playback.js |
+| 시네마틱 | 슛 **슬로모션**(0.35배속 시간 워프 + 비네트) · **스크린 셰이크**(슛/차단/골) · **골 플래시** · **볼 트레일**(빠른 패스·슛 혜성 꼬리) · **GK 다이브** | playback.js, App.jsx/css |
 
 ### 판정 수식 (`src/engine/resolve.js` + `constants.js`) — CALC_SPEC v2
 
