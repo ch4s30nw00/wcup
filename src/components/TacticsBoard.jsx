@@ -16,6 +16,12 @@ const HIT = COARSE
   ? { player: DOT_R + 3.2, ball: 2.5, handle: 3.2, slopPx: 7 }
   : { player: DOT_R + 1.4, ball: 1.5, handle: 2, slopPx: 4 }
 
+// 슛 조준: 골문 안 y 범위(기존 드롭존과 같은 클램프) + 조준 히트 영역.
+// 히트 영역을 골문보다 넉넉히 잡아 손가락으로도 겨눌 수 있게 한다.
+const GOAL_AIM = { y0: 36.5, y1: 43.5, hitX: 108, hitY0: 28, hitY1: 52 }
+// 액션 메뉴 한 칸 크기 (피치 단위) — 2×2 배치
+const MENU = COARSE ? { w: 15, h: 7.5 } : { w: 13, h: 6.5 }
+
 function clamp(v, min, max) {
   return Math.min(max, Math.max(min, v))
 }
@@ -52,6 +58,16 @@ export default function TacticsBoard({
   const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
   const [ballDrag, setBallDrag] = useState(null)
   const [dragging, setDragging] = useState(false)
+  // 공 소유자 탭 → 액션 메뉴. mode는 메뉴에서 고른 뒤 "대상을 찍는" 단계.
+  //   null | 'dribble'(도착점 탭) | 'pass'(동료 탭) | 'shot'(골문 안 y 조준)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [mode, setMode] = useState(null)
+  const [aimY, setAimY] = useState(40)
+
+  const closeMenu = () => {
+    setMenuOpen(false)
+    setMode(null)
+  }
 
   const baseOf = Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }]))
   const homePos = (p) => (displayHome ? (displayHome[p.id] ?? baseOf[p.id]) : planPos[p.id])
@@ -100,6 +116,7 @@ export default function TacticsBoard({
     } else if (d.kind === 'ball') setBallDrag(pt)
     else if (d.kind === 'rhandle') onRunHandle(d.key, pt)
     else if (d.kind === 'chandle') onChainHandle(d.key, pt)
+    else if (d.kind === 'aim') setAimY(clamp(pt.y, GOAL_AIM.y0, GOAL_AIM.y1))
   }
 
   function endDrag(e) {
@@ -107,34 +124,64 @@ export default function TacticsBoard({
     dragRef.current = null
     setDragging(false)
     if (!d) return
+    if (d.kind === 'aim') {
+      // 조준을 놓는 순간 슛 확정 — 골문 안 y로 클램프된 좌표를 그대로 넘긴다
+      closeMenu()
+      return onPassCommit('GOAL', { x: 119, y: clamp(aimY, GOAL_AIM.y0, GOAL_AIM.y1) })
+    }
     if (d.kind === 'run') {
+      // 패스 조준 중이면 동료 탭이 곧 패스 대상 선택
+      if (!d.moved && mode === 'pass') {
+        closeMenu()
+        return onPassCommit(d.key, null)
+      }
       if (!d.moved) return onPlayerClick(d.key)
       // 목표 원을 출발 지점(앵커) 근처로 되돌리면 지시 취소 — 방금 편집한(마지막) 런 기준
       const rls = runLegs.filter((r) => r.id === d.key)
       const rl = rls[rls.length - 1]
       if (rl && Math.hypot(rl.to.x - rl.from.x, rl.to.y - rl.from.y) < 3.5) onRunRemove(rl.key)
     } else if (d.kind === 'dribble') {
-      if (!d.moved) return onPlayerClick(d.key)
+      // 공 소유자 탭(드래그 아님) = 액션 메뉴. 드래그는 기존대로 즉시 드리블.
+      if (!d.moved) {
+        setMenuOpen((v) => !v)
+        setMode(null)
+        return
+      }
+      closeMenu()
       onDribbleDrop(toPitch(e))
     } else if (d.kind === 'ball') {
       setBallDrag(null)
       if (!d.moved) return
+      // 공 드래그는 패스 전용 — "골문 앞에 놓으면 슛"은 제거됐다(슛은 액션 메뉴로).
       const pt = toPitch(e)
-      if (pt.x >= 106 && pt.y >= 26 && pt.y <= 54) {
-        // 골문 근처에 놓으면 슛 — 조준한 y를 골문 안으로 스냅
-        onPassCommit('GOAL', { x: 119, y: clamp(pt.y, 36.5, 43.5) })
-      } else {
-        // 가장 가까운 동료(계획상 최종 위치 기준)에게 패스로 스냅
-        let best = null
-        for (const p of players) {
-          if (p.id === carrierId) continue
-          const fp = planPos[p.id]
-          const dd = Math.hypot(fp.x - pt.x, fp.y - pt.y)
-          if (dd < 9 && (!best || dd < best.d)) best = { d: dd, id: p.id }
-        }
-        if (best) onPassCommit(best.id, null)
+      let best = null
+      for (const p of players) {
+        if (p.id === carrierId) continue
+        const fp = planPos[p.id]
+        const dd = Math.hypot(fp.x - pt.x, fp.y - pt.y)
+        if (dd < 9 && (!best || dd < best.d)) best = { d: dd, id: p.id }
       }
+      if (best) onPassCommit(best.id, null)
     }
+  }
+
+  // 빈 잔디 탭 — 드리블 조준 중이면 그 지점이 도착점, 아니면 메뉴를 닫는다
+  function boardDown(e) {
+    if (!interactive) return
+    if (mode === 'dribble') {
+      onDribbleSet(toPitch(e), true)
+      closeMenu()
+      return
+    }
+    closeMenu()
+  }
+
+  // 슛 조준 — 골문 안 y만 정한다 (기존과 같은 36.5~43.5 클램프)
+  function aimDown(e) {
+    e.stopPropagation()
+    e.target.setPointerCapture(e.pointerId)
+    dragRef.current = { kind: 'aim', startX: e.clientX, startY: e.clientY, moved: true }
+    setAimY(clamp(toPitch(e).y, GOAL_AIM.y0, GOAL_AIM.y1))
   }
 
   // 터치가 시스템 제스처 등으로 취소되면 진행 중이던 드래그를 커밋 없이 버린다
@@ -145,12 +192,15 @@ export default function TacticsBoard({
   }
 
   const showAuras = interactive && (dragging || ballDrag)
+  // 메뉴·조준 UI의 기준점 = 체인 끝에서 공을 갖게 될 선수의 계획상 위치
+  const carrierPos = carrierId ? planPos[carrierId] : null
 
   return (
     <svg
       ref={svgRef}
       className="tactics-board"
       viewBox={`0 0 ${PITCH_W} ${PITCH_H}`}
+      onPointerDown={boardDown}
       onPointerMove={handleMove}
       onPointerUp={endDrag}
       onPointerCancel={cancelDrag}
@@ -219,26 +269,6 @@ export default function TacticsBoard({
             />
           )
         })}
-
-      {/* 공 드래그 중 슛 존 안내 */}
-      {ballDrag && !shotTaken && (
-        <g pointerEvents="none">
-          <rect
-            x={106}
-            y={26}
-            width={13}
-            height={28}
-            fill="rgba(255, 210, 62, 0.08)"
-            stroke="rgba(255, 210, 62, 0.5)"
-            strokeWidth="0.3"
-            strokeDasharray="1.6 1"
-            rx="1.5"
-          />
-          <text x={112.5} y={24.4} textAnchor="middle" fontSize="2.4" fill="#ffd23e">
-            여기 놓으면 슛
-          </text>
-        </g>
-      )}
 
       {/* 오프볼 런 지시 (점선) — 앵커(체인 반영 위치)에서 출발 */}
       {runLegs.map((rl) => (
@@ -432,6 +462,103 @@ export default function TacticsBoard({
           fill="transparent"
           onPointerDown={(e) => startDrag(e, 'dribble', carrierId)}
         />
+      )}
+
+      {/* ── 슛 조준 단계 — 골문 안 y만 겨눈다 ─────────────────────────── */}
+      {interactive && mode === 'shot' && carrierPos && (
+        <g>
+          {/* 조준 히트 영역 (넉넉하게 — 손가락 기준) */}
+          <rect
+            x={GOAL_AIM.hitX}
+            y={GOAL_AIM.hitY0}
+            width={PITCH_W - GOAL_AIM.hitX}
+            height={GOAL_AIM.hitY1 - GOAL_AIM.hitY0}
+            fill="rgba(255, 107, 94, 0.07)"
+            onPointerDown={aimDown}
+          />
+          <g pointerEvents="none">
+            {/* 골문 안 조준 가능 구간 */}
+            <rect
+              x={118.2} y={GOAL_AIM.y0} width={1.8} height={GOAL_AIM.y1 - GOAL_AIM.y0}
+              fill="rgba(255, 107, 94, 0.35)" stroke="#ff6b5e" strokeWidth="0.3"
+            />
+            {/* 조준선 */}
+            <line
+              x1={carrierPos.x} y1={carrierPos.y} x2={119} y2={aimY}
+              stroke="#ff6b5e" strokeWidth="0.5" strokeDasharray="1.8 1.1" markerEnd="url(#ah-shot)"
+            />
+            <circle cx={119} cy={aimY} r="1.1" fill="#ff6b5e" stroke="#10141c" strokeWidth="0.25" />
+            <text x={112} y={GOAL_AIM.hitY0 - 1.2} textAnchor="middle" fontSize="2.4" fill="#ff6b5e">
+              골문을 겨눠 놓으면 슛
+            </text>
+          </g>
+        </g>
+      )}
+
+      {/* ── 액션 메뉴 — 공 소유자를 탭하면 열린다 ────────────────────── */}
+      {interactive && menuOpen && carrierPos && (
+        <g>
+          {(() => {
+            const mx = clamp(carrierPos.x - MENU.w, 2, PITCH_W - MENU.w * 2 - 2)
+            const my = clamp(carrierPos.y - MENU.h - 2, 2, PITCH_H - MENU.h * 2 - 2)
+            const items = [
+              { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2' },
+              { key: 'pass', label: '패스', hint: '동료 탭', color: '#ffd23e' },
+              { key: 'shot', label: '슛', hint: '골문 조준', color: '#ff6b5e', disabled: shotTaken },
+              { key: 'stats', label: '능력치', hint: '카드 보기', color: '#9aa3b5' },
+            ]
+            return (
+              <>
+                <line
+                  x1={carrierPos.x} y1={carrierPos.y} x2={mx + MENU.w} y2={my + MENU.h}
+                  stroke="#3d4a63" strokeWidth="0.3" pointerEvents="none"
+                />
+                {items.map((it, i) => {
+                  const bx = mx + (i % 2) * MENU.w
+                  const by = my + Math.floor(i / 2) * MENU.h
+                  const active = mode === it.key
+                  return (
+                    <g
+                      key={it.key}
+                      className={it.disabled ? undefined : 'menu-item'}
+                      opacity={it.disabled ? 0.35 : 1}
+                      onPointerDown={(e) => {
+                        e.stopPropagation()
+                        if (it.disabled) return
+                        if (it.key === 'stats') {
+                          closeMenu()
+                          onPlayerClick(carrierId)
+                        } else {
+                          setMode(it.key)
+                        }
+                      }}
+                    >
+                      <rect
+                        x={bx} y={by} width={MENU.w - 0.6} height={MENU.h - 0.6} rx="1.2"
+                        fill={active ? 'rgba(255,210,62,0.18)' : 'rgba(16,20,28,0.92)'}
+                        stroke={active ? '#ffd23e' : '#3d4a63'}
+                        strokeWidth={active ? 0.45 : 0.3}
+                      />
+                      <text
+                        x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h / 2 - 0.3}
+                        textAnchor="middle" fontSize="2.7" fontWeight="700" fill={it.color}
+                        pointerEvents="none"
+                      >
+                        {it.label}
+                      </text>
+                      <text
+                        x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h - 1.7}
+                        textAnchor="middle" fontSize="1.8" fill="#6b7385" pointerEvents="none"
+                      >
+                        {it.disabled ? '슛 완료' : it.hint}
+                      </text>
+                    </g>
+                  )
+                })}
+              </>
+            )
+          })()}
+        </g>
       )}
     </svg>
   )
