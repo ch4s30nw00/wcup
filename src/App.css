@@ -616,6 +616,69 @@ header h1 .sub {
   background: #232c3d;
   border: 1px solid #2c3648;
 }
+.match-badge.tut {
+  color: #10141c;
+  background: #9fd8ff;
+}
+.match-card.tutorial {
+  border-color: #3d4a63;
+  border-top: 4px solid #9fd8ff;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.match-card.tutorial:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* --- 튜토리얼: 따라 그리기 스테이지 --- */
+.tutorial-screen {
+  padding: 20px 24px 40px;
+}
+.tutorial-content {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+.tutorial-intro {
+  margin: 4px 0 14px;
+  font-size: 14px;
+  color: #9aa3b5;
+}
+.tutorial-board {
+  cursor: crosshair;
+}
+.tutorial-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.tutorial-hint,
+.tutorial-score {
+  flex: 1 1 320px;
+  background: #10141c;
+  border: 1px solid #2c3648;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: #9aa3b5;
+}
+.tutorial-score.full {
+  color: #5fce7b;
+  border-color: rgba(46, 160, 67, 0.5);
+}
+.tutorial-score.partial {
+  color: #ffd23e;
+  border-color: rgba(255, 210, 62, 0.45);
+}
+.tutorial-score.fail {
+  color: #ff8a7d;
+  border-color: rgba(200, 16, 46, 0.45);
+}
+.tutorial-bar .kickoff {
+  padding: 10px 22px;
+}
 .match-minute {
   font-size: 13px;
   font-weight: 700;
