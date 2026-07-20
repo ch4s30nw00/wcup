@@ -21,8 +21,10 @@ import { K } from './constants.js'
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
 
-// 수비수 이동 속도: 주력+가속도 평균(FM 1~20)을 [SPD_MIN, SPD_MAX]로 보간
-function speedOf(o) {
+// 선수 이동 속도: 주력+가속도 평균(FM 1~20)을 [SPD_MIN, SPD_MAX]로 보간.
+// 수비 재배치와 시트 UI의 가동범위 동심원이 같은 공식을 써야 "보이는 반경"과
+// "실제로 수비가 따라잡는 거리"가 어긋나지 않는다 → export.
+export function speedOf(o) {
   const u = ((o.stats?.pace ?? 10) + (o.stats?.acceleration ?? 10)) / 2 / K.STAT.FM_MAX
   return K.DEF.SPD_MIN + (K.DEF.SPD_MAX - K.DEF.SPD_MIN) * u
 }
