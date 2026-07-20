@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import TacticsBoard from './components/TacticsBoard'
 import { TitleScreen, MatchSelect } from './components/Intro'
+import Tutorial from './components/Tutorial'
 import { resolveSequence, planOffside, DEF_RADIUS } from './engine/resolve'
 import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
@@ -321,7 +322,16 @@ function App() {
   }
 
   if (screen === 'intro') return <TitleScreen onStart={() => setScreen('select')} />
-  if (screen === 'select') return <MatchSelect onPick={() => setScreen('board')} onBack={() => setScreen('intro')} />
+  if (screen === 'select')
+    return (
+      <MatchSelect
+        onPick={() => setScreen('board')}
+        onBack={() => setScreen('intro')}
+        onTutorial={() => setScreen('tutorial')}
+      />
+    )
+  if (screen === 'tutorial')
+    return <Tutorial onDone={() => setScreen('board')} onBack={() => setScreen('select')} />
 
   return (
     <div className="app">

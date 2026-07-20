@@ -57,7 +57,7 @@ export function TitleScreen({ onStart }) {
   )
 }
 
-export function MatchSelect({ onPick, onBack }) {
+export function MatchSelect({ onPick, onBack, onTutorial }) {
   const moment = scenario.moments[0]
   return (
     <div className="screen select-screen">
@@ -69,6 +69,19 @@ export function MatchSelect({ onPick, onBack }) {
         </div>
 
         <div className="match-cards">
+          {/* 튜토리얼 — 실제 궤적을 따라 그리며 조작법과 그날의 장면을 동시에 익힌다 */}
+          <button className="match-card tutorial" onClick={onTutorial}>
+            <div className="match-card-top">
+              <span className="match-badge tut">TUTORIAL</span>
+              <span className="match-minute">90+1′</span>
+            </div>
+            <div className="match-title">따라 그리기 — 그날의 전개</div>
+            <p className="match-desc">
+              실제로 공이 지나간 길을 손끝으로 따라 그려보세요. 궤적 유사도로 재현도를 채점합니다.
+            </p>
+            <div className="match-cta">튜토리얼 시작 ▶</div>
+          </button>
+
           <button className="match-card playable" onClick={onPick}>
             <div className="match-card-top">
               <span className="match-badge live">PLAYABLE</span>
