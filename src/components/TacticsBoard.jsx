@@ -38,6 +38,9 @@ export default function TacticsBoard({
   displayOpp,
   interactive,
   defRadius,
+  offsideIds, // 계획 단계 오프사이드 경고 대상 receiverId Set — 빨간 점멸
+  offsideLineX, // 계획 단계 경고 시 그릴 오프사이드 라인 x (없으면 null)
+  offsideFx, // 재생 중 { offside, offsideLineX } — 휘슬 순간부터 깃발·라인 표시
   selectedId,
   onPlayerClick,
   onRunSet,
@@ -240,6 +243,31 @@ export default function TacticsBoard({
         </g>
       )}
 
+      {/* 오프사이드 라인 — 계획 중 경고가 있을 때, 재생 중엔 휘슬 이후 표시.
+          최후방 2번째 수비수의 x에 세로선을 긋는다 (판정 기준선의 시각화). */}
+      {(() => {
+        const lineX = offsideFx?.offside ? offsideFx.offsideLineX : interactive ? offsideLineX : null
+        if (lineX == null) return null
+        return (
+          <g pointerEvents="none">
+            <line
+              x1={lineX} y1={1} x2={lineX} y2={PITCH_H - 1}
+              stroke="#ff3b30" strokeWidth="0.35" strokeDasharray="2 1.4" opacity="0.75"
+            />
+            <text x={lineX + 1} y={5} fontSize="2.2" fill="#ff6b5e" opacity="0.9">오프사이드 라인</text>
+          </g>
+        )
+      })()}
+
+      {/* 재생 중 오프사이드 확정 — 부심 깃발 */}
+      {offsideFx?.offside && (
+        <g pointerEvents="none">
+          <rect x={44} y={30} width={32} height={13} rx="2" fill="rgba(16,20,28,0.86)" stroke="#ff3b30" strokeWidth="0.4" />
+          <text x={60} y={36.5} textAnchor="middle" fontSize="4.4">🚩</text>
+          <text x={60} y={41} textAnchor="middle" fontSize="3.2" fontWeight="700" fill="#ff6b5e">오프사이드</text>
+        </g>
+      )}
+
       {/* 오프볼 런 지시 (점선) — 앵커(체인 반영 위치)에서 출발 */}
       {runLegs.map((rl) => (
         <path
@@ -331,6 +359,13 @@ export default function TacticsBoard({
             onPointerDown={(e) => startDrag(e, p.id === carrierId ? 'dribble' : 'run', p.id)}
           >
             <circle r={HIT.player} fill="transparent" />
+            {/* 오프사이드 경고 — 설계를 막지는 않고, 이대로 실행하면 깃발이 오른다는 신호 */}
+            {interactive && offsideIds?.has(p.id) && (
+              <g className="offside-warn" pointerEvents="none">
+                <circle r={DOT_R + 1.7} fill="none" stroke="#ff3b30" strokeWidth="0.5" />
+                <text y={-DOT_R - 2.4} textAnchor="middle" fontSize="2.6">🚩</text>
+              </g>
+            )}
             {isSelected && <circle r={DOT_R + 0.8} fill="none" stroke="#ffd23e" strokeWidth="0.4" />}
             {interactive && p.id === carrierId && (
               <circle r={DOT_R + 0.9} fill="none" stroke="#fff" strokeWidth="0.25" strokeDasharray="0.9 0.7" />

@@ -19,16 +19,19 @@
 //   actions[k]: { type: 'dribble'|'pass'|'shot', actor, actorId, receiverId?, from, to, ctrl }
 //   ctx: { opponents: [{id, x, y, stats, ...}], players?: [{id, x, y}], seed: number }
 //
-//   steps[k]: { type, p, success, header?, cross?, defPos, interceptorId?, interceptPoint?, interceptFrac? }
+//   steps[k]: { type, p, success, header?, cross?, offside?, offsideLineX?, defPos,
+//               interceptorId?, interceptPoint?, interceptFrac? }
 //     defPos — 이 액션이 끝난 시점의 수비수 좌표 {id: {x, y}} (연출·다음 판정 공유)
 //     실패 스텝에는 누가(interceptorId), 어디서(interceptPoint, interceptFrac) 끊었는지가 담긴다.
+//     offside — 이 패스가 오프사이드였는지 (확률과 무관한 확정 실패, offside.js)
 //     첫 실패 이후의 스텝은 success: null (미실행, p만 계산됨).
-//   outcome: 'GOAL' | 'ADVANCE'(슛 없이 전개 성공) | 'INTERCEPTED' | 'MISS'
+//   outcome: 'GOAL' | 'ADVANCE'(슛 없이 전개 성공) | 'INTERCEPTED' | 'MISS' | 'OFFSIDE'
 //
 // 보류 항: PK 특례 0.76 (PK 상황 미도입) · 컨디션/체력 스케일
 
 import { samplePath, pathLength, minDistToPath } from './geometry.js'
 import { initDefense, advanceDefense } from './defense.js'
+import { checkOffside, offsideWarnings } from './offside.js'
 import { K } from './constants.js'
 
 // 시드 PRNG (mulberry32) — 같은 시드 + 같은 전술 = 항상 같은 결과 (공유 링크 재현)
@@ -229,53 +232,101 @@ function actionSeconds(action) {
   return L / v + (action.type === 'dribble' ? 0 : K.DEF.REACT)
 }
 
-export function resolveSequence(actions, ctx) {
-  const rng = mulberry32(ctx.seed)
-
+// 체인을 따라가며 액션마다 "판정 시점(before)"과 "액션 종료 시점(after)"의 수비 좌표를 만든다.
+// 순수·결정론적 — 난수를 쓰지 않으므로 계획 단계(오프사이드 경고)와 실행 판정이 같은 좌표를 본다.
+// 첫 실패 전까지는 실제 전개와 동일하다 (조건부 확률의 정직한 전개).
+export function defenseTimeline(actions, ctx) {
   // 공격수 현재 좌표 추적 (수비 마킹 대상) — 체인 진행에 따라 액터·리시버 위치 갱신.
   // 오프볼 런은 액션이 아니므로 근사에서 제외 (마킹은 볼 근처 기하가 지배라 영향 작음).
   const atkPos = new Map()
   for (const p of ctx.players ?? []) atkPos.set(p.id, { id: p.id, x: p.x, y: p.y })
   const moveAtk = (id, pt) => id && atkPos.set(id, { id, x: pt.x, y: pt.y })
 
-  // 1) 각 액션의 확률 계산 — 액션마다 수비 좌표를 전진시키며 판정.
-  //    k번째 판정과 수비 이동 모두 "앞선 액션이 전부 성공했을 때"의 상태라,
-  //    첫 실패 전까지는 실제 판정과 동일 (조건부 확률의 정직한 전개).
   let defs = initDefense(ctx.opponents)
+  return actions.map((a) => {
+    const before = defs
+    // 패스가 떠나는 순간 리시버가 서 있는 자리 — 오프사이드는 도착점이 아니라 이 좌표로 판정한다.
+    // (아직 이 액션의 이동을 반영하기 전이므로 atkPos가 곧 "그 순간"의 좌표다.)
+    const receiverAt = a.receiverId ? (atkPos.get(a.receiverId) ?? a.to) : null
+    // 액터(드리블)·리시버(패스)가 도착점으로 이동
+    if (a.type === 'dribble') moveAtk(a.actorId, a.to)
+    else if (a.type === 'pass') moveAtk(a.receiverId, a.to)
+    // 수비 재배치: 이 액션의 시간 예산만큼 볼 도착점에 반응해 이동
+    defs = advanceDefense(defs, { to: a.to, durSec: actionSeconds(a), attackers: [...atkPos.values()] })
+    return { before, after: defs, receiverAt }
+  })
+}
+
+// 계획 단계용 — 체인 전체에서 오프사이드인 패스 목록. 판정을 돌리지 않고도 경고를 띄울 수 있다.
+// → [{ index, receiverId, lineX, marginM }]
+export function planOffside(actions, ctx) {
+  const tl = defenseTimeline(actions, ctx)
+  return offsideWarnings(
+    actions,
+    (i) => tl[i].before,
+    (i) => tl[i].receiverAt,
+  )
+}
+
+export function resolveSequence(actions, ctx) {
+  const rng = mulberry32(ctx.seed)
+  const timeline = defenseTimeline(actions, ctx)
+
+  // 1) 각 액션의 확률 계산 — 액션마다 수비 좌표를 전진시키며 판정.
   const calcs = actions.map((a, k) => {
     const prev = k > 0 ? actions[k - 1] : null
+    const defs = timeline[k].before
     const c =
       a.type === 'shot'
         ? calcShot(a, defs, prev)
         : a.type === 'pass'
           ? calcPass(a, defs)
           : calcDribble(a, defs)
-    // 액터(드리블)·리시버(패스)가 도착점으로 이동
-    if (a.type === 'dribble') moveAtk(a.actorId, a.to)
-    else if (a.type === 'pass') moveAtk(a.receiverId, a.to)
-    // 수비 재배치: 이 액션의 시간 예산만큼 볼 도착점에 반응해 이동
-    defs = advanceDefense(defs, { to: a.to, durSec: actionSeconds(a), attackers: [...atkPos.values()] })
-    const defPos = Object.fromEntries(defs.map((d) => [d.id, { x: d.x, y: d.y }]))
-    return { p: clampP(sigmoid(c.z + flowBonus(k))), worst: c.worst, header: c.header, cross: c.cross, defPos }
+    // 오프사이드는 확률이 아니라 규칙 — 패스가 떠나는 순간의 좌표로 즉시 판정한다.
+    // 리시버가 "그 순간 서 있던 자리"가 기준: 뒤에서 출발해 공을 향해 달려드는 침투 패스는
+    // 도착점이 라인 뒤여도 온사이드다 (실축 규칙 = 역습 스루패스가 성립하는 이유).
+    const off =
+      a.type === 'pass'
+        ? checkOffside({ receiver: timeline[k].receiverAt ?? a.to, opponents: defs, ball: a.from })
+        : { offside: false }
+    const defPos = Object.fromEntries(timeline[k].after.map((d) => [d.id, { x: d.x, y: d.y }]))
+    return {
+      p: clampP(sigmoid(c.z + flowBonus(k))),
+      worst: c.worst,
+      header: c.header,
+      cross: c.cross,
+      offside: off.offside,
+      offsideLineX: off.lineX,
+      defPos,
+    }
   })
-  // 계획 전체 성공 확률 (첫 실패 없이 끝까지 갔을 때의 ∏) — 패널 표시용
-  const pTotal = calcs.reduce((m, c) => m * c.p, 1)
+  // 계획 전체 성공 확률 (첫 실패 없이 끝까지 갔을 때의 ∏) — 패널 표시용.
+  // 오프사이드가 하나라도 끼면 그 계획은 확률과 무관하게 성립하지 않으므로 0.
+  const pTotal = calcs.some((c) => c.offside) ? 0 : calcs.reduce((m, c) => m * c.p, 1)
 
   // 2) 순서대로 굴려서 첫 실패 지점 결정 (첫 실패에서 중단 = 정직한 생존확률)
   const steps = []
   let failIndex = -1
+  let offsideIndex = -1
   for (let i = 0; i < actions.length; i++) {
-    const { p, worst, header, cross, defPos } = calcs[i]
-    const step = { type: actions[i].type, p, success: null, header, cross, defPos }
+    const { p, worst, header, cross, offside, offsideLineX, defPos } = calcs[i]
+    const step = { type: actions[i].type, p, success: null, header, cross, offside, offsideLineX, defPos }
     if (failIndex === -1) {
-      step.success = rng() < p
-      if (!step.success) {
+      // 오프사이드는 주사위를 굴리기 전에 확정 실패 — 휘슬이 먼저 울린다.
+      if (offside) {
+        step.success = false
         failIndex = i
-        // 압박 기여가 가장 큰 수비수가 끊은 것으로 (연출 좌표)
-        if (worst) {
-          step.interceptorId = worst.id
-          step.interceptPoint = worst.point
-          step.interceptFrac = worst.frac
+        offsideIndex = i
+      } else {
+        step.success = rng() < p
+        if (!step.success) {
+          failIndex = i
+          // 압박 기여가 가장 큰 수비수가 끊은 것으로 (연출 좌표)
+          if (worst) {
+            step.interceptorId = worst.id
+            step.interceptPoint = worst.point
+            step.interceptFrac = worst.frac
+          }
         }
       }
     }
@@ -293,6 +344,11 @@ export function resolveSequence(actions, ctx) {
       outcome === 'GOAL'
         ? `${last.actor.name}의 ${headed ? '헤더가' : '슛이'} 골망을 흔듭니다! (시퀀스 ${actions.length}개 액션 전부 성공)`
         : `${actions.length}개 액션 전부 성공 — 공을 지키며 전개했습니다.`
+  } else if (offsideIndex !== -1) {
+    const act = actions[offsideIndex]
+    const who = ctx.players?.find((p) => p.id === act.receiverId)
+    outcome = 'OFFSIDE'
+    reason = `🚩 오프사이드 — ${offsideIndex + 1}번째 패스가 떠나는 순간 ${who?.name ?? '리시버'}가 최후방 2번째 수비수보다 앞서 있었습니다. (부심 깃발)`
   } else {
     const failed = steps[failIndex]
     const act = actions[failIndex]
