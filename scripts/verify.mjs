@@ -9,6 +9,7 @@ import { checkOffside, offsideLineX } from '../src/engine/offside.js'
 import { initDefense, advanceDefense } from '../src/engine/defense.js'
 import { matchScore } from '../src/engine/match.js'
 import { throughTarget } from '../src/engine/sheets.js'
+import { encodeShare, decodeShare } from '../src/engine/share.js'
 import { XT_GRID, xtAt, planScore, planGrade } from '../src/engine/xt.js'
 import { midpoint } from '../src/engine/geometry.js'
 import { K } from '../src/engine/constants.js'
@@ -335,6 +336,39 @@ console.log('\n[스모크] 실제 데이터로 resolveSequence (손흥민 드리
   console.log(`    outcome=${res.outcome} pTotal=${(res.pTotal * 100).toFixed(1)}%`)
   checkDir('스텝별 defPos 스냅샷 존재', res.steps.every((s) => s.defPos && Object.keys(s.defPos).length === opponents.length))
   checkDir('확률이 유효 범위', res.steps.every((s) => s.p >= K.P_MIN && s.p <= K.P_MAX))
+}
+
+// ── 5. 공유 링크 인코딩 (engine/share.js) ────────────────────────────
+// 링크가 깨지면 "내 전술 봐라"가 성립하지 않는다 — 왕복이 무손실인지 확인한다.
+console.log('\n[공유 링크] 전술 → URL → 전술 왕복')
+{
+  const ids = ['kor_01', 'kor_07', 'kor_11', 'kor_09']
+  const acts = [
+    { type: 'dribble', to: { x: 82.3, y: 36.7 }, ctrl: null },
+    { type: 'pass', receiverId: 'kor_11', to: null, ctrl: { x: 90.5, y: 30.2 } }, // 곡선 패스
+    { type: 'shot', receiverId: 'GOAL', to: { x: 119, y: 39.4 }, ctrl: null },
+  ]
+  const runs = [{ id: 'kor_09', to: { x: 100.1, y: 52.6 }, ctrl: null, afterIndex: 1 }]
+  const url = encodeShare({ seed: 20221202, chainActs: acts, runs, playerIds: ids })
+  const back = decodeShare(url, { playerIds: ids })
+
+  checkDir(`인코딩 길이 ${url.length}자 (URL 안전 · 200자 미만)`, url.length < 200)
+  checkDir('URL에 이스케이프 필요한 문자 없음', encodeURIComponent(url) === url)
+  checkDir(`시드 왕복 (${back?.seed})`, back?.seed === 20221202)
+  checkDir('액션 수 왕복', back?.chainActs.length === 3)
+  checkDir('드리블 좌표 왕복 (0.1m 오차 내)', Math.abs(back.chainActs[0].to.x - 82.3) < 0.05 && Math.abs(back.chainActs[0].to.y - 36.7) < 0.05)
+  checkDir('패스 수신자 왕복', back.chainActs[1].receiverId === 'kor_11')
+  checkDir('곡선 ctrl 보존', Math.abs(back.chainActs[1].ctrl.x - 90.5) < 0.05)
+  checkDir('직선 ctrl은 null 유지 (URL 절약)', back.chainActs[0].ctrl === null)
+  checkDir("슛의 receiverId='GOAL' 복원", back.chainActs[2].receiverId === 'GOAL' && back.chainActs[2].type === 'shot')
+  checkDir('오프볼 런 왕복 (선수·좌표·앵커)', back.runs[0].id === 'kor_09' && back.runs[0].afterIndex === 1 && Math.abs(back.runs[0].to.x - 100.1) < 0.05)
+
+  // 깨진 링크는 예외 대신 null — 앱이 빈 보드로 뜨고 죽지 않아야 한다
+  checkDir('빈 값 → null', decodeShare('', { playerIds: ids }) === null)
+  checkDir('쓰레기 문자열 → null', decodeShare('zzzz', { playerIds: ids }) === null)
+  checkDir('다른 버전 → null', decodeShare('9.123.d_1_2.', { playerIds: ids }) === null)
+  checkDir('범위 밖 선수 인덱스 → null', decodeShare('1.123.p_99.', { playerIds: ids }) === null)
+  checkDir('빈 전술도 유효 (시드만 공유)', decodeShare('1.777..', { playerIds: ids })?.seed === 777)
 }
 
 console.log(fails === 0 ? '\n모든 검증 통과 ✅' : `\n${fails}건 실패 ❌`)

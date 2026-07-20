@@ -1,0 +1,24 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm ci",
+  "headers": [
+    {
+      "comment": "해시가 붙은 번들(index-<hash>.js)은 내용이 바뀌면 파일명도 바뀐다 → 영구 캐시가 안전하고, 재방문이 즉시 뜬다",
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "comment": "index.html은 절대 캐시하지 않는다 — 배포해도 옛 화면이 남으면 팀 시안 확인이 어긋난다",
+      "source": "/",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "comment": "링크 미리보기 이미지 — 크롤러가 자주 다시 읽어가되 무한 캐시는 피한다",
+      "source": "/og.png",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
+    }
+  ]
+}

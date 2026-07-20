@@ -483,6 +483,28 @@ header h1 .sub {
   color: #4d5568;
 }
 
+/* 공유 버튼 — 결과를 본 직후가 공유 동기가 가장 큰 순간이라 결과 패널 안에 둔다 */
+.share-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #10141c;
+  background: #ffd23e;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.06s;
+}
+.share-btn:hover {
+  filter: brightness(1.08);
+}
+.share-btn:active {
+  transform: translateY(1px);
+}
+
 @media (max-width: 860px) {
   .commentary-row .kickoff {
     flex: 1 1 100%;
