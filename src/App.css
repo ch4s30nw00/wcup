@@ -59,6 +59,76 @@ header h1 .sub {
   gap: 10px;
 }
 
+/* --- 시트(페이즈) 설계 모드 --- */
+.sheet-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.mode-toggle {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #2c3648;
+  background: #232c3d;
+  color: #9aa3b5;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.mode-toggle.on {
+  background: rgba(120, 200, 255, 0.16);
+  border-color: rgba(120, 200, 255, 0.55);
+  color: #9fd8ff;
+}
+.mode-toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.sheet-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.sheet-tab {
+  padding: 6px 11px;
+  border-radius: 7px;
+  border: 1px solid #2c3648;
+  background: #1b2230;
+  color: #6b7385;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.sheet-tab:hover {
+  color: #e8ecf4;
+}
+.sheet-tab.active {
+  background: #2c3648;
+  border-color: #3d4a63;
+  color: #e8ecf4;
+  font-weight: 700;
+}
+.sheet-tab.locked {
+  color: #8a93a6;
+}
+.sheet-confirm {
+  padding: 6px 14px;
+  border-color: rgba(120, 200, 255, 0.5);
+  color: #9fd8ff;
+  font-weight: 700;
+}
+.sheet-del:hover {
+  color: #ff8a7d;
+}
+.sheet-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7385;
+  line-height: 1.5;
+}
+
 .commentary-row {
   display: flex;
   gap: 10px;
@@ -160,6 +230,13 @@ header h1 .sub {
 }
 .tactics-board .handle {
   cursor: grab;
+}
+/* 공 소유자 탭으로 열리는 액션 메뉴 */
+.tactics-board .menu-item {
+  cursor: pointer;
+}
+.tactics-board .menu-item:hover rect {
+  fill: rgba(44, 54, 72, 0.95);
 }
 
 .panel {
