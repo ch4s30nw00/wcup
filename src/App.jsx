@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import TacticsBoard from './components/TacticsBoard'
 import { TitleScreen, MatchSelect } from './components/Intro'
 import Tutorial from './components/Tutorial'
-import { resolveSequence, planOffside, DEF_RADIUS } from './engine/resolve'
+import { resolveSequence, planOffside, defenseTimeline, DEF_RADIUS } from './engine/resolve'
+import { checkOffside, offsideLineX } from './engine/offside'
+import { initDefense } from './engine/defense'
 import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
 import { actionDuration, reachRadius, clampToReach, throughTarget } from './engine/sheets'
@@ -129,6 +131,26 @@ function App() {
   )
   const offsideIds = useMemo(() => new Set(offsideWarn.map((w) => w.receiverId)), [offsideWarn])
 
+  // --- 스루패스 조준 중 오프사이드 미리보기 ---
+  // "다음 액션이 마주할 수비 좌표" = 지금까지의 체인을 다 소화한 뒤의 수비 상태.
+  // 실행 판정이 쓰는 defenseTimeline과 같은 함수라 미리보기와 실제 판정이 어긋나지 않는다.
+  const pendingDefense = useMemo(() => {
+    const tl = defenseTimeline(chain, { opponents, players: basePlayers })
+    return tl.length ? tl[tl.length - 1].after : initDefense(opponents)
+  }, [chain])
+  const pendingOffsideLineX = useMemo(() => offsideLineX(pendingDefense), [pendingDefense])
+  // 지금 이 순간 오프사이드 위치에 서 있는 아군 — 이들에게 스루패스를 주면 깃발이 오른다.
+  // (뒤에서 출발해 달려드는 침투는 온사이드이므로, 여기 걸리는 건 "이미 넘어가 있는" 선수뿐)
+  const offsidePosIds = useMemo(() => {
+    const s = new Set()
+    for (const p of basePlayers) {
+      const at = planPos[p.id]
+      if (!at) continue
+      if (checkOffside({ receiver: at, opponents: pendingDefense, ball: ballPlanPos }).offside) s.add(p.id)
+    }
+    return s
+  }, [planPos, pendingDefense, ballPlanPos])
+
   // --- 시트 모드 파생값 ---
   // 편집 중인 시트 = sheetCount 인덱스. 그 시트의 공 액션이 걸리는 시간이
   // 이번 시트에서 모두가 움직일 수 있는 시간 예산 = 동심원 반경의 근거.
@@ -244,23 +266,26 @@ function App() {
   // 판정·연출·오프사이드가 전부 기존 경로를 그대로 탄다.
   //   · playback: 런의 consumer가 이 패스라 "공 도착 시각에 맞춰 도착"하도록 역산된다 = 침투
   //   · offside : 판정 기준은 패스 출발 순간의 리시버 좌표(런 반영 전)라 온사이드가 된다
+  // 찍은 지점 → 실제로 성립하는 도착점. 조준 중 미리보기와 확정이 같은 계산을 쓰도록
+  // 한 곳에 모아둔다 (미리보기와 결과가 다르면 그게 제일 나쁜 UX다).
+  const throughTargetOf = (receiverId, pt) => {
+    if (!sheetMode) return pt // 원샷 모드는 자유 — playback이 타이밍을 맞춰준다
+    // 이 시트의 sheetDur은 "이미 그려진 공 액션"의 시간이라, 지금 만들려는 패스에는
+    // 쓸 수 없다(아직 체인에 없어서 0이다). 대신 "공과 사람이 같이 도착"하는 조건을
+    // 직접 풀어 도착점을 잡는다 (engine/sheets.js throughTarget 주석 참고).
+    const idx = chainActs.length
+    const at = snaps[idx] ?? planPos
+    const runnerFrom = at[receiverId]
+    const ballFrom = at[carrierAt[idx] ?? carrierId] ?? ballPlanPos
+    const player = byId[receiverId]
+    if (!runnerFrom || !ballFrom || !player) return pt
+    return throughTarget({ runnerFrom, ballFrom, want: pt, player })
+  }
+
   const addThroughPass = (receiverId, pt) => {
     if (sheetFull) return
     const idx = chainActs.length // 이 패스가 놓일 체인 인덱스 = 런의 앵커
-    let to = pt
-    if (sheetMode) {
-      // 이 시트의 sheetDur은 "이미 그려진 공 액션"의 시간이라, 지금 만들려는 패스에는
-      // 쓸 수 없다(아직 체인에 없어서 0이다). 대신 "공과 사람이 같이 도착"하는 조건을
-      // 직접 풀어 도착점을 잡는다 — 패스 길이와 리시버 가동범위가 서로 물려 있어서
-      // 반경을 먼저 정할 수 없기 때문 (engine/sheets.js throughTarget 주석 참고).
-      const at = snaps[idx] ?? planPos
-      const runnerFrom = at[receiverId]
-      const ballFrom = at[carrierAt[idx] ?? carrierId] ?? ballPlanPos
-      const player = byId[receiverId]
-      if (runnerFrom && ballFrom && player) {
-        to = throughTarget({ runnerFrom, ballFrom, want: pt, player })
-      }
-    }
+    const to = throughTargetOf(receiverId, pt)
     setRuns((rs) => [...rs, { id: receiverId, to, ctrl: null, afterIndex: idx }])
     setChainActs((cs) => [...cs, { type: 'pass', receiverId, to: null, ctrl: null, through: true }])
   }
@@ -486,6 +511,9 @@ function App() {
               onChainHandle={setChainHandle}
               onPassCommit={addPass}
               onThroughCommit={addThroughPass}
+              throughTargetOf={throughTargetOf}
+              pendingOffsideLineX={pendingOffsideLineX}
+              offsidePosIds={offsidePosIds}
             />
             {frame?.fx?.flash > 0 && <div className="board-flash" style={{ opacity: frame.fx.flash * 0.55 }} />}
           </div>
