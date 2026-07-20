@@ -207,6 +207,8 @@ console.log('[오프사이드] resolveSequence 통합 — 확정 실패 + 턴오
   // 드리블·슛은 오프사이드 대상이 아니다
   const drib = { type: 'dribble', actorId: 'a1', actor: neutral(), from: { x: 70, y: 40 }, to: { x: 104, y: 40 }, ctrl: midpoint({ x: 70, y: 40 }, { x: 104, y: 40 }) }
   checkDir('드리블은 오프사이드 판정 대상 아님', planOffside([drib], { opponents: defs, players: standingOff }).length === 0)
+}
+
 // ── 3c. xT 그리드 / PlanScore (판정과 독립) ──────────────────────────
 console.log('\n[xT] 정적 그리드 — 벨만 재귀 수렴 결과의 형태')
 {
