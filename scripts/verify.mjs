@@ -4,7 +4,7 @@
 // 3) 수비 재배치가 만드는 "수비 붕괴"의 창발 (고정 수비 대비 비교)
 // 을 확인한다. 실패 시 exit 1.
 
-import { calcShot, calcPass, calcDribble, resolveSequence, planOffside } from '../src/engine/resolve.js'
+import { calcShot, calcPass, calcDribble, resolveSequence, planOffside, probOf } from '../src/engine/resolve.js'
 import { checkOffside, offsideLineX } from '../src/engine/offside.js'
 import { initDefense, advanceDefense } from '../src/engine/defense.js'
 import { matchScore } from '../src/engine/match.js'
@@ -107,6 +107,38 @@ console.log('[신규] 드리블 듀얼 — 마크·태클 수비 + 몸싸움·�
   const strongAtt = sigmoid(calcDribble({ ...a, actor: neutral({ strength: 17, balance: 16 }) }, [defAt(43, 41)]).z)
   const weakAtt = sigmoid(calcDribble({ ...a, actor: neutral({ strength: 5, balance: 6 }) }, [defAt(43, 41)]).z)
   checkDir(`몸싸움 17 공격수 (${strongAtt.toFixed(3)}) > 몸싸움 5 (${weakAtt.toFixed(3)})`, strongAtt > weakAtt)
+}
+
+// ── 2b. 경합 게이트 (v2.2) — "수비수 없으면 드리블은 실패하지 않는다" ──
+// 주의: 위 앵커 15개는 calc*()의 로그오즈 z를 그대로 본다(산식 불변 확인용).
+// 여기서는 게이트까지 적용된 **실제 게임 확률**(probOf)을 본다.
+console.log('\n[경합 게이트] 드리블 — 압박이 없으면 실패도 없다 (사용자 확정 2026-07-20)')
+{
+  const drib = (defs, L = 6) => probOf(calcDribble(act('dribble', { x: 40, y: 40 }, { x: 40 + L, y: 40 }), defs))
+  checkDir(`수비수 0명 · 6m → ${(drib([]) * 100).toFixed(1)}% (= 100%)`, drib([]) === 1)
+  checkDir(`수비수 0명 · 25m 장거리도 100% (${(drib([], 25) * 100).toFixed(1)}%)`, drib([], 25) === 1)
+  // 멀리 있는 수비수는 사실상 없는 것과 같다 (연속적으로 1에 수렴 — 임계 점프 없음)
+  const far = drib([defAt(40, 70)])
+  checkDir(`30m 밖 수비수 → ${(far * 100).toFixed(2)}% (> 99%)`, far > 0.99 && far < 1)
+  // 근접 수비는 기존과 동일하게 막는다 (사용자: "근처에 있으면 막히는 것도 맞고")
+  const near = drib([defAt(43, 40.5)])
+  checkDir(`간격 0.5m 근접 수비 → ${(near * 100).toFixed(1)}% (기존 49%대 유지)`, Math.abs(near - 0.49) < 0.02)
+  // 간격이 벌어질수록 단조 증가
+  const ladder = [0.5, 2, 5, 10].map((g) => drib([defAt(43, 40 + g)]))
+  checkDir(
+    `간격별 단조 증가 (${ladder.map((v) => (v * 100).toFixed(0) + '%').join(' → ')})`,
+    ladder.every((v, i) => i === 0 || v > ladder[i - 1]),
+  )
+}
+
+console.log('[경합 게이트] 패스·슛에는 적용하지 않는다 (빠질 수 있어야 한다)')
+{
+  // 사용자 지적: "패스는 빠질 수 있잖아" → 무압박이어도 100%가 아니다 (앵커 그대로)
+  const pass = (L) => probOf(calcPass(act('pass', { x: 40, y: 40 }, { x: 40 + L, y: 40 }), []))
+  checkDir(`무압박 패스 30m → ${(pass(30) * 100).toFixed(0)}% (< 100%, 앵커 0.55 유지)`, Math.abs(pass(30) - 0.55) < 0.01)
+  checkDir(`무압박 패스 8m → ${(pass(8) * 100).toFixed(0)}% (< 100%)`, pass(8) < 1)
+  const shot = probOf(calcShot(act('shot', { x: 108, y: 40 }, { x: 119, y: 40 }), []))
+  checkDir(`무수비 슛 12m → ${(shot * 100).toFixed(0)}% (< 100%, 골결정력으로 빗나갈 수 있다)`, shot < 1)
 }
 
 // ── 3. 수비 재배치 — 붕괴의 창발 ────────────────────────────────────
