@@ -7,6 +7,7 @@
 import { calcShot, calcPass, calcDribble, resolveSequence } from '../src/engine/resolve.js'
 import { initDefense, advanceDefense } from '../src/engine/defense.js'
 import { matchScore } from '../src/engine/match.js'
+import { throughTarget } from '../src/engine/sheets.js'
 import { midpoint } from '../src/engine/geometry.js'
 import { K } from '../src/engine/constants.js'
 import { readFileSync } from 'node:fs'
@@ -105,6 +106,33 @@ console.log('[신규] 드리블 듀얼 — 마크·태클 수비 + 몸싸움·�
   const strongAtt = sigmoid(calcDribble({ ...a, actor: neutral({ strength: 17, balance: 16 }) }, [defAt(43, 41)]).z)
   const weakAtt = sigmoid(calcDribble({ ...a, actor: neutral({ strength: 5, balance: 6 }) }, [defAt(43, 41)]).z)
   checkDir(`몸싸움 17 공격수 (${strongAtt.toFixed(3)}) > 몸싸움 5 (${weakAtt.toFixed(3)})`, strongAtt > weakAtt)
+}
+
+// ── 2c. 스루패스 도착점 — "공과 사람이 같이 도착" ────────────────────
+console.log('\n[스루패스] 도착점이 리시버 가동범위 안에 들어오는가')
+{
+  const runnerFrom = { x: 53, y: 46 }
+  const ballFrom = { x: 48, y: 34 }
+  const player = neutral({ pace: 15, acceleration: 15 })
+  const speed = K.DEF.SPD_MIN + (K.DEF.SPD_MAX - K.DEF.SPD_MIN) * (15 / K.STAT.FM_MAX)
+  // 공이 도착하는 시간 안에 리시버가 그 지점까지 갈 수 있어야 한다
+  const feasible = (p) => {
+    const runT = Math.hypot(p.x - runnerFrom.x, p.y - runnerFrom.y) / speed
+    const ballT = Math.hypot(p.x - ballFrom.x, p.y - ballFrom.y) / K.SPEED.pass + K.DEF.REACT
+    return runT <= ballT + 1e-6
+  }
+  // 너무 먼 지점(47m)을 찍으면 성립하는 데까지 당겨야 한다 — 예전엔 그대로 통과해
+  // 리시버가 자기 동심원 밖에 놓였고, 유저가 손으로 다시 옮겨야 했다 (회귀 방지)
+  const want = { x: 100, y: 52 }
+  checkDir(`찍은 지점(47.4m)은 원래 성립 불가`, !feasible(want))
+  const got = throughTarget({ runnerFrom, ballFrom, want, player })
+  const d = Math.hypot(got.x - runnerFrom.x, got.y - runnerFrom.y)
+  checkDir(`당겨진 도착점 ${d.toFixed(1)}m → 성립`, feasible(got))
+  checkDir('원래 찍은 방향 위에 있다', Math.abs((got.x - runnerFrom.x) * (want.y - runnerFrom.y) - (got.y - runnerFrom.y) * (want.x - runnerFrom.x)) < 1e-6)
+  // 가까운 지점은 손대지 않는다
+  const near = { x: 58, y: 47 }
+  const keep = throughTarget({ runnerFrom, ballFrom, want: near, player })
+  checkDir('성립하는 지점은 그대로 둔다', keep.x === near.x && keep.y === near.y)
 }
 
 // ── 3. 수비 재배치 — 붕괴의 창발 ────────────────────────────────────

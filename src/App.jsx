@@ -4,7 +4,7 @@ import { TitleScreen, MatchSelect } from './components/Intro'
 import { resolveSequence, DEF_RADIUS } from './engine/resolve'
 import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
-import { actionDuration, reachRadius, clampToReach } from './engine/sheets'
+import { actionDuration, reachRadius, clampToReach, throughTarget } from './engine/sheets'
 import playersData from './data/players.json'
 import formations from './data/formations.json'
 import scenario from './data/scenarios.json'
@@ -230,9 +230,17 @@ function App() {
     const idx = chainActs.length // 이 패스가 놓일 체인 인덱스 = 런의 앵커
     let to = pt
     if (sheetMode) {
-      const from = (snaps[idx] ?? planPos)[receiverId]
+      // 이 시트의 sheetDur은 "이미 그려진 공 액션"의 시간이라, 지금 만들려는 패스에는
+      // 쓸 수 없다(아직 체인에 없어서 0이다). 대신 "공과 사람이 같이 도착"하는 조건을
+      // 직접 풀어 도착점을 잡는다 — 패스 길이와 리시버 가동범위가 서로 물려 있어서
+      // 반경을 먼저 정할 수 없기 때문 (engine/sheets.js throughTarget 주석 참고).
+      const at = snaps[idx] ?? planPos
+      const runnerFrom = at[receiverId]
+      const ballFrom = at[carrierAt[idx] ?? carrierId] ?? ballPlanPos
       const player = byId[receiverId]
-      if (from && player && sheetDur > 0) to = clampToReach(from, to, reachRadius(player, sheetDur))
+      if (runnerFrom && ballFrom && player) {
+        to = throughTarget({ runnerFrom, ballFrom, want: pt, player })
+      }
     }
     setRuns((rs) => [...rs, { id: receiverId, to, ctrl: null, afterIndex: idx }])
     setChainActs((cs) => [...cs, { type: 'pass', receiverId, to: null, ctrl: null, through: true }])
