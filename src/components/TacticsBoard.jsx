@@ -57,6 +57,7 @@ export default function TacticsBoard({
   onDribbleDrop, // (pt)
   onChainHandle, // (chainIndex, handlePt)
   onPassCommit, // (receiverId | 'GOAL', toForGoal)
+  onThroughCommit, // (receiverId, 공간 좌표) — 스루패스
 }) {
   const svgRef = useRef(null)
   const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
@@ -67,10 +68,14 @@ export default function TacticsBoard({
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState(null)
   const [aimY, setAimY] = useState(40)
+  // 스루패스는 2단계다: ① 받을 동료 탭 → ② 뛰어들 공간 탭.
+  // 이 값이 차 있으면 ②단계(공간 지정)를 기다리는 중.
+  const [throughId, setThroughId] = useState(null)
 
   const closeMenu = () => {
     setMenuOpen(false)
     setMode(null)
+    setThroughId(null)
   }
 
   const baseOf = Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }]))
@@ -139,6 +144,11 @@ export default function TacticsBoard({
         closeMenu()
         return onPassCommit(d.key, null)
       }
+      // 스루패스 ①단계: 받을 동료 선택 (②단계는 빈 공간 탭 — boardDown)
+      if (!d.moved && mode === 'through' && !throughId) {
+        setThroughId(d.key)
+        return
+      }
       if (!d.moved) return onPlayerClick(d.key)
       // 목표 원을 출발 지점(앵커) 근처로 되돌리면 지시 취소 — 방금 편집한(마지막) 런 기준
       const rls = runLegs.filter((r) => r.id === d.key)
@@ -177,6 +187,12 @@ export default function TacticsBoard({
       closeMenu()
       return
     }
+    // 스루패스 ②단계: 동료가 뛰어들 공간을 찍는다
+    if (mode === 'through' && throughId) {
+      onThroughCommit(throughId, toPitch(e))
+      closeMenu()
+      return
+    }
     closeMenu()
   }
 
@@ -198,6 +214,7 @@ export default function TacticsBoard({
   const showAuras = interactive && (dragging || ballDrag)
   // 메뉴·조준 UI의 기준점 = 체인 끝에서 공을 갖게 될 선수의 계획상 위치
   const carrierPos = carrierId ? planPos[carrierId] : null
+  const byIdName = (id) => players.find((p) => p.id === id)?.name ?? '동료'
 
   return (
     <svg
@@ -516,18 +533,44 @@ export default function TacticsBoard({
         </g>
       )}
 
+      {/* 스루패스 안내 — ①받을 동료 고르기 / ②뛰어들 공간 찍기 */}
+      {interactive && mode === 'through' && (
+        <g pointerEvents="none">
+          <rect x={30} y={2.5} width={60} height={7} rx="1.6" fill="rgba(16,20,28,0.86)" stroke="#7ee0a8" strokeWidth="0.3" />
+          <text x={60} y={7.4} textAnchor="middle" fontSize="3" fill="#7ee0a8">
+            {throughId
+              ? `${byIdName(throughId)}가 뛰어들 공간을 탭하세요`
+              : '스루패스 — 받을 동료를 탭하세요'}
+          </text>
+          {/* 선택된 동료 강조 + 공간까지의 예상 침투선 */}
+          {throughId && planPos[throughId] && (
+            <>
+              <circle cx={planPos[throughId].x} cy={planPos[throughId].y} r={DOT_R + 1.8} fill="none" stroke="#7ee0a8" strokeWidth="0.5" />
+              {carrierPos && (
+                <line
+                  x1={carrierPos.x} y1={carrierPos.y} x2={planPos[throughId].x} y2={planPos[throughId].y}
+                  stroke="#7ee0a8" strokeWidth="0.3" strokeDasharray="1 1" opacity="0.5"
+                />
+              )}
+            </>
+          )}
+        </g>
+      )}
+
       {/* ── 액션 메뉴 — 공 소유자를 탭하면 열린다 ────────────────────── */}
       {interactive && menuOpen && carrierPos && (
         <g>
           {(() => {
-            const mx = clamp(carrierPos.x - MENU.w, 2, PITCH_W - MENU.w * 2 - 2)
-            const my = clamp(carrierPos.y - MENU.h - 2, 2, PITCH_H - MENU.h * 2 - 2)
             const items = [
               { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2' },
               { key: 'pass', label: '패스', hint: '동료 탭', color: '#ffd23e' },
+              { key: 'through', label: '스루패스', hint: '동료→공간', color: '#7ee0a8' },
               { key: 'shot', label: '슛', hint: '골문 조준', color: '#ff6b5e', disabled: shotTaken },
               { key: 'stats', label: '능력치', hint: '카드 보기', color: '#9aa3b5' },
             ]
+            const rows = Math.ceil(items.length / 2)
+            const mx = clamp(carrierPos.x - MENU.w, 2, PITCH_W - MENU.w * 2 - 2)
+            const my = clamp(carrierPos.y - MENU.h - 2, 2, PITCH_H - MENU.h * rows - 2)
             return (
               <>
                 <line
