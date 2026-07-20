@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { quadPoint, handleFromCtrl } from '../engine/geometry'
 import { K } from '../engine/constants'
+import { josaGa, josaEun } from '../engine/commentary'
 
 const REACH_EASY = K.SHEET.EASY_FRAC // 안쪽 동심원(여유) 비율
 
@@ -60,6 +61,10 @@ export default function TacticsBoard({
   onDribbleDrop, // (pt)
   onChainHandle, // (chainIndex, handlePt)
   onPassCommit, // (receiverId | 'GOAL', toForGoal)
+  onThroughCommit, // (receiverId, 공간 좌표) — 스루패스
+  throughTargetOf, // (receiverId, pt) → 실제로 성립하는 도착점 (조준 미리보기용, 확정과 같은 계산)
+  pendingOffsideLineX, // 다음 액션이 마주할 오프사이드 라인 x
+  offsidePosIds, // 지금 오프사이드 위치에 서 있는 아군 id Set
 }) {
   const svgRef = useRef(null)
   const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
@@ -70,10 +75,17 @@ export default function TacticsBoard({
   const [menuOpen, setMenuOpen] = useState(false)
   const [mode, setMode] = useState(null)
   const [aimY, setAimY] = useState(40)
+  // 스루패스는 2단계다: ① 받을 동료 탭 → ② 뛰어들 공간 탭.
+  // 이 값이 차 있으면 ②단계(공간 지정)를 기다리는 중.
+  const [throughId, setThroughId] = useState(null)
+  // 조준 중 커서 위치 — 찍기 전에 "실제로 어디에 확정되는지"를 미리 보여주기 위해
+  const [throughHover, setThroughHover] = useState(null)
 
   const closeMenu = () => {
     setMenuOpen(false)
     setMode(null)
+    setThroughId(null)
+    setThroughHover(null)
   }
 
   const baseOf = Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }]))
@@ -105,6 +117,9 @@ export default function TacticsBoard({
   }
 
   function handleMove(e) {
+    // 스루패스 ②단계는 누르지 않고 움직이는 중에도 미리보기를 갱신해야 한다
+    // (드래그가 아니라 탭으로 확정되므로 dragRef가 비어 있다)
+    if (interactive && mode === 'through' && throughId) setThroughHover(toPitch(e))
     const d = dragRef.current
     if (!d) return
     // 살짝 흔들린 클릭은 드래그로 치지 않는다
@@ -141,6 +156,11 @@ export default function TacticsBoard({
       if (!d.moved && mode === 'pass') {
         closeMenu()
         return onPassCommit(d.key, null)
+      }
+      // 스루패스 ①단계: 받을 동료 선택 (②단계는 빈 공간 탭 — boardDown)
+      if (!d.moved && mode === 'through' && !throughId) {
+        setThroughId(d.key)
+        return
       }
       if (!d.moved) return onPlayerClick(d.key)
       // 목표 원을 출발 지점(앵커) 근처로 되돌리면 지시 취소 — 방금 편집한(마지막) 런 기준
@@ -180,6 +200,12 @@ export default function TacticsBoard({
       closeMenu()
       return
     }
+    // 스루패스 ②단계: 동료가 뛰어들 공간을 찍는다
+    if (mode === 'through' && throughId) {
+      onThroughCommit(throughId, toPitch(e))
+      closeMenu()
+      return
+    }
     closeMenu()
   }
 
@@ -201,6 +227,7 @@ export default function TacticsBoard({
   const showAuras = interactive && (dragging || ballDrag)
   // 메뉴·조준 UI의 기준점 = 체인 끝에서 공을 갖게 될 선수의 계획상 위치
   const carrierPos = carrierId ? planPos[carrierId] : null
+  const byIdName = (id) => players.find((p) => p.id === id)?.name ?? '동료'
 
   return (
     <svg
@@ -551,18 +578,104 @@ export default function TacticsBoard({
         </g>
       )}
 
+      {/* 스루패스 조준 — ①받을 동료 고르기 / ②뛰어들 공간 찍기 */}
+      {interactive && mode === 'through' && (() => {
+        const recvOffside = throughId && offsidePosIds?.has(throughId)
+        // 커서 지점과 "실제로 확정될 지점"이 다르면(= 당겨지면) 그 차이를 보여준다
+        const want = throughHover
+        const real = want && throughId && throughTargetOf ? throughTargetOf(throughId, want) : null
+        const pulled = real && want && Math.hypot(real.x - want.x, real.y - want.y) > 0.4
+        return (
+          <g pointerEvents="none">
+            {/* 오프사이드 라인 — 스루패스는 오프사이드가 걸리는 지점이라 조준 중에 늘 보여준다 */}
+            {pendingOffsideLineX != null && (
+              <>
+                <line
+                  x1={pendingOffsideLineX} y1={1} x2={pendingOffsideLineX} y2={PITCH_H - 1}
+                  stroke="#ff3b30" strokeWidth="0.3" strokeDasharray="2 1.4" opacity="0.6"
+                />
+                <text x={pendingOffsideLineX + 1} y={PITCH_H - 2} fontSize="2.1" fill="#ff6b5e" opacity="0.8">
+                  오프사이드 라인
+                </text>
+              </>
+            )}
+
+            {/* 안내 배너 */}
+            <rect x={22} y={2.5} width={76} height={7} rx="1.6" fill="rgba(16,20,28,0.88)"
+              stroke={recvOffside ? '#ff3b30' : '#7ee0a8'} strokeWidth="0.3" />
+            <text x={60} y={7.4} textAnchor="middle" fontSize="3" fill={recvOffside ? '#ff6b5e' : '#7ee0a8'}>
+              {!throughId
+                ? '스루패스 — 받을 동료를 탭하세요'
+                : recvOffside
+                  ? `🚩 ${josaEun(byIdName(throughId))} 이미 오프사이드 위치 — 주면 깃발이 오릅니다`
+                  : `${josaGa(byIdName(throughId))} 뛰어들 공간을 탭하세요`}
+            </text>
+
+            {/* ①단계: 오프사이드 위치의 동료를 미리 빨갛게 */}
+            {!throughId &&
+              players.map((p) =>
+                offsidePosIds?.has(p.id) ? (
+                  <circle key={`op-${p.id}`} cx={planPos[p.id].x} cy={planPos[p.id].y}
+                    r={DOT_R + 1.7} fill="none" stroke="#ff3b30" strokeWidth="0.45" opacity="0.85" />
+                ) : null,
+              )}
+
+            {/* ②단계: 선택된 동료 강조 */}
+            {throughId && planPos[throughId] && (
+              <circle cx={planPos[throughId].x} cy={planPos[throughId].y} r={DOT_R + 1.8}
+                fill="none" stroke={recvOffside ? '#ff3b30' : '#7ee0a8'} strokeWidth="0.5" />
+            )}
+
+            {/* 도착점 미리보기 — 당겨지면 찍은 자리(흐린 ✕)와 실제 도착점을 잇는다 */}
+            {real && (
+              <>
+                {pulled && (
+                  <>
+                    <g opacity="0.5">
+                      <line x1={want.x - 1.3} y1={want.y - 1.3} x2={want.x + 1.3} y2={want.y + 1.3}
+                        stroke="#8892a4" strokeWidth="0.4" />
+                      <line x1={want.x + 1.3} y1={want.y - 1.3} x2={want.x - 1.3} y2={want.y + 1.3}
+                        stroke="#8892a4" strokeWidth="0.4" />
+                    </g>
+                    <line x1={real.x} y1={real.y} x2={want.x} y2={want.y}
+                      stroke="#8892a4" strokeWidth="0.3" strokeDasharray="0.8 0.9" opacity="0.6" />
+                    <text x={(real.x + want.x) / 2} y={(real.y + want.y) / 2 - 1.4} textAnchor="middle"
+                      fontSize="2.1" fill="#9aa3b5">
+                      여기까진 못 갑니다
+                    </text>
+                  </>
+                )}
+                {/* 실제 확정될 도착점 + 리시버의 침투 경로 */}
+                {planPos[throughId] && (
+                  <line x1={planPos[throughId].x} y1={planPos[throughId].y} x2={real.x} y2={real.y}
+                    stroke="#7ee0a8" strokeWidth="0.4" strokeDasharray="1.4 1" opacity="0.9" />
+                )}
+                {carrierPos && (
+                  <line x1={carrierPos.x} y1={carrierPos.y} x2={real.x} y2={real.y}
+                    stroke="#ffd23e" strokeWidth="0.4" strokeDasharray="1.8 1.1" opacity="0.75" />
+                )}
+                <circle cx={real.x} cy={real.y} r="1.2" fill="none" stroke="#7ee0a8" strokeWidth="0.45" />
+                <circle cx={real.x} cy={real.y} r="0.4" fill="#7ee0a8" />
+              </>
+            )}
+          </g>
+        )
+      })()}
+
       {/* ── 액션 메뉴 — 공 소유자를 탭하면 열린다 ────────────────────── */}
       {interactive && menuOpen && carrierPos && (
         <g>
           {(() => {
-            const mx = clamp(carrierPos.x - MENU.w, 2, PITCH_W - MENU.w * 2 - 2)
-            const my = clamp(carrierPos.y - MENU.h - 2, 2, PITCH_H - MENU.h * 2 - 2)
             const items = [
               { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2' },
               { key: 'pass', label: '패스', hint: '동료 탭', color: '#ffd23e' },
+              { key: 'through', label: '스루패스', hint: '동료→공간', color: '#7ee0a8' },
               { key: 'shot', label: '슛', hint: '골문 조준', color: '#ff6b5e', disabled: shotTaken },
               { key: 'stats', label: '능력치', hint: '카드 보기', color: '#9aa3b5' },
             ]
+            const rows = Math.ceil(items.length / 2)
+            const mx = clamp(carrierPos.x - MENU.w, 2, PITCH_W - MENU.w * 2 - 2)
+            const my = clamp(carrierPos.y - MENU.h - 2, 2, PITCH_H - MENU.h * rows - 2)
             return (
               <>
                 <line

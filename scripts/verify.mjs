@@ -4,10 +4,11 @@
 // 3) 수비 재배치가 만드는 "수비 붕괴"의 창발 (고정 수비 대비 비교)
 // 을 확인한다. 실패 시 exit 1.
 
-import { calcShot, calcPass, calcDribble, resolveSequence, planOffside } from '../src/engine/resolve.js'
+import { calcShot, calcPass, calcDribble, resolveSequence, planOffside, probOf } from '../src/engine/resolve.js'
 import { checkOffside, offsideLineX } from '../src/engine/offside.js'
 import { initDefense, advanceDefense } from '../src/engine/defense.js'
 import { matchScore } from '../src/engine/match.js'
+import { throughTarget } from '../src/engine/sheets.js'
 import { XT_GRID, xtAt, planScore, planGrade } from '../src/engine/xt.js'
 import { midpoint } from '../src/engine/geometry.js'
 import { K } from '../src/engine/constants.js'
@@ -109,6 +110,65 @@ console.log('[신규] 드리블 듀얼 — 마크·태클 수비 + 몸싸움·�
   checkDir(`몸싸움 17 공격수 (${strongAtt.toFixed(3)}) > 몸싸움 5 (${weakAtt.toFixed(3)})`, strongAtt > weakAtt)
 }
 
+// ── 2b. 경합 게이트 (v2.2) — "수비수 없으면 드리블은 실패하지 않는다" ──
+// 주의: 위 앵커 15개는 calc*()의 로그오즈 z를 그대로 본다(산식 불변 확인용).
+// 여기서는 게이트까지 적용된 **실제 게임 확률**(probOf)을 본다.
+console.log('\n[경합 게이트] 드리블 — 압박이 없으면 실패도 없다 (사용자 확정 2026-07-20)')
+{
+  const drib = (defs, L = 6) => probOf(calcDribble(act('dribble', { x: 40, y: 40 }, { x: 40 + L, y: 40 }), defs))
+  checkDir(`수비수 0명 · 6m → ${(drib([]) * 100).toFixed(1)}% (= 100%)`, drib([]) === 1)
+  checkDir(`수비수 0명 · 25m 장거리도 100% (${(drib([], 25) * 100).toFixed(1)}%)`, drib([], 25) === 1)
+  // 멀리 있는 수비수는 사실상 없는 것과 같다 (연속적으로 1에 수렴 — 임계 점프 없음)
+  const far = drib([defAt(40, 70)])
+  checkDir(`30m 밖 수비수 → ${(far * 100).toFixed(2)}% (> 99%)`, far > 0.99 && far < 1)
+  // 근접 수비는 기존과 동일하게 막는다 (사용자: "근처에 있으면 막히는 것도 맞고")
+  const near = drib([defAt(43, 40.5)])
+  checkDir(`간격 0.5m 근접 수비 → ${(near * 100).toFixed(1)}% (기존 49%대 유지)`, Math.abs(near - 0.49) < 0.02)
+  // 간격이 벌어질수록 단조 증가
+  const ladder = [0.5, 2, 5, 10].map((g) => drib([defAt(43, 40 + g)]))
+  checkDir(
+    `간격별 단조 증가 (${ladder.map((v) => (v * 100).toFixed(0) + '%').join(' → ')})`,
+    ladder.every((v, i) => i === 0 || v > ladder[i - 1]),
+  )
+}
+
+console.log('[경합 게이트] 패스·슛에는 적용하지 않는다 (빠질 수 있어야 한다)')
+{
+  // 사용자 지적: "패스는 빠질 수 있잖아" → 무압박이어도 100%가 아니다 (앵커 그대로)
+  const pass = (L) => probOf(calcPass(act('pass', { x: 40, y: 40 }, { x: 40 + L, y: 40 }), []))
+  checkDir(`무압박 패스 30m → ${(pass(30) * 100).toFixed(0)}% (< 100%, 앵커 0.55 유지)`, Math.abs(pass(30) - 0.55) < 0.01)
+  checkDir(`무압박 패스 8m → ${(pass(8) * 100).toFixed(0)}% (< 100%)`, pass(8) < 1)
+  const shot = probOf(calcShot(act('shot', { x: 108, y: 40 }, { x: 119, y: 40 }), []))
+  checkDir(`무수비 슛 12m → ${(shot * 100).toFixed(0)}% (< 100%, 골결정력으로 빗나갈 수 있다)`, shot < 1)
+}
+
+// ── 2c. 스루패스 도착점 — "공과 사람이 같이 도착" ────────────────────
+console.log('\n[스루패스] 도착점이 리시버 가동범위 안에 들어오는가')
+{
+  const runnerFrom = { x: 53, y: 46 }
+  const ballFrom = { x: 48, y: 34 }
+  const player = neutral({ pace: 15, acceleration: 15 })
+  const speed = K.DEF.SPD_MIN + (K.DEF.SPD_MAX - K.DEF.SPD_MIN) * (15 / K.STAT.FM_MAX)
+  // 공이 도착하는 시간 안에 리시버가 그 지점까지 갈 수 있어야 한다
+  const feasible = (p) => {
+    const runT = Math.hypot(p.x - runnerFrom.x, p.y - runnerFrom.y) / speed
+    const ballT = Math.hypot(p.x - ballFrom.x, p.y - ballFrom.y) / K.SPEED.pass + K.DEF.REACT
+    return runT <= ballT + 1e-6
+  }
+  // 너무 먼 지점(47m)을 찍으면 성립하는 데까지 당겨야 한다 — 예전엔 그대로 통과해
+  // 리시버가 자기 동심원 밖에 놓였고, 유저가 손으로 다시 옮겨야 했다 (회귀 방지)
+  const want = { x: 100, y: 52 }
+  checkDir(`찍은 지점(47.4m)은 원래 성립 불가`, !feasible(want))
+  const got = throughTarget({ runnerFrom, ballFrom, want, player })
+  const d = Math.hypot(got.x - runnerFrom.x, got.y - runnerFrom.y)
+  checkDir(`당겨진 도착점 ${d.toFixed(1)}m → 성립`, feasible(got))
+  checkDir('원래 찍은 방향 위에 있다', Math.abs((got.x - runnerFrom.x) * (want.y - runnerFrom.y) - (got.y - runnerFrom.y) * (want.x - runnerFrom.x)) < 1e-6)
+  // 가까운 지점은 손대지 않는다
+  const near = { x: 58, y: 47 }
+  const keep = throughTarget({ runnerFrom, ballFrom, want: near, player })
+  checkDir('성립하는 지점은 그대로 둔다', keep.x === near.x && keep.y === near.y)
+}
+
 // ── 3. 수비 재배치 — 붕괴의 창발 ────────────────────────────────────
 console.log('\n[수비 재배치] 미끼 후 전환: 한쪽으로 끌고 → 빈 반대편 공략 (수비 붕괴)')
 {
@@ -143,6 +203,70 @@ console.log('[수비 재배치] 결정론 — 같은 입력 두 번 = 같은 좌
     return d.map((x) => `${x.x.toFixed(6)},${x.y.toFixed(6)}`).join(';')
   }
   checkDir('결정론 유지', mk() === mk())
+}
+
+// ── 3b. 오프사이드 (순수 기하) ───────────────────────────────────────
+console.log('\n[오프사이드] 최후방 2번째 수비수 라인 판정')
+{
+  // 백4(x=90,92,94,96) + GK(116.5). 내림차순 116.5, 96, 94, 92, 90 → 라인 = 96
+  const line4 = [defAt(90, 30), defAt(92, 38), defAt(94, 46), defAt(96, 54), { ...defAt(116.5, 40), position: 'GK' }]
+  check('라인 = 최후방 2번째 (GK 포함 정렬)', offsideLineX(line4), 96, 0.001)
+
+  const at = (rx, ball = { x: 70, y: 40 }) => checkOffside({ receiver: { x: rx, y: 40 }, opponents: line4, ball })
+  checkDir('라인 뒤(x=98) → 오프사이드', at(98).offside === true)
+  checkDir('라인 앞(x=94) → 온사이드', at(94).offside === false)
+  checkDir('동일선상(x=96) → 온사이드 (실축 규칙)', at(96).offside === false)
+
+  // 우리 진영에서는 오프사이드가 없다 — 라인을 넘겨도 x ≤ 60이면 성립 안 함
+  const ownHalf = [defAt(50, 30), defAt(52, 40), defAt(55, 50)]
+  checkDir(
+    '우리 진영(x=58)은 라인을 넘어도 온사이드',
+    checkOffside({ receiver: { x: 58, y: 40 }, opponents: ownHalf, ball: { x: 40, y: 40 } }).offside === false,
+  )
+
+  // 공보다 뒤에 있으면 온사이드 (백패스는 절대 오프사이드가 아니다)
+  checkDir(
+    '공보다 뒤(백패스) → 온사이드',
+    checkOffside({ receiver: { x: 98, y: 40 }, opponents: line4, ball: { x: 105, y: 40 } }).offside === false,
+  )
+
+  // 수비수가 1명 이하면 라인이 정의되지 않는다
+  checkDir('수비 1명 → 라인 없음(판정 불가)', offsideLineX([defAt(90, 40)]) === null)
+}
+
+console.log('[오프사이드] resolveSequence 통합 — 확정 실패 + 턴오버')
+{
+  const defs = [defAt(90, 30), defAt(92, 38), defAt(94, 46), defAt(96, 54), { ...defAt(116.5, 40), position: 'GK' }]
+  // 판정 기준은 "패스가 떠나는 순간 리시버가 서 있던 자리"(players의 좌표)이지 도착점이 아니다.
+  const mkPass = (toX) => ({
+    type: 'pass', actorId: 'a1', receiverId: 'a2', actor: neutral(),
+    from: { x: 70, y: 40 }, to: { x: toX, y: 40 }, ctrl: midpoint({ x: 70, y: 40 }, { x: toX, y: 40 }),
+  })
+  // (i) 리시버가 이미 라인(96) 뒤에 서 있다 → 오프사이드
+  const standingOff = [{ id: 'a1', x: 70, y: 40 }, { id: 'a2', x: 104, y: 40 }]
+  const off = resolveSequence([mkPass(104)], { opponents: defs, players: standingOff, seed: 1 })
+  checkDir(`라인 뒤에 서 있는 리시버 → outcome=OFFSIDE (${off.outcome})`, off.outcome === 'OFFSIDE')
+  checkDir('오프사이드 스텝은 확정 실패', off.steps[0].success === false && off.steps[0].offside === true)
+  checkDir(`오프사이드면 pTotal=0 (${off.pTotal})`, off.pTotal === 0)
+
+  // (ii) 리시버가 라인 앞에서 출발해 공을 향해 달려든다 → 도착점이 라인 뒤여도 온사이드.
+  //      역습 스루패스가 성립하는 근거 — 90+1 장면 재현이 오프사이드로 막히면 안 된다.
+  const runningOn = [{ id: 'a1', x: 70, y: 40 }, { id: 'a2', x: 70, y: 44 }]
+  const thru = resolveSequence([mkPass(104)], { opponents: defs, players: runningOn, seed: 1 })
+  checkDir(`침투 패스(뒤에서 출발) → 온사이드 (${thru.outcome})`, thru.steps[0].offside === false && thru.outcome !== 'OFFSIDE')
+
+  const on = resolveSequence([mkPass(92)], { opponents: defs, players: runningOn, seed: 1 })
+  checkDir(`라인 앞 패스는 오프사이드 아님 (${on.outcome})`, on.steps[0].offside === false && on.outcome !== 'OFFSIDE')
+
+  // 계획 단계 경고는 판정과 같은 좌표를 본다 (하이브리드 (a) 단계)
+  const warn = planOffside([mkPass(104)], { opponents: defs, players: standingOff })
+  checkDir('planOffside가 같은 패스를 경고', warn.length === 1 && warn[0].receiverId === 'a2')
+  checkDir('침투 패스는 경고 없음', planOffside([mkPass(104)], { opponents: defs, players: runningOn }).length === 0)
+  checkDir('온사이드 패스는 경고 없음', planOffside([mkPass(92)], { opponents: defs, players: runningOn }).length === 0)
+
+  // 드리블·슛은 오프사이드 대상이 아니다
+  const drib = { type: 'dribble', actorId: 'a1', actor: neutral(), from: { x: 70, y: 40 }, to: { x: 104, y: 40 }, ctrl: midpoint({ x: 70, y: 40 }, { x: 104, y: 40 }) }
+  checkDir('드리블은 오프사이드 판정 대상 아님', planOffside([drib], { opponents: defs, players: standingOff }).length === 0)
 }
 
 // ── 3c. xT 그리드 / PlanScore (판정과 독립) ──────────────────────────
