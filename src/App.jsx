@@ -238,6 +238,25 @@ function App() {
     if (sheetFull) return
     setChainActs((cs) => [...cs, { type: receiverId === 'GOAL' ? 'shot' : 'pass', receiverId, to, ctrl: null }])
   }
+  // 스루패스 = "리시버의 침투 런" + "그 도착점으로 가는 패스".
+  // 새 액션 타입을 만들지 않는다 — 런이 패스보다 먼저 적용되므로(applyRunsAt(i)가
+  // 체인 i번 액션 앞에서 돈다) 패스의 도착점이 자동으로 그 공간이 되고,
+  // 판정·연출·오프사이드가 전부 기존 경로를 그대로 탄다.
+  //   · playback: 런의 consumer가 이 패스라 "공 도착 시각에 맞춰 도착"하도록 역산된다 = 침투
+  //   · offside : 판정 기준은 패스 출발 순간의 리시버 좌표(런 반영 전)라 온사이드가 된다
+  const addThroughPass = (receiverId, pt) => {
+    if (sheetFull) return
+    const idx = chainActs.length // 이 패스가 놓일 체인 인덱스 = 런의 앵커
+    let to = pt
+    if (sheetMode) {
+      const from = (snaps[idx] ?? planPos)[receiverId]
+      const player = byId[receiverId]
+      if (from && player && sheetDur > 0) to = clampToReach(from, to, reachRadius(player, sheetDur))
+    }
+    setRuns((rs) => [...rs, { id: receiverId, to, ctrl: null, afterIndex: idx }])
+    setChainActs((cs) => [...cs, { type: 'pass', receiverId, to: null, ctrl: null, through: true }])
+  }
+
   const setChainHandle = (i, h) => {
     const leg = chain[i]
     if (!leg) return
@@ -458,6 +477,7 @@ function App() {
               onDribbleDrop={dropDribble}
               onChainHandle={setChainHandle}
               onPassCommit={addPass}
+              onThroughCommit={addThroughPass}
             />
             {frame?.fx?.flash > 0 && <div className="board-flash" style={{ opacity: frame.fx.flash * 0.55 }} />}
           </div>
@@ -520,7 +540,7 @@ function App() {
                 {chain.map((leg, i) => (
                   <li key={`c${i}`} className="action-row">
                     <span>
-                      {i + 1}. {TYPE_LABEL[leg.type]} — {byId[leg.actorId].name}
+                      {i + 1}. {chainActs[leg.index]?.through ? '스루패스' : TYPE_LABEL[leg.type]} — {byId[leg.actorId].name}
                       {leg.type === 'pass' ? ` → ${byId[leg.receiverId].name}` : leg.type === 'shot' ? ' → 골문' : ''}
                     </span>
                     {phase === 'plan' && (
