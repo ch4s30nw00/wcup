@@ -25,3 +25,4 @@ dist-ssr
 
 # Claude Code 로컬 실행 설정 (머신별 경로 포함)
 .claude/
+.vercel
