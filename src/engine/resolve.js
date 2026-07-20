@@ -58,6 +58,21 @@ const normH = (h) => K.STAT_FLOOR + (1 - K.STAT_FLOOR) * Math.min(1, Math.max(0,
 const sigmoid = (z) => 1 / (1 + Math.exp(-z))
 const clampP = (p) => Math.min(K.P_MAX, Math.max(K.P_MIN, p))
 
+// 경합 게이트 (v2.2) — 압박이 0이면 실패도 0. gate(0)=0, press↑ → gate→1.
+// **드리블 전용**이다 (constants.js CONTEST 주석 참고).
+export const contestGate = (press) => 1 - Math.exp(-Math.max(0, press) / K.CONTEST.KAPPA)
+
+// calc*()의 결과를 최종 성공 확률로.
+//   press가 주어지면(드리블): p = 1 − (1 − clamp(σ(z))) · gate(press)
+//     → 무압박이면 1.0(확정 성공), 압박이 붙을수록 기존 로지스틱 값으로 수렴.
+//     clamp는 "경합 상태의 확률"에만 걸린다 — 무압박 확정 성공이 P_MAX(0.97)에 깎이면
+//     "수비수 없으면 실패 없어야 한다"는 요구를 만족하지 못하기 때문.
+//   press가 없으면(패스·슛): 기존 그대로 clamp(σ(z)).
+export function probOf({ z, press = null }) {
+  const raw = clampP(sigmoid(z))
+  return press == null ? raw : 1 - (1 - raw) * contestGate(press)
+}
+
 // 소프트 프레셔 — 모든 액션이 공용하는 연속 감쇠. 로그오즈에 β(<0)·pressure로 가산.
 const pressure = (d, R) => Math.exp(-d / R)
 
@@ -215,7 +230,10 @@ export function calcDribble(action, opponents) {
   })
   let z = C.Z0 + C.B_SKILL * (sDrib - 0.7) + C.B_LEN * L + def.z
   if (def.worst) z += C.B_BODY * def.worst.pr * (bodyOf(action.actor) - bodyOf(def.worst.o))
-  return { z, worst: def.worst }
+  // press = 이 드리블에 걸린 수비 압박의 크기. 0이면 뺏을 사람이 없다는 뜻이라
+  // 경합 게이트가 실패 확률을 0으로 만든다 (probOf 참고).
+  // def.z는 최근접 1명의 B_DEF·defScale·e^(−d/R) 이므로 항상 ≤ 0 — 부호만 뒤집는다.
+  return { z, worst: def.worst, press: -def.z }
 }
 
 const LABEL = { pass: '패스', dribble: '드리블', shot: '슛' }
@@ -290,8 +308,9 @@ export function resolveSequence(actions, ctx) {
         ? checkOffside({ receiver: timeline[k].receiverAt ?? a.to, opponents: defs, ball: a.from })
         : { offside: false }
     const defPos = Object.fromEntries(timeline[k].after.map((d) => [d.id, { x: d.x, y: d.y }]))
+    // press는 드리블만 실어 온다 → 패스·슛은 기존 산식 그대로 (probOf 참고)
     return {
-      p: clampP(sigmoid(c.z + flowBonus(k))),
+      p: probOf({ z: c.z + flowBonus(k), press: c.press ?? null }),
       worst: c.worst,
       header: c.header,
       cross: c.cross,

@@ -12,6 +12,10 @@ const ga = (w) => josa(w, '이', '가') // 손흥민이 / 페페가
 const eul = (w) => josa(w, '을', '를')
 const ui = (w) => w + '의'
 
+// UI에서도 같은 조사 규칙을 쓰도록 공개 — 이름마다 받침이 달라서 "황희찬가"처럼 새기 쉽다
+export const josaGa = ga // 이/가
+export const josaEun = (w) => josa(w, '은', '는')
+
 // names: { a: 액션 주체, b: 패스 수신자, d: 차단한 수비수 }
 const POOL = {
   dribble: [
