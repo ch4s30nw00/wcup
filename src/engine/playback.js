@@ -41,11 +41,32 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       to = { x: 121.5, y: a.to.y + (a.to.y < 40 ? -4.5 : 4.5) }
       ctrl = midpoint(a.from, to)
     }
-    const pts = samplePath(a.from, ctrl, to)
+    let pts = samplePath(a.from, ctrl, to)
+    // 아무도 안 건드린 패스 실패 = "빠진 패스". 목표 지점에서 멈추지 않고 그대로 흘러간다.
+    // 원래 곡선을 그대로 두고 끝점 접선 방향으로 직선 구간을 이어 붙인다 —
+    // ctrl을 다시 잡으면 유저가 그린 궤적의 휨이 사라지기 때문.
+    let missFrac = null
+    if ((a.type === 'pass' || a.type === 'cross') && !step.success && !step.interceptorId) {
+      const tail = pts[pts.length - 1]
+      const prevPt = pts[pts.length - 2] ?? a.from
+      const dx = tail.x - prevPt.x
+      const dy = tail.y - prevPt.y
+      const dl = Math.hypot(dx, dy) || 1
+      const origLen = pathLength(pts)
+      const over = K.PLAY.PASS_OVERRUN
+      const run = []
+      for (let s = 1; s <= 8; s++) {
+        const t = (over * s) / 8
+        run.push({ x: clamp(tail.x + (dx / dl) * t, -1.5, 121.5), y: clamp(tail.y + (dy / dl) * t, -1.5, 81.5) })
+      }
+      pts = [...pts, ...run]
+      // 자막("패스가 흐릅니다")은 공이 원래 목표를 지나치는 순간에 뜨도록
+      missFrac = origLen / (pathLength(pts) || 1)
+    }
     const len = pathLength(pts)
     const dur = durFor(len, SPEED[a.type] ?? SPEED.pass)
     const prev = legs[legs.length - 1]
-    legs.push({ ...a, step, pts, len, start: prev ? prev.start + prev.dur + 200 : 300, dur })
+    legs.push({ ...a, step, pts, len, missFrac, start: prev ? prev.start + prev.dur + 200 : 300, dur })
   })
 
   const segs = [] // 선수 이동 세그먼트 (런 + 드리블)
@@ -180,7 +201,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     }
     captions.push({ t: leg.start, text: commentaryFor(leg.type, names, rngC) })
     if (leg.step.success === false) {
-      const when = leg.start + leg.dur * (leg.step.interceptFrac ?? 1) + 100
+      const when = leg.start + leg.dur * (leg.step.interceptFrac ?? leg.missFrac ?? 1) + 100
       captions.push({ t: when, text: commentaryFor(FAIL_EVENT[leg.type][names.d ? 'cut' : 'miss'], names, rngC) })
     } else if (leg.type === 'shot' && i === legs.length - 1) {
       captions.push({ t: leg.start + leg.dur, text: commentaryFor('goal', names, rngC) })
