@@ -8,6 +8,7 @@ import { calcShot, calcPass, calcDribble, resolveSequence, planOffside } from '.
 import { checkOffside, offsideLineX } from '../src/engine/offside.js'
 import { initDefense, advanceDefense } from '../src/engine/defense.js'
 import { matchScore } from '../src/engine/match.js'
+import { XT_GRID, xtAt, planScore, planGrade } from '../src/engine/xt.js'
 import { midpoint } from '../src/engine/geometry.js'
 import { K } from '../src/engine/constants.js'
 import { readFileSync } from 'node:fs'
@@ -206,6 +207,48 @@ console.log('[오프사이드] resolveSequence 통합 — 확정 실패 + 턴오
   // 드리블·슛은 오프사이드 대상이 아니다
   const drib = { type: 'dribble', actorId: 'a1', actor: neutral(), from: { x: 70, y: 40 }, to: { x: 104, y: 40 }, ctrl: midpoint({ x: 70, y: 40 }, { x: 104, y: 40 }) }
   checkDir('드리블은 오프사이드 판정 대상 아님', planOffside([drib], { opponents: defs, players: standingOff }).length === 0)
+// ── 3c. xT 그리드 / PlanScore (판정과 독립) ──────────────────────────
+console.log('\n[xT] 정적 그리드 — 벨만 재귀 수렴 결과의 형태')
+{
+  checkDir(`그리드 크기 ${XT_GRID.length} = NX×NY (${K.XT.NX}×${K.XT.NY})`, XT_GRID.length === K.XT.NX * K.XT.NY)
+  checkDir('모든 값이 유효 확률 범위 [0, 1]', XT_GRID.every((v) => v >= 0 && v <= 1))
+
+  // 중앙선을 따라 전진하면 xT가 단조 증가해야 한다.
+  // (소유 유지율 ρ 없이 짰을 때 그리드가 평평해진 적이 있어 회귀 방지용으로 남긴다.)
+  const line = [10, 30, 50, 70, 90, 100, 110].map((x) => xtAt({ x, y: 40 }))
+  const monotone = line.every((v, i) => i === 0 || v > line[i - 1])
+  checkDir(`중앙 전진 시 xT 단조 증가 (${line.map((v) => v.toFixed(4)).join(' → ')})`, monotone)
+
+  // 골문 앞이 자기 진영보다 훨씬 위협적이어야 한다 (평평하면 이 배수가 1에 가까워진다)
+  const ratio = xtAt({ x: 118, y: 40 }) / xtAt({ x: 10, y: 40 })
+  checkDir(`골문 앞 / 자기 진영 xT 비 = ${ratio.toFixed(1)}배 (> 20)`, ratio > 20)
+
+  // 같은 x에서는 중앙이 측면보다 위협적
+  checkDir(
+    `중앙(y=40) > 측면(y=8) at x=105 (${xtAt({ x: 105, y: 40 }).toFixed(4)} > ${xtAt({ x: 105, y: 8 }).toFixed(4)})`,
+    xtAt({ x: 105, y: 40 }) > xtAt({ x: 105, y: 8 }),
+  )
+}
+
+console.log('[xT] PlanScore — 전진 설계는 +, 후퇴는 −')
+{
+  const fwd = planScore([
+    { type: 'dribble', from: { x: 48, y: 34 }, to: { x: 82, y: 36 } },
+    { type: 'pass', from: { x: 82, y: 36 }, to: { x: 105, y: 45 } },
+    { type: 'shot', from: { x: 105, y: 45 }, to: { x: 119, y: 39 } },
+  ])
+  checkDir(`90+1 재현 체인 PlanScore = +${fwd.total.toFixed(4)} (양수)`, fwd.total > 0)
+  checkDir('스텝 델타 합 = total', Math.abs(fwd.steps.reduce((m, s) => m + s.delta, 0) - fwd.total) < 1e-12)
+  checkDir(`등급 S/A (${planGrade(fwd.total).label})`, ['S', 'A'].includes(planGrade(fwd.total).label))
+
+  const back = planScore([{ type: 'pass', from: { x: 80, y: 40 }, to: { x: 40, y: 40 } }])
+  checkDir(`백패스 PlanScore = ${back.total.toFixed(4)} (음수)`, back.total < 0)
+
+  // 판정과 독립 — 수비수·시드를 전혀 보지 않는다 (같은 체인이면 항상 같은 점수)
+  const a = planScore([{ type: 'pass', from: { x: 60, y: 40 }, to: { x: 100, y: 40 } }]).total
+  const b = planScore([{ type: 'pass', from: { x: 60, y: 40 }, to: { x: 100, y: 40 } }]).total
+  checkDir('결정론 — 같은 체인이면 같은 점수', a === b)
+  checkDir('빈 체인은 0점', planScore([]).total === 0)
 }
 
 // ── 4. 실제 시나리오 스모크: 90+1 역습 재현 체인 ─────────────────────

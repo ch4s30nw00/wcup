@@ -322,6 +322,58 @@ header h1 .sub {
   color: #ff8a7d;
 }
 
+/* --- 플레이 설계 점수 (xT 델타) --- */
+.plan-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.plan-grade {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  width: 34px;
+  text-align: center;
+  border-radius: 6px;
+  padding: 4px 0;
+  background: #232c3d;
+}
+.plan-grade.g-S { color: #ffd23e; background: rgba(255, 210, 62, 0.16); }
+.plan-grade.g-A { color: #5fce7b; background: rgba(46, 160, 67, 0.16); }
+.plan-grade.g-B { color: #9fd8ff; background: rgba(120, 200, 255, 0.14); }
+.plan-grade.g-C { color: #9aa3b5; }
+.plan-grade.g-D { color: #ff8a7d; background: rgba(200, 16, 46, 0.14); }
+.plan-total {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.plan-total.up, .plan-steps .up { color: #5fce7b; }
+.plan-total.down, .plan-steps .down { color: #ff8a7d; }
+.plan-text {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: #9aa3b5;
+}
+.plan-steps {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 12.5px;
+}
+.plan-steps li {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  font-variant-numeric: tabular-nums;
+}
+.plan-note {
+  margin-top: 9px;
+  font-size: 11px;
+  color: #6b7385;
+  line-height: 1.55;
+}
+
 .kickoff {
   padding: 0 26px;
   white-space: nowrap;
