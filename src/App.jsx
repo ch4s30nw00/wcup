@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import TacticsBoard from './components/TacticsBoard'
 import { TitleScreen, MatchSelect } from './components/Intro'
 import { resolveSequence, planOffside, DEF_RADIUS } from './engine/resolve'
@@ -6,6 +6,7 @@ import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
 import { actionDuration, reachRadius, clampToReach } from './engine/sheets'
 import { planScore, planGrade } from './engine/xt'
+import { isMuted, setMuted, resumeAudio, whistle, goalRoar, startMurmur, stopMurmur } from './engine/sound'
 import playersData from './data/players.json'
 import formations from './data/formations.json'
 import scenario from './data/scenarios.json'
@@ -57,6 +58,8 @@ function App() {
   const [result, setResult] = useState(null)
   const [frame, setFrame] = useState(null) // 재생 중 위치: { home, opp, ball, caption }
   const playbackRef = useRef(null) // playSequence가 돌려주는 { cancel }
+  const [mutedUI, setMutedUI] = useState(isMuted())
+  const goalSoundRef = useRef(false) // 재생 1회당 골 함성 1번만
 
   const basePos = (id) => ({ x: byId[id].x, y: byId[id].y })
 
@@ -259,6 +262,12 @@ function App() {
     setResult(res)
     setEggClosed(false)
     setPhase('playing')
+    // 사운드: 버튼 클릭(사용자 제스처) 안이라 여기서 오디오를 깨울 수 있다.
+    // 주심 휘슬로 플레이를 시작하고, 재생 동안 관중 웅성거림을 깔아둔다.
+    resumeAudio()
+    goalSoundRef.current = false
+    whistle({ duration: 0.32, freq: 2350 })
+    startMurmur()
     playbackRef.current = playSequence({
       actions,
       result: res,
@@ -273,8 +282,24 @@ function App() {
     })
   }
 
+  // 골 순간(플래시가 뜨는 프레임)에 함성 — playback이 이미 그 타이밍을 알고 있으므로
+  // 사운드 전용 타이머를 따로 두지 않고 연출 신호에 얹는다.
+  useEffect(() => {
+    if (frame?.fx?.flash > 0 && !goalSoundRef.current) {
+      goalSoundRef.current = true
+      goalRoar()
+    }
+  }, [frame])
+
+  // 재생이 끝나거나 화면을 떠나면 앰비언트를 정리한다
+  useEffect(() => {
+    if (phase === 'plan') stopMurmur()
+  }, [phase])
+  useEffect(() => stopMurmur, [])
+
   function backToPlan() {
     playbackRef.current?.cancel()
+    stopMurmur()
     setPhase('plan')
     setFrame(null)
     setResult(null)
@@ -311,6 +336,18 @@ function App() {
         <div className="header-row">
           <button className="ctrl board-back" onClick={goToSelect} title="경기 선택으로 돌아가기">‹</button>
           <h1>⚽ 터치라인 <span className="sub">전술보드 프로토타입</span></h1>
+          <button
+            className="ctrl sound-toggle"
+            onClick={() => {
+              const next = setMuted(!mutedUI)
+              setMutedUI(next)
+              if (!next) resumeAudio()
+            }}
+            title={mutedUI ? '소리 켜기' : '소리 끄기'}
+            aria-label={mutedUI ? '소리 켜기' : '소리 끄기'}
+          >
+            {mutedUI ? '🔇' : '🔊'}
+          </button>
         </div>
         <div className="mission-card">
           <div className="mission-title">{scenario.title}</div>
