@@ -111,7 +111,6 @@ function App() {
   const shotTaken = chainActs.some((a) => a.type === 'shot')
   const ballPlanPos = chain.length ? chain[chain.length - 1].to : basePos(moment.ball)
 
-<<<<<<< HEAD
   // 오프사이드 경고 (하이브리드 (a) 단계) — 설계는 막지 않고 빨간 점멸로만 알린다.
   // 실행 시의 확정 실패 판정과 같은 함수·같은 좌표를 쓴다 (engine/offside.js).
   const offsideWarn = useMemo(
@@ -119,7 +118,7 @@ function App() {
     [chain],
   )
   const offsideIds = useMemo(() => new Set(offsideWarn.map((w) => w.receiverId)), [offsideWarn])
-=======
+
   // --- 시트 모드 파생값 ---
   // 편집 중인 시트 = sheetCount 인덱스. 그 시트의 공 액션이 걸리는 시간이
   // 이번 시트에서 모두가 움직일 수 있는 시간 예산 = 동심원 반경의 근거.
@@ -155,7 +154,6 @@ function App() {
     setSheetCount(Math.min(sheetCount, i))
     setViewSheet(null)
   }
->>>>>>> feat/design-ui
 
   // 이스터에그 — 실제 경기 재현 감지: 골로 끝났고, 마지막 슛을 실제 득점자가 쐈고,
   // 그에게 간 마지막 패스를 실제 도움 선수가 줬으면 "그날의 장면" 팝업을 띄운다.
