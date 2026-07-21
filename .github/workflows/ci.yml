@@ -1,0 +1,41 @@
+# PR·푸시마다 엔진 검증 + 린트 + 빌드를 돌린다.
+# 목적: "시안 돌려보기" 전에 깨진 빌드가 배포되는 것을 막는다.
+# 비밀값(secret)이 필요 없어 저장소 admin 권한 없이도 바로 동작한다.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # 산식확정 보고서의 검증 앵커 15개 + 신규 메커니즘 + 공유 링크 왕복.
+      # 계수를 건드려 앵커가 깨지면 여기서 빨간불이 뜬다 (실패 시 exit 1).
+      - name: 엔진 검증 (앵커 15개 포함)
+        run: node scripts/verify.mjs
+
+      - name: 린트
+        run: npm run lint
+
+      - name: 빌드
+        run: npm run build
+
+      # OG 이미지는 생성 스크립트의 산출물이라, 커밋된 파일과 재생성 결과가 어긋나면
+      # 링크 미리보기가 코드와 달라진다. 재생성해서 차이가 없는지 확인한다.
+      - name: OG 이미지가 최신인지 확인
+        run: |
+          node scripts/gen-og.mjs
+          git diff --exit-code -- public/og.png \
+            || (echo "::error::public/og.png가 scripts/gen-og.mjs 결과와 다릅니다. 스크립트를 실행하고 커밋하세요." && exit 1)

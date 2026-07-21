@@ -10,6 +10,7 @@ import { midpoint, ctrlFromHandle } from './engine/geometry'
 import { actionDuration, reachRadius, clampToReach, throughTarget } from './engine/sheets'
 import { planScore, planGrade } from './engine/xt'
 import { isMuted, setMuted, resumeAudio, whistle, goalRoar, startMurmur, stopMurmur } from './engine/sound'
+import { decodeShare, shareUrl } from './engine/share'
 import playersData from './data/players.json'
 import formations from './data/formations.json'
 import scenario from './data/scenarios.json'
@@ -26,10 +27,16 @@ const basePlayers = onPitch(homeSquad).map((p, i) => ({ ...p, x: slots[i]?.x, y:
 const opponents = onPitch(awaySquad).map((p, i) => ({ ...p, x: 120 - (slots[i]?.x ?? 0), y: 80 - (slots[i]?.y ?? 0), ...moment.positions?.[p.id] }))
 const byId = Object.fromEntries([...basePlayers, ...opponents].map((p) => [p.id, p]))
 
-// URL ?seed= 가 있으면 그 시드로 — 같은 링크 = 같은 결과 (재현 보장)
-const SEED_PARAM = Number(new URLSearchParams(window.location.search).get('seed'))
-const HAS_SEED_LINK = Number.isFinite(SEED_PARAM) && SEED_PARAM > 0
-const SEED = HAS_SEED_LINK ? SEED_PARAM : Math.floor(Math.random() * 1e9)
+// --- 공유 링크 해석 ---
+// ?p= 는 "시드 + 전술"을 통째로 담은 공유 링크(engine/share.js). 받은 사람이 내가 짠
+// 전술을 그대로 본다. ?seed= 만 있는 옛 링크도 계속 동작한다(시드만 재현).
+// 선수 인덱스는 온필드 명단 순서 기준 — 인코딩·디코딩이 같은 배열을 봐야 한다.
+const PLAYER_IDS = basePlayers.map((p) => p.id)
+const QS = new URLSearchParams(window.location.search)
+const SHARED = decodeShare(QS.get('p'), { playerIds: PLAYER_IDS })
+const SEED_PARAM = Number(QS.get('seed'))
+const HAS_SEED_LINK = !!SHARED || (Number.isFinite(SEED_PARAM) && SEED_PARAM > 0)
+const SEED = SHARED ? SHARED.seed : HAS_SEED_LINK ? SEED_PARAM : Math.floor(Math.random() * 1e9)
 
 const TYPE_LABEL = { dribble: '드리블', pass: '패스', shot: '슛' }
 const OUTCOME_LABEL = {
@@ -45,11 +52,11 @@ function App() {
   const [screen, setScreen] = useState(HAS_SEED_LINK ? 'board' : 'intro')
   // 공 전개 체인 (순서 있는 액션 리스트) — 같은 선수가 여러 번 드리블/수신 가능
   // { type:'dribble', to, ctrl } | { type:'pass'|'shot', receiverId, to(슛만), ctrl }
-  const [chainActs, setChainActs] = useState([])
+  const [chainActs, setChainActs] = useState(SHARED?.chainActs ?? [])
   // 오프볼 런 리스트: [{ id, to, ctrl|null, afterIndex }] — 선수당 여러 개 가능.
   // afterIndex = "체인의 이 인덱스 액션이 시작되기 전에 출발" — 앵커.
   // 받고→넘기고→또 뛰는 것처럼 같은 선수가 시점이 다른 런을 여러 개 가질 수 있다.
-  const [runs, setRuns] = useState([])
+  const [runs, setRuns] = useState(SHARED?.runs ?? [])
   const [selectedId, setSelectedId] = useState(null)
   // 시트(페이즈) 모드 — 기존 원샷 설계와 병행하는 프로토타입 토글.
   // sheetCount = 확정된 시트 수. 그 인덱스의 시트가 지금 편집 중인 시트다.
@@ -62,6 +69,7 @@ function App() {
   const [frame, setFrame] = useState(null) // 재생 중 위치: { home, opp, ball, caption }
   const playbackRef = useRef(null) // playSequence가 돌려주는 { cancel }
   const [mutedUI, setMutedUI] = useState(isMuted())
+  const [copied, setCopied] = useState(null) // 공유 버튼 피드백: null | 'ok' | 'fail'
   const goalSoundRef = useRef(false) // 재생 1회당 골 함성 1번만
 
   const basePos = (id) => ({ x: byId[id].x, y: byId[id].y })
@@ -305,10 +313,35 @@ function App() {
     }
   }
 
+  // --- 공유 링크 ---
+  // 시드 + 전술을 통째로 담은 URL. 주소창도 같이 갱신해 두면 버튼을 못 쓰는 환경
+  // (클립보드 권한 거부 등)에서도 주소창 복사가 곧 공유가 된다.
+  const currentShareUrl = () =>
+    shareUrl({
+      seed: SEED,
+      chainActs,
+      runs,
+      playerIds: PLAYER_IDS,
+      origin: window.location.origin,
+      pathname: window.location.pathname,
+    })
+  async function copyShareLink() {
+    const url = currentShareUrl()
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied('ok')
+    } catch {
+      setCopied('fail') // HTTPS가 아니거나 권한 거부 — 주소창에는 이미 같은 링크가 들어가 있다
+    }
+    setTimeout(() => setCopied(null), 2400)
+  }
+
   // --- 확정 → 판정 → 재생 ---
   // 판정은 resolveSequence(스냅샷 1회), 연출은 playSequence(engine/playback.js)가 전담
   function handleConfirm() {
     if (!chain.length || phase === 'playing') return
+    // 실행하는 순간의 전술을 주소창에 반영 — 새로고침·주소창 복사로도 같은 장면이 재현된다
+    window.history.replaceState(null, '', currentShareUrl())
     const actions = chain.map((leg) => ({ ...leg, actor: byId[leg.actorId] }))
     // players: 수비 재배치의 마킹 대상 (계획 시작 좌표 기준 — 런 반영은 액션 진행 중 근사)
     const res = resolveSequence(actions, { opponents, players: basePlayers, seed: SEED })
@@ -560,7 +593,11 @@ function App() {
                   ))}
                 </ul>
                 <div className="reason">{result.reason}</div>
-                <div className="seed">seed {result.seed} — 같은 시드·같은 전술이면 결과도 같습니다</div>
+                {/* 공유: 시드뿐 아니라 전술 체인까지 링크에 담는다 — 받은 사람이 같은 장면을 그대로 본다 */}
+                <button className="share-btn" onClick={copyShareLink}>
+                  {copied === 'ok' ? '✅ 링크 복사됨!' : copied === 'fail' ? '⚠️ 복사 실패 — 주소창을 복사해주세요' : '🔗 이 전술 공유하기'}
+                </button>
+                <div className="seed">seed {result.seed} — 같은 링크를 연 사람은 이 전술·이 결과를 그대로 봅니다</div>
               </div>
             ) : (
               <p className="muted">{phase === 'playing' ? '재생 중…' : '전개를 설계하고 전술 확정을 누르면 결과가 표시됩니다.'}</p>
