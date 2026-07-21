@@ -270,10 +270,19 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     for (const s of segs) {
       if (el < s.start) continue
       if (el <= s.start + s.dur) {
-        const k = Math.min(ease((el - s.start) / s.dur), s.capFrac ?? 1)
+        const u = ease((el - s.start) / s.dur)
+        const k = Math.min(u, s.capFrac ?? 1)
         const pos = pointAtLength(s.pts, k * s.len)
+        // 시작 순간 순간이동 방지 — 스크립트가 켜지기 전까지 시뮬로 떠돌던 실제 위치와
+        // 경로 시작점(작성 당시 좌표)의 차이를 오프셋으로 잡고 경로를 따라 0으로 녹인다.
+        // 종점 오차는 0이라 패스 수신 지점은 그대로 맞는다.
+        if (!s.warp) {
+          const cur = sim[s.id]
+          s.warp = { x: cur.x - s.pts[0].x, y: cur.y - s.pts[0].y }
+        }
+        const w = 1 - u
         scripted.add(s.id)
-        Object.assign(sim[s.id], { x: pos.x, y: pos.y, vx: 0, vy: 0 })
+        Object.assign(sim[s.id], { x: pos.x + s.warp.x * w, y: pos.y + s.warp.y * w, vx: 0, vy: 0 })
       } else if (!s.done) {
         s.done = true
         const pos = pointAtLength(s.pts, (s.capFrac ?? 1) * s.len)
@@ -283,10 +292,12 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     if (interceptor) {
       if (el <= interceptor.end) {
         const k = ease((el - interceptor.start) / (interceptor.end - interceptor.start))
+        // 차단 시작 시점의 실제 위치에서 출발 (기록된 from으로 튀지 않도록)
+        const from = (interceptor.warp ??= { x: sim[interceptor.id].x, y: sim[interceptor.id].y })
         scripted.add(interceptor.id)
         Object.assign(sim[interceptor.id], {
-          x: interceptor.from.x + (interceptor.to.x - interceptor.from.x) * k,
-          y: interceptor.from.y + (interceptor.to.y - interceptor.from.y) * k,
+          x: from.x + (interceptor.to.x - from.x) * k,
+          y: from.y + (interceptor.to.y - from.y) * k,
           vx: 0,
           vy: 0,
         })
@@ -419,7 +430,9 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         // 약속 장소(런 출발점·패스 수신점)에 미리 가서 못 박혀 있지 않는다 —
         // 이동 소요시간이 임박할 때까지는 아래 일반 무빙을 계속하다가 그때 출발
         const s = sim[p.id]
-        const need = (Math.hypot(pending.point.x - s.x, pending.point.y - s.y) / 5.5) * 1000
+        // 가속 한계·노이즈 때문에 실제 접근 속도는 spd(6.5)보다 느리다 —
+        // 넉넉히 잡아야 약속 시각에 못 맞춰 뒤늦게 끌려가는 그림이 안 나온다
+        const need = (Math.hypot(pending.point.x - s.x, pending.point.y - s.y) / 4.5) * 1000
         if (pending.t - el <= need + 500) {
           target = pending.point
           spd = 6.5

@@ -338,6 +338,65 @@ console.log('\n[스모크] 실제 데이터로 resolveSequence (손흥민 드리
   checkDir('확률이 유효 범위', res.steps.every((s) => s.p >= K.P_MIN && s.p <= K.P_MAX))
 }
 
+// ── 4b. 경기 데이터 무결성 — 모든 플레이 가능 경기 ───────────────────
+// 장면 JSON이 참조하는 선수 id가 players.json에 없으면 보드가 빈 채로 뜬다.
+// 좌표 오타(피치 밖)도 여기서 잡는다 — 브라우저를 열기 전에.
+console.log('\n[경기 데이터] 플레이 가능한 모든 경기의 참조 무결성')
+{
+  const players = JSON.parse(readFileSync(new URL('../src/data/players.json', import.meta.url), 'utf-8'))
+  const byId = Object.fromEntries(players.map((p) => [p.id, p]))
+  const scenarios = ['scenarios.json', 'scene-eng-arg.json'].map((f) =>
+    JSON.parse(readFileSync(new URL(`../src/data/${f}`, import.meta.url), 'utf-8')),
+  )
+
+  for (const scn of scenarios) {
+    const moment = scn.moments[0]
+    const ids = Object.keys(moment.positions)
+    const missing = ids.filter((id) => !byId[id])
+    checkDir(`${scn.match_id}: 참조 선수 ${ids.length}명 전원 players.json에 존재`, missing.length === 0, missing.join(', '))
+    checkDir(`${scn.match_id}: 공 소유자(${moment.ball})가 온필드`, ids.includes(moment.ball))
+
+    const home = ids.filter((id) => byId[id]?.team === scn.home)
+    const away = ids.filter((id) => byId[id]?.team === scn.away)
+    checkDir(`${scn.match_id}: ${scn.home} ${home.length}명 vs ${scn.away} ${away.length}명 (양 팀 11명)`, home.length === 11 && away.length === 11)
+    checkDir(`${scn.match_id}: 공 소유자가 home(${scn.home}) 소속 — 조작하는 팀이 공을 가진다`, byId[moment.ball]?.team === scn.home)
+    checkDir(`${scn.match_id}: 양 팀 GK 1명씩`, [home, away].every((t) => t.filter((id) => byId[id].position === 'GK').length === 1))
+
+    const oob = ids.filter((id) => {
+      const { x, y } = moment.positions[id]
+      return !(x >= 0 && x <= 120 && y >= 0 && y <= 80)
+    })
+    checkDir(`${scn.match_id}: 전원 좌표가 피치(120×80) 안`, oob.length === 0, oob.join(', '))
+    checkDir(`${scn.match_id}: 좌표 중복 없음 (겹쳐 선 선수)`, new Set(ids.map((id) => `${moment.positions[id].x},${moment.positions[id].y}`)).size === ids.length)
+  }
+}
+
+// ── 4c. 새 경기 스모크: 84:46 데 파울 —— 실제로 판정이 도는가 ─────────
+console.log('\n[스모크] 아르헨티나-잉글랜드 84:46 (데 파울 크로스 → 라우타로 슛)')
+{
+  const players = JSON.parse(readFileSync(new URL('../src/data/players.json', import.meta.url), 'utf-8'))
+  const scn = JSON.parse(readFileSync(new URL('../src/data/scene-eng-arg.json', import.meta.url), 'utf-8'))
+  const pos = scn.moments[0].positions
+  const get = (id) => ({ ...players.find((p) => p.id === id), ...pos[id] })
+  const opponents = Object.keys(pos).filter((id) => id.startsWith('eng')).map(get)
+  const home = Object.keys(pos).filter((id) => id.startsWith('arg')).map(get)
+  const depaul = get('arg_07')
+  const lautaro = get('arg_22')
+  const cross = { x: 110, y: 30 }
+  const actions = [
+    { type: 'pass', actorId: 'arg_07', receiverId: 'arg_22', actor: depaul, from: pos.arg_07, to: cross, ctrl: midpoint(pos.arg_07, cross) },
+    { type: 'shot', actorId: 'arg_22', actor: lautaro, from: cross, to: { x: 119, y: 41 }, ctrl: midpoint(cross, { x: 119, y: 41 }) },
+  ]
+  const res = resolveSequence(actions, { opponents, players: home, seed: 84462026 })
+  res.steps.forEach((s, i) => console.log(`    ${i + 1}. ${s.type} p=${(s.p * 100).toFixed(0)}%${s.header ? ' (헤더)' : ''}${s.cross ? ' (크로스)' : ''}`))
+  console.log(`    outcome=${res.outcome} pTotal=${(res.pTotal * 100).toFixed(1)}%`)
+  checkDir('판정이 끝까지 돈다 (스텝 2개)', res.steps.length === 2)
+  checkDir('확률이 유효 범위', res.steps.every((s) => s.p >= K.P_MIN && s.p <= K.P_MAX))
+  checkDir('수비 11명 스냅샷', res.steps.every((s) => s.defPos && Object.keys(s.defPos).length === opponents.length))
+  // 밀집 수비 장면이므로 무압박 앵커(0.55)보다는 어려워야 한다 — 좌표가 뒤집혀 들어가면 여기서 걸린다
+  checkDir(`박스 안 크로스가 무압박 패스보다 어려움 (${(res.steps[0].p * 100).toFixed(0)}% < 55%)`, res.steps[0].p < 0.55)
+}
+
 // ── 5. 공유 링크 인코딩 (engine/share.js) ────────────────────────────
 // 링크가 깨지면 "내 전술 봐라"가 성립하지 않는다 — 왕복이 무손실인지 확인한다.
 console.log('\n[공유 링크] 전술 → URL → 전술 왕복')
