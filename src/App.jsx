@@ -27,6 +27,10 @@ const SEED_PARAM = Number(QS.get('seed'))
 const HAS_SEED_LINK = !!SHARED || (Number.isFinite(SEED_PARAM) && SEED_PARAM > 0)
 const SEED = SHARED ? SHARED.seed : HAS_SEED_LINK ? SEED_PARAM : Math.floor(Math.random() * 1e9)
 
+// 좌표 편집은 장면을 만드는 사람이 쓰는 개발 도구다. import.meta.env.DEV는 빌드 때
+// false로 접혀서, 관련 UI와 저장 코드는 배포 번들에 아예 들어가지 않는다.
+const EDITABLE = import.meta.env.DEV
+
 const TYPE_LABEL = { dribble: '드리블', pass: '패스', shot: '슛' }
 const OUTCOME_LABEL = {
   GOAL: '⚽ GOAL!',
@@ -42,10 +46,26 @@ function App() {
   // 선택된 경기. 여기서 온필드 명단·시작 좌표가 전부 유도되므로, 경기가 바뀌면
   // 아래 파생값이 통째로 새로 계산된다(그래서 전술도 같이 비워야 한다 — pickMatch 참고).
   const [matchId, setMatchId] = useState(INITIAL_MATCH.match_id)
-  const { scenario, moment, basePlayers, opponents, byId, playerIds: PLAYER_IDS } = useMemo(
-    () => buildMatch(findMatch(matchId)),
-    [matchId],
-  )
+  // 좌표 편집 모드 (개발 전용, 프로덕션 번들에서는 통째로 빠진다 — EDITABLE 참고).
+  // editPos = 아직 저장 안 한 좌표 (id → {x,y}). null이면 데이터 원본 그대로.
+  const [editMode, setEditMode] = useState(false)
+  const [editPos, setEditPos] = useState(null)
+  const [saveMsg, setSaveMsg] = useState(null)
+  const { scenario, moment, basePlayers, opponents, byId, playerIds: PLAYER_IDS } = useMemo(() => {
+    const m = buildMatch(findMatch(matchId))
+    if (!editPos) return m
+    // 편집 중인 좌표를 명단 위에 얹는다. 여기서 갈아끼우면 planPos·체인·수비 반응까지
+    // 전부 새 좌표로 따라온다 — 편집 결과를 그대로 실행해볼 수 있다.
+    const apply = (arr) => arr.map((p) => (editPos[p.id] ? { ...p, ...editPos[p.id] } : p))
+    const nextHome = apply(m.basePlayers)
+    const nextOpp = apply(m.opponents)
+    return {
+      ...m,
+      basePlayers: nextHome,
+      opponents: nextOpp,
+      byId: Object.fromEntries([...nextHome, ...nextOpp].map((p) => [p.id, p])),
+    }
+  }, [matchId, editPos])
   // 공 전개 체인 (순서 있는 액션 리스트) — 같은 선수가 여러 번 드리블/수신 가능
   // { type:'dribble', to, ctrl } | { type:'pass'|'shot', receiverId, to(슛만), ctrl }
   const [chainActs, setChainActs] = useState(SHARED?.chainActs ?? [])
@@ -412,8 +432,40 @@ function App() {
       setSelectedId(null)
       setSheetMode(false)
       setMatchId(id)
+      // 편집 중이던 좌표는 그 경기 것이다 — 경기가 바뀌면 같이 버린다
+      setEditPos(null)
+      setEditMode(false)
+      setSaveMsg(null)
     }
     setScreen('board')
+  }
+
+  // ── 좌표 편집 (개발 전용) ──────────────────────────────────────────
+  // 0.5 단위로 맞춘다 — 중계 화면 보고 찍는 값에 소수점 두 자리는 의미가 없고,
+  // positions.json이 지저분해진다.
+  function moveForEdit(id, pt) {
+    const snap = (v) => Math.round(v * 2) / 2
+    setEditPos((prev) => ({ ...(prev ?? {}), [id]: { x: snap(pt.x), y: snap(pt.y) } }))
+  }
+
+  async function savePositions() {
+    const positions = Object.fromEntries(
+      [...basePlayers, ...opponents].map((p) => [p.id, { x: p.x, y: p.y }]),
+    )
+    try {
+      const res = await fetch('/__positions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ matchId, positions }),
+      })
+      const out = await res.json()
+      // 서버가 positions.json과 화면이 읽는 파일을 둘 다 고쳤다. editPos는 그대로 둔다 —
+      // 지우면 HMR이 돌아오기 전 한 프레임 동안 옛 좌표가 보인다.
+      setSaveMsg(out.ok ? `저장됨 (${out.count}명)` : `실패: ${out.error}`)
+    } catch (e) {
+      setSaveMsg(`실패: ${e.message} — dev 서버에서만 저장됩니다`)
+    }
+    setTimeout(() => setSaveMsg(null), 4000)
   }
 
   if (screen === 'select')
@@ -528,6 +580,7 @@ function App() {
             <TacticsBoard
               players={basePlayers}
               opponents={opponents}
+              flipX={scenario.viewFlipX ?? false}
               // 이전 시트를 열람 중이면 그 시점까지의 체인·좌표만 보여준다
               runLegs={isViewingPast ? runLegs.filter((r) => r.afterIndex <= shownSheet) : runLegs}
               chain={isViewingPast ? chain.slice(0, shownSheet + 1) : chain}
@@ -539,7 +592,9 @@ function App() {
               ballTrail={phase === 'plan' ? null : frame?.ballTrail}
               displayHome={phase === 'plan' ? null : frame?.home}
               displayOpp={phase === 'plan' ? null : frame?.opp}
-              interactive={phase === 'plan' && !isViewingPast}
+              interactive={phase === 'plan' && !isViewingPast && !editMode}
+              editMode={editMode}
+              onEditMove={moveForEdit}
               defRadius={DEF_RADIUS}
               offsideIds={offsideIds}
               offsideFx={phase !== 'plan' ? frame?.fx : null}
@@ -574,6 +629,41 @@ function App() {
               </>
             )}
           </div>
+
+          {/* 좌표 편집 (개발 전용) — 배포 번들에는 들어가지 않는다 */}
+          {EDITABLE && (
+            <div className="edit-row">
+              <button
+                className={`ctrl${editMode ? ' on' : ''}`}
+                onClick={() => {
+                  // 편집으로 들어갈 땐 재생 중이던 걸 끊고 계획 화면으로 되돌린다
+                  if (!editMode) backToPlan()
+                  setEditMode((v) => !v)
+                }}
+              >
+                {editMode ? '✓ 좌표 편집 중' : '✎ 좌표 편집'}
+              </button>
+              {editMode && (
+                <>
+                  <button className="ctrl" onClick={savePositions} disabled={!editPos}>
+                    저장
+                  </button>
+                  <button className="ctrl" onClick={() => setEditPos(null)} disabled={!editPos}>
+                    되돌리기
+                  </button>
+                  <span className="edit-hint">
+                    {saveMsg ?? (
+                      <>
+                        양 팀 아무나 끌어서 옮기세요. 저장하면{' '}
+                        <code>src/data/positions.json</code>에 기록됩니다.
+                        {editPos && ` · ${Object.keys(editPos).length}명 수정됨`}
+                      </>
+                    )}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="bottom-grid">

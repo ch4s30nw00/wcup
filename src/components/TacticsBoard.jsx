@@ -63,6 +63,11 @@ export default function TacticsBoard({
   onThroughCommit, // (receiverId, 공간 좌표) — 스루패스
   throughTargetOf, // (receiverId, pt) → 실제로 성립하는 도착점 (조준 미리보기용, 확정과 같은 계산)
   offsidePosIds, // 지금 오프사이드 위치에 서 있는 아군 id Set
+  flipX, // 보기만 좌우 반전 — 그날 중계에서 홈팀이 왼쪽으로 공격한 경기 (좌표는 그대로)
+  // 좌표 편집 모드(개발 전용). 켜면 전술 조작 대신 양 팀 아무나 끌어서 자리를 옮긴다.
+  // 장면 좌표를 중계 화면 보고 맞추는 용도라, 실제 게임 조작과는 완전히 분리한다.
+  editMode,
+  onEditMove, // (playerId, {x, y})
 }) {
   const svgRef = useRef(null)
   const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
@@ -101,14 +106,18 @@ export default function TacticsBoard({
 
   function toPitch(e) {
     const rect = svgRef.current.getBoundingClientRect()
+    // 반전 보기에서는 화면 왼쪽 끝이 x=120이다. 보드를 CSS로 뒤집어 그려도
+    // getBoundingClientRect는 그대로라, 여기서 x를 되돌려 데이터 좌표로 맞춘다.
+    const vx = ((e.clientX - rect.left) / rect.width) * PITCH_W
     return {
-      x: clamp(((e.clientX - rect.left) / rect.width) * PITCH_W, 1.5, PITCH_W - 1.5),
+      x: clamp(flipX ? PITCH_W - vx : vx, 1.5, PITCH_W - 1.5),
       y: clamp(((e.clientY - rect.top) / rect.height) * PITCH_H, 1.5, PITCH_H - 1.5),
     }
   }
 
   function startDrag(e, kind, key) {
-    if (!interactive) return
+    // 편집 모드는 interactive를 끈 채로 돌아간다 — 'edit'만 통과시킨다
+    if (kind === 'edit' ? !editMode : !interactive) return
     e.stopPropagation()
     e.target.setPointerCapture(e.pointerId)
     dragRef.current = { kind, key, startX: e.clientX, startY: e.clientY, moved: false }
@@ -127,7 +136,8 @@ export default function TacticsBoard({
       setDragging(true)
     }
     const pt = toPitch(e)
-    if (d.kind === 'run') {
+    if (d.kind === 'edit') onEditMove(d.key, pt)
+    else if (d.kind === 'run') {
       onRunSet(d.key, pt, !d.began)
       d.began = true
     } else if (d.kind === 'dribble') {
@@ -238,7 +248,7 @@ export default function TacticsBoard({
   return (
     <svg
       ref={svgRef}
-      className="tactics-board"
+      className={`tactics-board${flipX ? ' flip-x' : ''}`}
       viewBox={`0 0 ${PITCH_W} ${PITCH_H}`}
       onPointerDown={boardDown}
       onPointerMove={handleMove}
@@ -378,7 +388,15 @@ export default function TacticsBoard({
       {opponents.map((o) => {
         const pos = oppPos(o)
         return (
-          <g key={o.id} transform={`translate(${pos.x}, ${pos.y})`} opacity="0.9">
+          <g
+            key={o.id}
+            className={editMode ? 'player' : undefined}
+            transform={`translate(${pos.x}, ${pos.y})`}
+            opacity="0.9"
+            onPointerDown={editMode ? (e) => startDrag(e, 'edit', o.id) : undefined}
+          >
+            {/* 편집 모드에서만 상대도 손가락으로 집을 수 있게 히트 영역을 준다 */}
+            {editMode && <circle r={HIT.player} fill="transparent" />}
             <path
               d={`M ${DOT_R + 1.35} 0 L ${DOT_R + 0.25} -0.68 L ${DOT_R + 0.25} 0.68 Z`}
               fill="#cdd6e8"
@@ -426,7 +444,9 @@ export default function TacticsBoard({
             key={p.id}
             className="player"
             transform={`translate(${pos.x}, ${pos.y})`}
-            onPointerDown={(e) => startDrag(e, p.id === carrierId ? 'dribble' : 'run', p.id)}
+            onPointerDown={(e) =>
+              startDrag(e, editMode ? 'edit' : p.id === carrierId ? 'dribble' : 'run', p.id)
+            }
           >
             <circle r={HIT.player} fill="transparent" />
             {/* 오프사이드 경고 — 설계를 막지는 않고, 이대로 실행하면 깃발이 오른다는 신호 */}

@@ -169,6 +169,44 @@ header h1 .sub {
   -webkit-touch-callout: none;
 }
 
+/* 좌표 편집 줄 (개발 전용) — 게임 UI와 섞이지 않게 톤을 낮춘다 */
+.edit-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.14);
+}
+.edit-row .ctrl.on {
+  background: #ffd23e;
+  color: #10141c;
+  font-weight: 700;
+}
+.edit-hint {
+  font-size: 12.5px;
+  color: #8f9bb0;
+}
+.edit-hint code {
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* 좌우 반전 보기 — 중계 화면에서 홈팀이 오른쪽에서 왼쪽으로 공격한 경기용.
+   좌표 데이터는 건드리지 않는다(엔진은 "홈은 x=120으로 공격"을 전제한다).
+   그림만 통째로 뒤집고, 글자는 각자 자기 중심으로 되뒤집어 똑바로 읽히게 한다. */
+.tactics-board.flip-x {
+  transform: scaleX(-1);
+}
+.tactics-board.flip-x text {
+  transform: scaleX(-1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
 /* 재생 연출: 셰이크 래퍼 + 골 플래시 + 슬로모션 비네트 */
 .board-wrap {
   position: relative;
