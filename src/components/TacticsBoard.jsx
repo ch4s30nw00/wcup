@@ -10,6 +10,18 @@ const PITCH_W = 120
 const PITCH_H = 80
 const DOT_R = 1.4
 const LEG_COLOR = { dribble: '#dbe4f2', pass: '#ffd23e', shot: '#ff6b5e' }
+
+// 팀 킷. 기본값은 조작하는 팀(홈) 빨강 / 상대 남색이고, 실제 유니폼이 그와 어긋나
+// 두 팀을 구분하기 어려운 경기만 팀 코드로 덮어쓴다.
+// num을 따로 두는 이유: 흰 킷에서는 등번호를 흰색으로 쓰면 안 보인다.
+const KIT_HOME = { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' }
+const KIT_AWAY = { body: '#1e3a6e', gk: '#3f6f2f', ring: '#cdd6e8', num: '#fff' }
+const TEAM_KIT = {
+  ESP: { body: '#f2f5fa', gk: '#f0a500', ring: '#1a2330', num: '#10141c' },
+  POR: { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' },
+  POR26: { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' },
+}
+const kitOf = (team, fallback) => TEAM_KIT[team] ?? fallback
 const LEG_MARKER = { dribble: 'url(#ah-move)', pass: 'url(#ah-pass)', shot: 'url(#ah-shot)' }
 
 // 터치 화면은 손가락 기준 — 보이지 않는 히트 영역과 클릭/드래그 판정 거리를 키운다.
@@ -64,11 +76,15 @@ export default function TacticsBoard({
   throughTargetOf, // (receiverId, pt) → 실제로 성립하는 도착점 (조준 미리보기용, 확정과 같은 계산)
   offsidePosIds, // 지금 오프사이드 위치에 서 있는 아군 id Set
   flipX, // 보기만 좌우 반전 — 그날 중계에서 홈팀이 왼쪽으로 공격한 경기 (좌표는 그대로)
+  homeTeam, // 팀 코드 — 킷 색을 고르는 데만 쓴다 (TEAM_KIT 참고)
+  awayTeam,
   // 좌표 편집 모드(개발 전용). 켜면 전술 조작 대신 양 팀 아무나 끌어서 자리를 옮긴다.
   // 장면 좌표를 중계 화면 보고 맞추는 용도라, 실제 게임 조작과는 완전히 분리한다.
   editMode,
   onEditMove, // (playerId, {x, y})
 }) {
+  const homeKit = kitOf(homeTeam, KIT_HOME)
+  const awayKit = kitOf(awayTeam, KIT_AWAY)
   const svgRef = useRef(null)
   const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
   const [ballDrag, setBallDrag] = useState(null)
@@ -403,8 +419,8 @@ export default function TacticsBoard({
               opacity="0.85"
               transform={`rotate(${facingDeg(pos, o.id)})`}
             />
-            <circle r={DOT_R} fill={o.position === 'GK' ? '#3f6f2f' : '#1e3a6e'} stroke="#cdd6e8" strokeWidth="0.28" />
-            <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill="#fff">
+            <circle r={DOT_R} fill={o.position === 'GK' ? awayKit.gk : awayKit.body} stroke={awayKit.ring} strokeWidth="0.28" />
+            <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill={awayKit.num}>
               {o.number}
             </text>
             <text y={DOT_R + 2} textAnchor="middle" fontSize="1.6" fill="#dde4f0" stroke="#1a3a22" strokeWidth="0.25" paintOrder="stroke">
@@ -458,7 +474,8 @@ export default function TacticsBoard({
             )}
             {isSelected && <circle r={DOT_R + 0.8} fill="none" stroke="#ffd23e" strokeWidth="0.4" />}
             {interactive && p.id === carrierId && (
-              <circle r={DOT_R + 0.9} fill="none" stroke="#fff" strokeWidth="0.25" strokeDasharray="0.9 0.7" />
+              // 킷과 같은 테두리 색 — 흰 킷에서 흰 점선을 쓰면 공 소유자가 보이지 않는다
+              <circle r={DOT_R + 0.9} fill="none" stroke={homeKit.ring} strokeWidth="0.25" strokeDasharray="0.9 0.7" />
             )}
             <path
               d={`M ${DOT_R + 1.35} 0 L ${DOT_R + 0.25} -0.68 L ${DOT_R + 0.25} 0.68 Z`}
@@ -466,8 +483,8 @@ export default function TacticsBoard({
               opacity="0.85"
               transform={`rotate(${facingDeg(pos, p.id)})`}
             />
-            <circle r={DOT_R} fill={isGK ? '#e8a020' : '#c8102e'} stroke="#fff" strokeWidth="0.3" />
-            <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill="#fff">
+            <circle r={DOT_R} fill={isGK ? homeKit.gk : homeKit.body} stroke={homeKit.ring} strokeWidth="0.3" />
+            <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill={homeKit.num}>
               {p.number}
             </text>
             <text y={DOT_R + 2} textAnchor="middle" fontSize="1.6" fill="#f0f4f0" stroke="#1a3a22" strokeWidth="0.25" paintOrder="stroke">
