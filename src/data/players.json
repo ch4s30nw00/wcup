@@ -1214,6 +1214,37 @@
     "condition": 100
   },
   {
+    "id": "esp_10",
+    "name": "다니 올모",
+    "team": "ESP",
+    "number": 10,
+    "position": "MF",
+    "roles": [
+      "CAM"
+    ],
+    "heightCm": 182,
+    "stats": {
+      "flair": 18,
+      "finishing": 13,
+      "dribbling": 17,
+      "longshots": 13,
+      "crossing": 13,
+      "passing": 17,
+      "heading": 9,
+      "strength": 10,
+      "acceleration": 13,
+      "pace": 12,
+      "jumping": 10,
+      "balance": 15,
+      "marking": 9,
+      "tackle": 10,
+      "positioning": 10,
+      "anticipation": 16
+    },
+    "statSource": "fm26",
+    "condition": 100
+  },
+  {
     "id": "p26_01",
     "name": "디오구 코스타",
     "team": "POR26",
@@ -1245,10 +1276,10 @@
     "condition": 100
   },
   {
-    "id": "p26_20",
+    "id": "p26_05",
     "name": "디오구 달로트",
     "team": "POR26",
-    "number": 20,
+    "number": 5,
     "position": "DF",
     "roles": [
       "RB"
@@ -1307,10 +1338,10 @@
     "condition": 100
   },
   {
-    "id": "p26_14",
+    "id": "p26_13",
     "name": "헤나투 베이가",
     "team": "POR26",
-    "number": 14,
+    "number": 13,
     "position": "DF",
     "roles": [
       "CB"
@@ -1369,10 +1400,10 @@
     "condition": 100
   },
   {
-    "id": "p26_18",
+    "id": "p26_15",
     "name": "주앙 네베스",
     "team": "POR26",
-    "number": 18,
+    "number": 15,
     "position": "MF",
     "roles": [
       "DM"
@@ -1493,10 +1524,10 @@
     "condition": 100
   },
   {
-    "id": "p26_11",
+    "id": "p26_26",
     "name": "프란시스쿠 콘세이상",
     "team": "POR26",
-    "number": 11,
+    "number": 26,
     "position": "FW",
     "roles": [
       "RW"
@@ -1550,6 +1581,161 @@
       "tackle": 5,
       "positioning": 4,
       "anticipation": 18
+    },
+    "statSource": "fm26",
+    "condition": 100
+  },
+  {
+    "id": "p26_20",
+    "name": "주앙 칸셀루",
+    "team": "POR26",
+    "number": 20,
+    "position": "DF",
+    "roles": [
+      "RB"
+    ],
+    "heightCm": 182,
+    "stats": {
+      "flair": 17,
+      "finishing": 12,
+      "dribbling": 16,
+      "longshots": 13,
+      "crossing": 16,
+      "passing": 16,
+      "heading": 10,
+      "strength": 12,
+      "acceleration": 14,
+      "pace": 13,
+      "jumping": 11,
+      "balance": 14,
+      "marking": 9,
+      "tackle": 13,
+      "positioning": 11,
+      "anticipation": 15
+    },
+    "statSource": "fm26",
+    "condition": 100
+  },
+  {
+    "id": "p26_25",
+    "name": "누누 멘드스",
+    "team": "POR26",
+    "number": 25,
+    "position": "DF",
+    "roles": [
+      "LB"
+    ],
+    "heightCm": 180,
+    "stats": {
+      "flair": 14,
+      "finishing": 10,
+      "dribbling": 15,
+      "longshots": 10,
+      "crossing": 15,
+      "passing": 14,
+      "heading": 9,
+      "strength": 13,
+      "acceleration": 18,
+      "pace": 18,
+      "jumping": 10,
+      "balance": 14,
+      "marking": 12,
+      "tackle": 14,
+      "positioning": 13,
+      "anticipation": 14
+    },
+    "statSource": "fm26",
+    "condition": 100
+  },
+  {
+    "id": "p26_23",
+    "name": "비티냐",
+    "team": "POR26",
+    "number": 23,
+    "position": "MF",
+    "roles": [
+      "CM"
+    ],
+    "heightCm": 172,
+    "stats": {
+      "flair": 16,
+      "finishing": 12,
+      "dribbling": 17,
+      "longshots": 14,
+      "crossing": 13,
+      "passing": 17,
+      "heading": 7,
+      "strength": 11,
+      "acceleration": 13,
+      "pace": 13,
+      "jumping": 8,
+      "balance": 16,
+      "marking": 15,
+      "tackle": 14,
+      "positioning": 15,
+      "anticipation": 16
+    },
+    "statSource": "fm26",
+    "condition": 100
+  },
+  {
+    "id": "p26_18",
+    "name": "페드루 네투",
+    "team": "POR26",
+    "number": 18,
+    "position": "FW",
+    "roles": [
+      "RW"
+    ],
+    "heightCm": 172,
+    "stats": {
+      "flair": 16,
+      "finishing": 13,
+      "dribbling": 18,
+      "longshots": 13,
+      "crossing": 14,
+      "passing": 13,
+      "heading": 7,
+      "strength": 7,
+      "acceleration": 16,
+      "pace": 16,
+      "jumping": 7,
+      "balance": 11,
+      "marking": 5,
+      "tackle": 5,
+      "positioning": 6,
+      "anticipation": 9
+    },
+    "statSource": "fm26",
+    "condition": 100
+  },
+  {
+    "id": "p26_11",
+    "name": "주앙 펠릭스",
+    "team": "POR26",
+    "number": 11,
+    "position": "FW",
+    "roles": [
+      "ST"
+    ],
+    "heightCm": 181,
+    "stats": {
+      "flair": 18,
+      "finishing": 13,
+      "dribbling": 16,
+      "longshots": 13,
+      "crossing": 14,
+      "passing": 16,
+      "heading": 10,
+      "strength": 9,
+      "acceleration": 13,
+      "pace": 13,
+      "jumping": 10,
+      "balance": 14,
+      "marking": 4,
+      "tackle": 7,
+      "positioning": 6,
+      "anticipation": 14
     },
     "statSource": "fm26",
     "condition": 100

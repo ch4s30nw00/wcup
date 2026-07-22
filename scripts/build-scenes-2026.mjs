@@ -93,16 +93,24 @@ const ESP = [
 ]
 const POR_A = [
   { id: 'p26_01', csvName: 'Diogo MEIRELES DA COSTA', name: '디오구 코스타', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'p26_20', csvName: 'José Diogo DALOT TEIXEIRA', name: '디오구 달로트', number: 20, position: 'DF', roles: ['RB'] },
+  { id: 'p26_05', csvName: 'José Diogo DALOT TEIXEIRA', name: '디오구 달로트', number: 5, position: 'DF', roles: ['RB'] },
   { id: 'p26_03', csvName: 'Rúben DOS SANTOS GATO ALVES DIAS', name: '후벵 디아스', number: 3, position: 'DF', roles: ['CB'] },
-  { id: 'p26_14', csvName: 'Renato DA PALMA VEIGA', name: '헤나투 베이가', number: 14, position: 'DF', roles: ['CB'] },
+  { id: 'p26_13', csvName: 'Renato DA PALMA VEIGA', name: '헤나투 베이가', number: 13, position: 'DF', roles: ['CB'] },
   { id: 'p26_02', csvName: 'Nélson CABRAL SEMEDO', name: '넬송 세메두', number: 2, position: 'DF', roles: ['LB'] },
-  { id: 'p26_18', csvName: 'João Pedro GONÇALVES NEVES', name: '주앙 네베스', number: 18, position: 'MF', roles: ['DM'] },
+  { id: 'p26_15', csvName: 'João Pedro GONÇALVES NEVES', name: '주앙 네베스', number: 15, position: 'MF', roles: ['DM'] },
   { id: 'p26_10', csvName: 'Bernardo MOTA VEIGA DE CARVALHO E SILVA', name: '베르나르두 실바', number: 10, position: 'MF', roles: ['CM'] },
   { id: 'p26_17', csvName: 'Rafael Alexandre DA CONCEIÇÃO LEÃO', name: '하파엘 레앙', number: 17, position: 'FW', roles: ['LW'] },
   { id: 'p26_08', csvName: 'Bruno Miguel BORGES FERNANDES', name: '브루누 페르난드스', number: 8, position: 'MF', roles: ['CAM'] },
-  { id: 'p26_11', csvName: 'Francisco FERNANDES DA CONCEIÇÃO', name: '프란시스쿠 콘세이상', number: 11, position: 'FW', roles: ['RW'] },
+  { id: 'p26_26', csvName: 'Francisco FERNANDES DA CONCEIÇÃO', name: '프란시스쿠 콘세이상', number: 26, position: 'FW', roles: ['RW'] },
   { id: 'p26_07', csvName: 'Cristiano Ronaldo DOS SANTOS AVEIRO', name: '크리스티아누 호날두', number: 7, position: 'FW', roles: ['ST'] },
+  // 아래 다섯은 90+1분 장면에는 없다 — 이 경기 선발이었다가 교체로 나간 선수들이다.
+  // 온필드 명단은 positions가 정하므로 벤치로 남지만, 로스터에 있어야 등번호가 제자리를 지킨다.
+  // (이들이 빠져 있던 탓에 20·18·11번이 교체 투입 선수에게 잘못 붙어 있었다.)
+  { id: 'p26_20', csvName: 'João Pedro CAVACO CANCELO', name: '주앙 칸셀루', number: 20, position: 'DF', roles: ['RB'] },
+  { id: 'p26_25', csvName: 'Nuno Alexandre TAVARES MENDES', name: '누누 멘드스', number: 25, position: 'DF', roles: ['LB'] },
+  { id: 'p26_23', csvName: 'Vitor MACHADO FERREIRA', name: '비티냐', number: 23, position: 'MF', roles: ['CM'] },
+  { id: 'p26_18', csvName: 'Pedro LOMBA NETO', name: '페드루 네투', number: 18, position: 'FW', roles: ['RW'] },
+  { id: 'p26_11', csvName: 'João FÉLIX SEQUEIRA', name: '주앙 펠릭스', number: 11, position: 'FW', roles: ['ST'] },
 ]
 
 // ── 장면 B: 브라질 1-2 노르웨이 (2026-07-05, 16강) ──────────────────
@@ -239,6 +247,8 @@ const ESP_EXTRA = [
   { id: 'esp_17', csvName: 'Nicholas WILLIAMS ARTHUER', name: '니코 윌리엄스', number: 17, position: 'FW', roles: ['LW'] },
   { id: 'esp_18', csvName: 'Martin ZUBIMENDI IBAÑEZ', name: '마르틴 수비멘디', number: 18, position: 'MF', roles: ['DM'] },
   { id: 'esp_20', csvName: 'Pedro GONZÁLEZ LÓPEZ', name: '페드리', number: 20, position: 'MF', roles: ['CM'] },
+  // POR-ESP 85분에 메리노와 교체된 선수 (페드리는 파비안 루이스와 교체, 위에 이미 있다).
+  { id: 'esp_10', csvName: 'Daniel OLMO CARVAJAL', name: '다니 올모', number: 10, position: 'MF', roles: ['CAM'] },
 ]
 
 const mk = (list, team, country) =>
@@ -369,6 +379,9 @@ const scenes = {
       home: 'ESP',
       away: 'POR26',
       actual: '포르투갈 0 : 1 스페인 (2026-07-06, 댈러스 스타디움)',
+      // 그날 중계에서 스페인은 화면 오른쪽에서 왼쪽으로 공격했다. 좌표는 엔진 규칙대로
+      // (홈이 x=120으로 공격) 두고, 보드를 그릴 때만 좌우를 뒤집어 중계 화면과 맞춘다.
+      viewFlipX: true,
       moments: [
         {
           id: 'm901_merino',
@@ -383,7 +396,7 @@ const scenes = {
             scorerId: 'esp_06',
             title: '그날, 진짜로 있었던 일',
             caption:
-              '2026년 7월 6일 댈러스. 85분에 함께 들어온 페란 토레스와 메리노가 90+1분에 경기를 끝냈다. 토레스의 스루패스, 디오구 코스타와의 1대1, 그리고 좌하단 구석. 호날두의 마지막 월드컵 경기였다.',
+              '2026년 7월 6일 댈러스. 85분에 함께 들어온 파비안 루이스와 메리노가 90+1분에 경기를 끝냈다. 빠르게 처리한 프리킥을 파비안 루이스가 페란 토레스에게 붙였고, 토레스의 스루패스, 디오구 코스타와의 1대1, 그리고 좌하단 구석. 호날두의 마지막 월드컵 경기였다.',
             images: [],
           },
         },
@@ -481,13 +494,16 @@ const scenes = {
       '모든 선수 좌표는 리서치로 확인한 라인업·포메이션·전개 서술에 근거한 배치 초안이다. ' +
       '중계 영상 기준 실측이 아니므로 장면 느낌이 어긋나면 positions만 고치면 된다.',
     unverified: [
-      'POR-ESP: 페란 토레스에게 패스한 선수가 파비안 루이스(ESPN)인지 로드리(Opta)인지 출처가 엇갈린다. 현재 공 소유자를 파비안 루이스(esp_08)로 뒀다.',
       'POR-ESP: 프리킥에서 빠르게 시작된 전개였는지는 ESPN 단독 서술이라 미확인. 현재는 오픈플레이로 배치했다.',
       'POR-ESP: 메리노 슛의 정확한 거리·각도, 85분 더블 교체 후 스페인의 실제 포지션 배열 미확인 (4-2-3-1 유지로 가정).',
       'BRA-NOR: 브라질 선발 11번째 선수 미확인(마르티넬리 추정). 현재 79분 기준 온피치로 다닐루 산투스(bra_16)를 넣었다.',
       'BRA-NOR: 79분 에데르송↔브루누 기마랑이스 교체가 골 앞인지 뒤인지 미확인. 기마랑이스가 아직 뛰는 것으로 뒀다.',
       'BRA-NOR: 홀란 헤더의 박스 안 정확한 지점 미확인.',
       'ESP 등번호 수정: 포로 2→12, 쿠바르시 5→22 (스페인축구협회 발표 번호 기준). 기존 esp_02/esp_05 id도 함께 바뀌었다.',
+      'POR26 등번호 수정: 달로트 20→5, 베이가 14→13, 네베스 18→15, 콘세이상 11→26. id도 p26_05/p26_13/p26_15/p26_26으로 함께 바뀌었다. ' +
+        '틀린 번호는 모두 이 경기에 선발로 나왔다 교체된 선수의 것이었다 — 20=칸셀루, 18=페드루 네투, 11=주앙 펠릭스. ' +
+        'ESPN 라인업과 FPF 발표 번호 두 출처가 일치한다. 그 다섯(칸셀루·누누 멘드스·비티냐·페드루 네투·주앙 펠릭스)과 ' +
+        '스페인의 다니 올모(10, 85분 메리노와 교체)를 로스터에 넣어 번호가 다시 밀리지 않게 했다.',
       'ARG: 결승 102분에 교체 투입된 세네시의 등번호가 출처마다 다르다. 협회 발표 번호 목록에는 2번이 발레르디로 돼 있으나 CSV 로스터·경기 리포트에는 세네시가 있다. 현재 세네시를 2번으로 뒀다.',
       'RSA: ESPN 라인업이 음바타(5)를 수비수로 표기했다. 통상 미드필더라 센터백 조합(음바타-음보카지)이 맞는지 확인 필요.',
       'KOR-MEX / KOR-RSA: 선발·교체 시각과 등번호는 ESPN 라인업으로 확인했으나, 득점 장면의 정확한 좌표(크로스 지점·헤더 위치)는 미확인이다.',
