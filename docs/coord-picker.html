@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>좌표 피커 — 터치라인</title>
+<!--
+  중계 하이라이트를 보면서 22명 위치를 찍는 도구.
+  쓰는 법: 이 파일을 브라우저로 그냥 열면 된다(서버 불필요).
+  데이터가 낡았으면 `node scripts/build-coord-picker.mjs`로 다시 뽑는다.
+  결과는 아래 출력창에서 복사해 scripts/build-scenes-2026.mjs의 POS_* 에 붙여넣는다.
+-->
+<style>
+  :root {
+    --bg: #10141c; --panel: #171d28; --line: #2a3444; --text: #e6ecf7;
+    --muted: #8f9bb0; --home: #2f6fd0; --away: #c94436; --gk: #3f7d3f; --accent: #ffd23e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, "Malgun Gothic", sans-serif; }
+  header { padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex;
+    gap: 14px; align-items: center; flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0; font-weight: 650; }
+  .muted { color: var(--muted); }
+  select, button, input[type=file] { background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: 7px; padding: 7px 11px; font: inherit; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #10141c; border-color: var(--accent); font-weight: 650; }
+  main { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; padding: 16px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+  .card > h2 { font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); margin: 0; padding: 10px 13px; border-bottom: 1px solid var(--line); }
+  .card > .body { padding: 13px; }
+  svg.pitch { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
+  .chip { cursor: grab; }
+  .chip.sel circle.ring { stroke: var(--accent); }
+  .situation { padding: 11px 13px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .row:last-child { margin-bottom: 0; }
+  label.f { display: flex; gap: 7px; align-items: center; font-size: 13px; color: var(--muted); }
+  #drop { border: 1.5px dashed var(--line); border-radius: 9px; min-height: 190px;
+    display: grid; place-items: center; text-align: center; color: var(--muted);
+    padding: 14px; position: relative; overflow: hidden; }
+  #drop.over { border-color: var(--accent); color: var(--text); }
+  #drop img { max-width: 100%; display: block; border-radius: 6px; }
+  /* pre-wrap: 보기만 접히고 복사되는 값은 그대로다 (가로 스크롤 방지) */
+  textarea { width: 100%; min-height: 240px; background: #0c1017; color: var(--text);
+    border: 1px solid var(--line); border-radius: 8px; padding: 11px;
+    font: 12.5px/1.55 ui-monospace, Consolas, monospace; resize: vertical; white-space: pre-wrap; }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 9px; }
+  kbd { background: #0c1017; border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 4px; padding: 1px 5px; font: 11px ui-monospace, monospace; }
+  .warn { color: #ffb454; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>좌표 피커</h1>
+  <select id="match"></select>
+  <span class="muted" id="meta"></span>
+  <button id="reset">현재 값으로 되돌리기</button>
+</header>
+
+<main>
+  <section class="card">
+    <h2>피치 — 끌어서 배치</h2>
+    <div class="situation" id="situation"></div>
+    <svg class="pitch" id="pitch" viewBox="-3 -3 126 86"></svg>
+    <div class="body">
+      <div class="row">
+        <label class="f"><input type="checkbox" id="flipx"> 좌우 뒤집기</label>
+        <label class="f"><input type="checkbox" id="flipy"> 상하 뒤집기</label>
+        <label class="f"><input type="checkbox" id="names"> 이름 모두 표시</label>
+        <label class="f"><input type="checkbox" id="underlay"> 참고 이미지를 피치 위에 겹치기</label>
+        <label class="f">투명도 <input type="range" id="opacity" min="0" max="100" value="45"></label>
+      </div>
+      <div class="hint">
+        선수를 끌어서 옮깁니다. 클릭해서 고른 뒤 <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd>로 0.5씩,
+        <kbd>Shift</kbd>와 함께 누르면 2씩 미세 조정됩니다.
+        이름은 마우스를 올리면 나옵니다. <span class="warn">노란 테두리</span>가 공을 가진 선수입니다.
+        <br>뒤집기는 <b>화면에만</b> 적용됩니다 — 저장되는 좌표는 늘 "홈이 x=120으로 공격"하는
+        엔진 좌표계로 나옵니다. 중계 화면과 방향이 반대일 때 켜세요.
+      </div>
+    </div>
+  </section>
+
+  <div style="display: grid; gap: 16px; align-content: start;">
+    <section class="card">
+      <h2>참고 이미지 — 하이라이트 정지 화면</h2>
+      <div class="body">
+        <div id="drop">
+          <div>여기로 스크린샷을 끌어다 놓거나 <kbd>Ctrl</kbd>+<kbd>V</kbd>로 붙여넣기<br>
+            <span style="font-size:12px">중계 화면을 캡처해 옆에 띄워두고 보면서 찍으세요</span></div>
+        </div>
+        <div class="hint">
+          이미지는 이 페이지 안에서만 쓰이고 어디로도 전송되지 않습니다.
+          방송 카메라는 원근이 있어 위에서 본 피치와 정확히 겹쳐지지는 않습니다 —
+          겹치기 모드는 전술 카메라(와이드 앵글)일 때만 쓸 만합니다.
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>출력 — build-scenes-2026.mjs에 붙여넣기</h2>
+      <div class="body">
+        <div class="row">
+          <button class="primary" id="copy">복사</button>
+          <span class="muted" id="copied"></span>
+        </div>
+        <textarea id="out" readonly spellcheck="false"></textarea>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="./coord-picker-data.js"></script>
+<script>
+const PITCH_W = 120, PITCH_H = 80
+const DATA = window.PICKER_DATA
+const $ = (id) => document.getElementById(id)
+
+let match = null      // 현재 경기 (DATA.matches 중 하나)
+let pos = {}          // { id: {x, y} } — 편집 중인 좌표
+let selected = null
+let hovered = null
+
+// ── 피치 배경 (게임의 TacticsBoard와 같은 규격) ──────────────────────
+const PITCH_BG = `
+  <rect width="120" height="80" fill="#2f7d3f"/>
+  ${[0, 1, 2, 3, 4].map((i) => `<rect x="${i * 24}" width="12" height="80" fill="#2a7339"/>`).join('')}
+  <g fill="none" stroke="rgba(230,242,230,.55)" stroke-width=".3">
+    <rect x="1" y="1" width="118" height="78"/>
+    <line x1="60" y1="1" x2="60" y2="79"/>
+    <circle cx="60" cy="40" r="9.15"/>
+    <rect x="1" y="18" width="17" height="44"/>
+    <rect x="102" y="18" width="17" height="44"/>
+    <rect x="1" y="30" width="5.5" height="20"/>
+    <rect x="113.5" y="30" width="5.5" height="20"/>
+  </g>
+  <circle cx="60" cy="40" r=".6" fill="#e6f2e6"/>
+  <circle cx="13" cy="40" r=".6" fill="#e6f2e6"/>
+  <circle cx="107" cy="40" r=".6" fill="#e6f2e6"/>
+  <rect x="118.6" y="36.34" width="1.4" height="7.32" fill="#10141c" stroke="#e6f2e6" stroke-width=".35"/>
+  <rect x="0" y="36.34" width="1.4" height="7.32" fill="#10141c" stroke="#e6f2e6" stroke-width=".35"/>
+`
+
+// ── 보기 뒤집기 ─────────────────────────────────────────────────────
+// 중계 화면과 좌우가 반대면 머릿속으로 뒤집어가며 찍어야 해서 실수가 난다.
+// 그렇다고 저장되는 좌표를 뒤집을 수는 없다 — 엔진은 "home이 x=120 골문으로
+// 공격한다"를 전제로 슛·크로스·오프사이드를 판정한다(engine/constants.js의 K.CROSS 등).
+// 그래서 뒤집기는 화면에만 적용하고, 출력은 늘 엔진 좌표계로 낸다.
+// 두 번 적용하면 원래대로 돌아오는 함수라 화면↔데이터 양방향에 그대로 쓴다.
+const flipped = () => ({ x: $('flipx').checked, y: $('flipy').checked })
+function view(p) {
+  const f = flipped()
+  return { x: f.x ? PITCH_W - p.x : p.x, y: f.y ? PITCH_H - p.y : p.y }
+}
+
+function renderPitch() {
+  const svg = $('pitch')
+  const img = window.__refImage
+  const useUnderlay = $('underlay').checked && img
+  const op = $('opacity').value / 100
+
+  // 이름표는 기본으로 감춘다 — 박스 안처럼 붙어 있는 곳에서는 다 켜면 서로 가린다.
+  // 마우스를 올렸거나 고른 선수, 그리고 공 소유자만 항상 보여준다.
+  const showAll = $('names').checked
+  const chips = match.players.map((p) => {
+    const { x, y } = view(pos[p.id])
+    const isHome = p.team === match.home
+    const fill = p.pos === 'GK' ? 'var(--gk)' : isHome ? 'var(--home)' : 'var(--away)'
+    const ring = p.id === match.ball ? 'var(--accent)' : 'rgba(205,214,232,.75)'
+    const cls = 'chip' + (p.id === selected ? ' sel' : '')
+    const named = showAll || p.id === selected || p.id === hovered || p.id === match.ball
+    const label = named
+      ? `<text y="5" text-anchor="middle" font-size="2" fill="#e6ecf7"
+           stroke="#10141c" stroke-width=".6" paint-order="stroke">${p.name}</text>`
+      : ''
+    return `<g class="${cls}" data-id="${p.id}" transform="translate(${x} ${y})">
+      <circle class="ring" r="2.3" fill="${fill}" stroke="${ring}" stroke-width=".45"/>
+      <text y=".9" text-anchor="middle" font-size="2.2" font-weight="700" fill="#fff"
+        pointer-events="none">${p.number}</text>
+      ${label}
+    </g>`
+  }).join('')
+
+  svg.innerHTML = `
+    ${PITCH_BG}
+    ${useUnderlay ? `<image href="${img}" x="0" y="0" width="120" height="80"
+       preserveAspectRatio="xMidYMid slice" opacity="${op}"/>` : ''}
+    <text x="60" y="-.9" text-anchor="middle" font-size="2.4" fill="#8f9bb0">
+      ${flipped().x ? `← ${match.home} 공격 방향  (왼쪽 골문이 x=120)` : `${match.home} 공격 방향 →  (오른쪽 골문이 x=120)`}</text>
+    ${chips}
+  `
+}
+
+// ── 드래그 ──────────────────────────────────────────────────────────
+function svgPoint(e) {
+  const r = $('pitch').getBoundingClientRect()
+  // viewBox가 -3..123 이므로 그만큼 되돌려 계산한다
+  const x = ((e.clientX - r.left) / r.width) * 126 - 3
+  const y = ((e.clientY - r.top) / r.height) * 86 - 3
+  // 화면 좌표 → 데이터 좌표. view가 자기역함수라 그대로 한 번 더 통과시키면 된다.
+  return view({ x: clamp(x, 0.5, PITCH_W - 0.5), y: clamp(y, 0.5, PITCH_H - 0.5) })
+}
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
+const round1 = (v) => Math.round(v * 2) / 2   // 0.5 단위 — 소수점 지저분해지는 걸 막는다
+
+let dragging = null
+$('pitch').addEventListener('pointerdown', (e) => {
+  const g = e.target.closest('.chip')
+  if (!g) return
+  dragging = g.dataset.id
+  selected = dragging
+  $('pitch').setPointerCapture(e.pointerId)
+  renderPitch()
+})
+$('pitch').addEventListener('pointermove', (e) => {
+  if (!dragging) return
+  const p = svgPoint(e)
+  pos[dragging] = { x: round1(p.x), y: round1(p.y) }
+  renderPitch(); renderOut()
+})
+$('pitch').addEventListener('pointerup', () => { dragging = null })
+$('pitch').addEventListener('pointerover', (e) => {
+  if (dragging) return
+  const g = e.target.closest('.chip')
+  const id = g ? g.dataset.id : null
+  if (id !== hovered) { hovered = id; renderPitch() }
+})
+
+window.addEventListener('keydown', (e) => {
+  if (!selected || !e.key.startsWith('Arrow')) return
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return
+  e.preventDefault()
+  const step = e.shiftKey ? 2 : 0.5
+  const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key]
+  // 방향키는 눈에 보이는 대로 움직여야 한다 — 뒤집힌 축은 부호를 뒤집는다
+  const f = flipped()
+  const c = pos[selected]
+  pos[selected] = {
+    x: clamp(round1(c.x + (f.x ? -d[0] : d[0])), 0.5, PITCH_W - .5),
+    y: clamp(round1(c.y + (f.y ? -d[1] : d[1])), 0.5, PITCH_H - .5),
+  }
+  renderPitch(); renderOut()
+})
+
+// ── 출력 ────────────────────────────────────────────────────────────
+function renderOut() {
+  const name = match.constName ?? `POS_${match.id.toUpperCase()}`
+  const fmt = (p) => `${p.id}: { x: ${pos[p.id].x}, y: ${pos[p.id].y} }`
+  // 홈 먼저, 그다음 원정 — 생성기 파일의 기존 배치와 같은 순서로 읽히게
+  const group = (team) => {
+    const list = match.players.filter((p) => p.team === team).map(fmt)
+    const lines = []
+    for (let i = 0; i < list.length; i += 4) lines.push('  ' + list.slice(i, i + 4).join(', ') + ',')
+    return lines.join('\n')
+  }
+  const head = match.constName
+    ? `// ${match.id} — ${match.minute}분`
+    : `// ${match.id} — ${match.minute}분\n// ⚠ 이 경기는 build-scenes-2026.mjs에서 POS_* 상수를 안 쓴다.\n//   배열의 x/y를 직접 고치거나, 먼저 POS_* 방식으로 옮겨야 한다.`
+  $('out').value = `${head}\nconst ${name} = {\n${group(match.home)}\n${group(match.away)}\n}\n`
+}
+
+$('copy').addEventListener('click', async () => {
+  await navigator.clipboard.writeText($('out').value)
+  $('copied').textContent = '복사됨'
+  setTimeout(() => ($('copied').textContent = ''), 1600)
+})
+
+// ── 경기 선택 ───────────────────────────────────────────────────────
+function load(id) {
+  match = DATA.matches.find((m) => m.id === id)
+  pos = Object.fromEntries(match.players.map((p) => [p.id, { x: p.x, y: p.y }]))
+  selected = null
+  const ball = match.players.find((p) => p.id === match.ball)
+  $('meta').textContent = `${match.players.length}명 · ${match.minute}분 · 공: ${ball ? ball.name : '?'}`
+  $('situation').textContent = match.situation ?? ''
+  renderPitch(); renderOut()
+}
+
+$('match').innerHTML = DATA.matches
+  .map((m) => `<option value="${m.id}">${m.title}</option>`).join('')
+$('match').addEventListener('change', (e) => load(e.target.value))
+$('reset').addEventListener('click', () => load(match.id))
+$('flipx').addEventListener('change', renderPitch)
+$('flipy').addEventListener('change', renderPitch)
+$('names').addEventListener('change', renderPitch)
+$('underlay').addEventListener('change', renderPitch)
+$('opacity').addEventListener('input', renderPitch)
+
+// ── 참고 이미지 ─────────────────────────────────────────────────────
+function setImage(file) {
+  if (!file || !file.type.startsWith('image/')) return
+  const r = new FileReader()
+  r.onload = () => {
+    window.__refImage = r.result
+    $('drop').innerHTML = `<img src="${r.result}" alt="참고 이미지">`
+    renderPitch()
+  }
+  r.readAsDataURL(file)
+}
+const drop = $('drop')
+drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over') })
+drop.addEventListener('dragleave', () => drop.classList.remove('over'))
+drop.addEventListener('drop', (e) => {
+  e.preventDefault(); drop.classList.remove('over')
+  setImage(e.dataTransfer.files[0])
+})
+window.addEventListener('paste', (e) => {
+  const item = [...e.clipboardData.items].find((i) => i.type.startsWith('image/'))
+  if (item) setImage(item.getAsFile())
+})
+
+// 열자마자 특정 경기·방향으로 시작하고 싶을 때: ?m=kor_cze_2026_g1&flipx=1
+const q = new URLSearchParams(location.search)
+$('flipx').checked = q.get('flipx') === '1'
+$('flipy').checked = q.get('flipy') === '1'
+const start = DATA.matches.find((m) => m.id === q.get('m')) ?? DATA.matches[0]
+$('match').value = start.id
+load(start.id)
+</script>
+</body>
+</html>

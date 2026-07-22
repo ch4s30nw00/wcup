@@ -381,7 +381,19 @@ console.log('\n[경기 데이터] 플레이 가능한 모든 경기의 참조 �
 
     const home = ids.filter((id) => byId[id]?.team === scn.home)
     const away = ids.filter((id) => byId[id]?.team === scn.away)
-    checkDir(`${scn.match_id}: ${scn.home} ${home.length}명 vs ${scn.away} ${away.length}명 (양 팀 11명)`, home.length === 11 && away.length === 11)
+    // 퇴장이 있었으면 그 팀은 11명이 아니다 (2026 결승: 엔소 페르난데스 퇴장으로
+    // 아르헨티나가 연장을 10명으로 치렀다). moment.sentOff에 적힌 만큼만 깎아준다 —
+    // 그냥 "11명 이하"로 풀면 좌표를 빠뜨린 진짜 실수를 못 잡는다.
+    const sentOff = moment.sentOff ?? []
+    const expected = (team) => 11 - sentOff.filter((id) => byId[id]?.team === team).length
+    const note = sentOff.length ? ` · 퇴장 ${sentOff.length}명` : ''
+    checkDir(
+      `${scn.match_id}: ${scn.home} ${home.length}명 vs ${scn.away} ${away.length}명 (기대 ${expected(scn.home)}/${expected(scn.away)}${note})`,
+      home.length === expected(scn.home) && away.length === expected(scn.away),
+    )
+    // sentOff에 적은 선수가 실수로 온필드에 남아 있으면 안 된다
+    const stillOn = sentOff.filter((id) => ids.includes(id))
+    if (sentOff.length) checkDir(`${scn.match_id}: 퇴장 선수가 온필드에 없음`, stillOn.length === 0, stillOn.join(', '))
     checkDir(`${scn.match_id}: 양 팀 GK 1명씩`, [home, away].every((t) => t.filter((id) => byId[id].position === 'GK').length === 1))
 
     const oob = ids.filter((id) => {
