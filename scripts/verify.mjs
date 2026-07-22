@@ -50,10 +50,28 @@ for (const [d, want] of [[0.5, 0.34], [2, 0.47], [8, 0.7]]) {
   check(`d_recv=${d}m`, sigmoid(calcPass(a, [defAt(60 + d, 40)]).z), want)
 }
 
-console.log('[앵커] 중앙 슛 xG (D=6/11/13/16.5/20 → 0.55/0.20/0.13/0.06/0.03)')
-for (const [D, want] of [[6, 0.55], [11, 0.2], [13, 0.13], [16.5, 0.06], [20, 0.03]]) {
+console.log('[앵커] 중앙·무압박 발슈팅 xG (6/12/18/25yd → 0.42/0.18/0.09/0.04)')
+for (const [D, want] of [[5.5, 0.42], [11, 0.18], [16.5, 0.09], [23, 0.04]]) {
   const a = act('shot', { x: 120 - D, y: 40 }, { x: 119, y: 40 })
   check(`D=${D}m`, sigmoid(calcShot(a, []).z), want)
+}
+
+console.log('[앵커] 슛 라인 블로커 — 감점은 하되 자동 선방으로 만들지 않음')
+{
+  const a = act('shot', { x: 109, y: 40 }, { x: 119, y: 40 })
+  check('12yd, 라인 위 블로커', sigmoid(calcShot(a, [defAt(114, 40)]).z), 0.095)
+  check('12yd, 라인에서 2m 블로커', sigmoid(calcShot(a, [defAt(114, 42)]).z), 0.143)
+}
+
+console.log('[앵커] 골키퍼와 1대1 — 열린 슛길의 단독 찬스 보정')
+{
+  const gk = { id: 'gk', position: 'GK', x: 116.5, y: 40, ...neutral() }
+  const a = act('shot', { x: 109, y: 40 }, { x: 119, y: 40 })
+  const open = calcShot(a, [gk])
+  const screened = calcShot(a, [gk, defAt(114, 40)])
+  checkDir(`12yd 1대1 (${sigmoid(open.z).toFixed(3)})은 단독 찬스로 판정`, open.oneOnOne === true)
+  check('12yd 1대1 xG', sigmoid(open.z), 0.55)
+  checkDir('수비수가 슛길을 막으면 1대1 보정 제외', screened.oneOnOne === false)
 }
 
 console.log('[앵커] 드리블 1v1 (L=6, 간격 0.5/2/3/5 → 0.49/0.67/0.74/0.81)')
@@ -336,6 +354,46 @@ console.log('\n[스모크] 실제 데이터로 resolveSequence (손흥민 드리
   console.log(`    outcome=${res.outcome} pTotal=${(res.pTotal * 100).toFixed(1)}%`)
   checkDir('스텝별 defPos 스냅샷 존재', res.steps.every((s) => s.defPos && Object.keys(s.defPos).length === opponents.length))
   checkDir('확률이 유효 범위', res.steps.every((s) => s.p >= K.P_MIN && s.p <= K.P_MAX))
+}
+
+// ── 4b. 경기 데이터 무결성 — 경기 선택 화면에 뜨는 모든 경기 ─────────
+// 장면 데이터가 참조하는 선수 id가 players.json에 없으면 보드가 빈 채로 뜬다.
+// 좌표 오타(피치 밖)나 팀 배정 실수도 여기서 잡는다 — 브라우저를 열기 전에.
+// data/matches.js의 MATCHES와 같은 소스를 같은 순서로 본다.
+console.log('\n[경기 데이터] 플레이 가능한 모든 경기의 참조 무결성')
+{
+  const load = (f) => JSON.parse(readFileSync(new URL(`../src/data/${f}`, import.meta.url), 'utf-8'))
+  const players = load('players.json')
+  const byId = Object.fromEntries(players.map((p) => [p.id, p]))
+  const matches = [load('scenarios.json'), ...load('scenes-2026.json').matches]
+
+  checkDir(`플레이 가능한 경기 ${matches.length}개 (선택 화면 카드 수)`, matches.length >= 1)
+  checkDir('경기 id 중복 없음', new Set(matches.map((m) => m.match_id)).size === matches.length)
+
+  for (const scn of matches) {
+    const moment = scn.moments[0]
+    const ids = Object.keys(moment.positions ?? {})
+    const missing = ids.filter((id) => !byId[id])
+    checkDir(`${scn.match_id}: 참조 선수 ${ids.length}명 전원 players.json에 존재`, missing.length === 0, missing.join(', '))
+    checkDir(`${scn.match_id}: 공 소유자(${moment.ball})가 온필드`, ids.includes(moment.ball))
+    // home = 플레이어가 조작하는 팀. 공이 상대에게 있으면 보드가 통째로 뒤집힌다.
+    checkDir(`${scn.match_id}: 공 소유자가 home(${scn.home}) 소속`, byId[moment.ball]?.team === scn.home)
+
+    const home = ids.filter((id) => byId[id]?.team === scn.home)
+    const away = ids.filter((id) => byId[id]?.team === scn.away)
+    checkDir(`${scn.match_id}: ${scn.home} ${home.length}명 vs ${scn.away} ${away.length}명 (양 팀 11명)`, home.length === 11 && away.length === 11)
+    checkDir(`${scn.match_id}: 양 팀 GK 1명씩`, [home, away].every((t) => t.filter((id) => byId[id].position === 'GK').length === 1))
+
+    const oob = ids.filter((id) => {
+      const { x, y } = moment.positions[id]
+      return !(x >= 0 && x <= 120 && y >= 0 && y <= 80)
+    })
+    checkDir(`${scn.match_id}: 전원 좌표가 피치(120×80) 안`, oob.length === 0, oob.join(', '))
+    checkDir(
+      `${scn.match_id}: 좌표 중복 없음 (겹쳐 선 선수)`,
+      new Set(ids.map((id) => `${moment.positions[id].x},${moment.positions[id].y}`)).size === ids.length,
+    )
+  }
 }
 
 // ── 5. 공유 링크 인코딩 (engine/share.js) ────────────────────────────

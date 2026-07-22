@@ -777,6 +777,11 @@ header h1 .sub {
   transform: translateY(-3px);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
+/* 지금 보드에 올라가 있는 경기 — 여러 장 중 어느 걸 하던 중인지 표시 */
+.match-card.playable.current {
+  border-color: #ffd23e;
+  box-shadow: 0 0 0 1px #ffd23e inset;
+}
 .match-card.locked {
   opacity: 0.55;
 }

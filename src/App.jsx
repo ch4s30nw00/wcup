@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import TacticsBoard from './components/TacticsBoard'
 import { TitleScreen, MatchSelect } from './components/Intro'
 import Tutorial from './components/Tutorial'
 import { resolveSequence, planOffside, defenseTimeline, DEF_RADIUS } from './engine/resolve'
-import { checkOffside, offsideLineX } from './engine/offside'
+import { checkOffside } from './engine/offside'
 import { initDefense } from './engine/defense'
 import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
@@ -11,29 +11,18 @@ import { actionDuration, reachRadius, clampToReach, throughTarget } from './engi
 import { planScore, planGrade } from './engine/xt'
 import { isMuted, setMuted, resumeAudio, whistle, goalRoar, startMurmur, stopMurmur } from './engine/sound'
 import { decodeShare, shareUrl } from './engine/share'
-import playersData from './data/players.json'
-import formations from './data/formations.json'
-import scenario from './data/scenarios.json'
+import { buildMatch, findMatch } from './data/matches'
 import './App.css'
-
-const slots = formations['4-2-3-1']
-const homeSquad = playersData.filter((p) => p.team === scenario.home)
-const awaySquad = playersData.filter((p) => p.team === scenario.away)
-const moment = scenario.moments[0]
-// 모먼트가 위치를 직접 지정하면 그 좌표가 곧 그 시점의 온필드 명단(교체 반영, 로스터의 나머지는 벤치),
-// 없으면 로스터 앞 11명을 포메이션 기본값으로 (상대는 좌우 반전)
-const onPitch = (squad) => (moment.positions ? squad.filter((p) => moment.positions[p.id]) : squad)
-const basePlayers = onPitch(homeSquad).map((p, i) => ({ ...p, x: slots[i]?.x, y: slots[i]?.y, ...moment.positions?.[p.id] }))
-const opponents = onPitch(awaySquad).map((p, i) => ({ ...p, x: 120 - (slots[i]?.x ?? 0), y: 80 - (slots[i]?.y ?? 0), ...moment.positions?.[p.id] }))
-const byId = Object.fromEntries([...basePlayers, ...opponents].map((p) => [p.id, p]))
 
 // --- 공유 링크 해석 ---
 // ?p= 는 "시드 + 전술"을 통째로 담은 공유 링크(engine/share.js). 받은 사람이 내가 짠
 // 전술을 그대로 본다. ?seed= 만 있는 옛 링크도 계속 동작한다(시드만 재현).
 // 선수 인덱스는 온필드 명단 순서 기준 — 인코딩·디코딩이 같은 배열을 봐야 한다.
-const PLAYER_IDS = basePlayers.map((p) => p.id)
+// 그 명단은 경기마다 다르므로 ?m=(경기 id)을 먼저 읽어 명단을 정한 뒤 전술을 푼다.
+// ?m= 이 없는 옛 링크는 기본 경기(대한민국-포르투갈) 명단으로 풀린다 — 그때는 경기가 하나뿐이었다.
 const QS = new URLSearchParams(window.location.search)
-const SHARED = decodeShare(QS.get('p'), { playerIds: PLAYER_IDS })
+const INITIAL_MATCH = findMatch(QS.get('m'))
+const SHARED = decodeShare(QS.get('p'), { playerIds: buildMatch(INITIAL_MATCH).playerIds })
 const SEED_PARAM = Number(QS.get('seed'))
 const HAS_SEED_LINK = !!SHARED || (Number.isFinite(SEED_PARAM) && SEED_PARAM > 0)
 const SEED = SHARED ? SHARED.seed : HAS_SEED_LINK ? SEED_PARAM : Math.floor(Math.random() * 1e9)
@@ -50,6 +39,13 @@ const OUTCOME_LABEL = {
 function App() {
   // 화면 흐름: intro → select → board. seed 공유 링크는 재현이 목적이므로 인트로를 건너뛴다.
   const [screen, setScreen] = useState(HAS_SEED_LINK ? 'board' : 'intro')
+  // 선택된 경기. 여기서 온필드 명단·시작 좌표가 전부 유도되므로, 경기가 바뀌면
+  // 아래 파생값이 통째로 새로 계산된다(그래서 전술도 같이 비워야 한다 — pickMatch 참고).
+  const [matchId, setMatchId] = useState(INITIAL_MATCH.match_id)
+  const { scenario, moment, basePlayers, opponents, byId, playerIds: PLAYER_IDS } = useMemo(
+    () => buildMatch(findMatch(matchId)),
+    [matchId],
+  )
   // 공 전개 체인 (순서 있는 액션 리스트) — 같은 선수가 여러 번 드리블/수신 가능
   // { type:'dribble', to, ctrl } | { type:'pass'|'shot', receiverId, to(슛만), ctrl }
   const [chainActs, setChainActs] = useState(SHARED?.chainActs ?? [])
@@ -72,7 +68,8 @@ function App() {
   const [copied, setCopied] = useState(null) // 공유 버튼 피드백: null | 'ok' | 'fail'
   const goalSoundRef = useRef(false) // 재생 1회당 골 함성 1번만
 
-  const basePos = (id) => ({ x: byId[id].x, y: byId[id].y })
+  // 경기가 바뀌면 byId가 통째로 갈리므로 basePos도 같이 새로 만들어져야 한다
+  const basePos = useCallback((id) => ({ x: byId[id].x, y: byId[id].y }), [byId])
 
   // 체인 + 런을 시간 순서대로 걸어가며 좌표를 유도.
   // 선수 위치가 체인을 따라 갱신되므로 "드리블→패스→되받아→다시 드리블",
@@ -121,7 +118,7 @@ function App() {
     const planPos = {}
     for (const p of basePlayers) planPos[p.id] = posOf(p.id)
     return { chain, runLegs: Object.values(runLegMap), planPos, carrierId: carrier, snaps, carrierAt }
-  }, [chainActs, runs])
+  }, [chainActs, runs, basePlayers, basePos, moment])
 
   // 플레이 설계 점수 (xT 델타 합) — 판정과 독립이라 계획 단계에서 바로 보여줘도
   // "성공률 프리뷰"가 되지 않는다. 확률이 아니라 "얼마나 위협적인 자리로 옮겼나"의 축.
@@ -135,7 +132,7 @@ function App() {
   // 실행 시의 확정 실패 판정과 같은 함수·같은 좌표를 쓴다 (engine/offside.js).
   const offsideWarn = useMemo(
     () => (chain.length ? planOffside(chain, { opponents, players: basePlayers }) : []),
-    [chain],
+    [chain, opponents, basePlayers],
   )
   const offsideIds = useMemo(() => new Set(offsideWarn.map((w) => w.receiverId)), [offsideWarn])
 
@@ -145,8 +142,7 @@ function App() {
   const pendingDefense = useMemo(() => {
     const tl = defenseTimeline(chain, { opponents, players: basePlayers })
     return tl.length ? tl[tl.length - 1].after : initDefense(opponents)
-  }, [chain])
-  const pendingOffsideLineX = useMemo(() => offsideLineX(pendingDefense), [pendingDefense])
+  }, [chain, opponents, basePlayers])
   // 지금 이 순간 오프사이드 위치에 서 있는 아군 — 이들에게 스루패스를 주면 깃발이 오른다.
   // (뒤에서 출발해 달려드는 침투는 온사이드이므로, 여기 걸리는 건 "이미 넘어가 있는" 선수뿐)
   const offsidePosIds = useMemo(() => {
@@ -157,7 +153,7 @@ function App() {
       if (checkOffside({ receiver: at, opponents: pendingDefense, ball: ballPlanPos }).offside) s.add(p.id)
     }
     return s
-  }, [planPos, pendingDefense, ballPlanPos])
+  }, [planPos, pendingDefense, ballPlanPos, basePlayers])
 
   // --- 시트 모드 파생값 ---
   // 편집 중인 시트 = sheetCount 인덱스. 그 시트의 공 액션이 걸리는 시간이
@@ -178,7 +174,7 @@ function App() {
     return basePlayers
       .filter((p) => p.id !== carrierAt[editIndex]) // 공 소유자는 액션 본인이라 제외
       .map((p) => ({ id: p.id, ...at[p.id], r: reachRadius(p, sheetDur) }))
-  }, [sheetMode, isViewingPast, phase, sheetDur, snaps, editIndex, planPos, carrierAt])
+  }, [sheetMode, isViewingPast, phase, sheetDur, snaps, editIndex, planPos, carrierAt, basePlayers])
 
   // 시트 확정 — 이번 시트에 공 액션이 있어야 넘어갈 수 있다
   const canConfirmSheet = sheetMode && phase === 'plan' && !isViewingPast && chain.length > sheetCount
@@ -322,6 +318,7 @@ function App() {
       chainActs,
       runs,
       playerIds: PLAYER_IDS,
+      matchId,
       origin: window.location.origin,
       pathname: window.location.pathname,
     })
@@ -407,10 +404,23 @@ function App() {
   }
 
   if (screen === 'intro') return <TitleScreen onStart={() => setScreen('select')} />
+  // 경기 선택 → 보드. 다른 경기를 고르면 전술을 비운다 — 체인·런은 그 경기의 선수와
+  // 좌표를 가리키고 있어서 그대로 두면 다른 명단 위에 얹힌 엉뚱한 전개가 된다.
+  function pickMatch(id) {
+    if (id !== matchId) {
+      clearAll()
+      setSelectedId(null)
+      setSheetMode(false)
+      setMatchId(id)
+    }
+    setScreen('board')
+  }
+
   if (screen === 'select')
     return (
       <MatchSelect
-        onPick={() => setScreen('board')}
+        matchId={matchId}
+        onPick={pickMatch}
         onBack={() => setScreen('intro')}
         onTutorial={() => setScreen('tutorial')}
       />
@@ -532,7 +542,6 @@ function App() {
               interactive={phase === 'plan' && !isViewingPast}
               defRadius={DEF_RADIUS}
               offsideIds={offsideIds}
-              offsideLineX={offsideWarn[0]?.lineX ?? null}
               offsideFx={phase !== 'plan' ? frame?.fx : null}
               selectedId={selectedId}
               onPlayerClick={(id) => setSelectedId((prev) => (prev === id ? null : id))}
@@ -545,7 +554,6 @@ function App() {
               onPassCommit={addPass}
               onThroughCommit={addThroughPass}
               throughTargetOf={throughTargetOf}
-              pendingOffsideLineX={pendingOffsideLineX}
               offsidePosIds={offsidePosIds}
             />
             {frame?.fx?.flash > 0 && <div className="board-flash" style={{ opacity: frame.fx.flash * 0.55 }} />}

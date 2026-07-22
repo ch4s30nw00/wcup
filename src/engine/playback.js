@@ -97,26 +97,26 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
   for (const rp of runPlan) {
     const earliest = Math.max(200, freeAfter(rp.rl.id, rp.rl.afterIndex))
     let start
+    let holdUntil = null
     if (rp.consumer) {
       // 수신 런은 공 도착 시각, 그 자리에서 시작하는 액션(드리블 등)은 액션 시작 시각이 마감
       const deadline = rp.consumer.receiverId === rp.rl.id ? rp.consumer.start + rp.consumer.dur : rp.consumer.start
-      start = Math.max(earliest, deadline - rp.dur)
-      const late = start + rp.dur - deadline
-      if (late > 0) for (const leg of legs) if (leg.index >= rp.consumer.index) leg.start += late
+      start = earliest
+      holdUntil = Math.max(start + rp.dur, deadline)
     } else {
       // 아무도 기다리지 않는 장식 런 — 앵커 액션 시작에 맞춰 출발
       const anchorLeg = legs.find((leg) => leg.index === rp.rl.afterIndex)
       const tail = legs[legs.length - 1]
       start = Math.max(earliest, (anchorLeg ? anchorLeg.start : tail ? tail.start + tail.dur : 300) - 120)
     }
-    segs.push({ id: rp.rl.id, pts: rp.pts, len: rp.len, start, dur: rp.dur })
+    segs.push({ id: rp.rl.id, from: rp.rl.from, ctrl: rp.rl.ctrl, pts: rp.pts, len: rp.len, start, dur: rp.dur, holdUntil })
   }
   const endLeg = legs[legs.length - 1]
   const chainEnd = endLeg ? endLeg.start + endLeg.dur + 200 : 500
   for (const leg of legs) {
     if (leg.type !== 'dribble') continue
     const capFrac = leg.step.success === false && leg.step.interceptFrac != null ? leg.step.interceptFrac : 1
-    segs.push({ id: leg.actorId, pts: leg.pts, len: leg.len, start: leg.start, dur: leg.dur, capFrac })
+    segs.push({ id: leg.actorId, from: leg.from, ctrl: leg.ctrl, pts: leg.pts, len: leg.len, start: leg.start, dur: leg.dur, capFrac })
   }
   // 시작 시각 오름차순 정렬 → 나중에 시작한 세그먼트가 위치를 덮어써서
   // "런으로 이동 → 거기서 받아 드리블" 같은 연속 동작이 자연스럽게 이어진다.
@@ -124,7 +124,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
 
   // 재생 총 시간은 공 체인이 아니라 "모든 선수 이동이 끝나는 시점" 기준 —
   // 늦게 출발하는 런도 끝까지 뛰고 나서 재생이 멈춘다
-  let total = Math.max(chainEnd + 700, ...segs.map((s) => s.start + s.dur + 500))
+  let total = Math.max(chainEnd + 700, ...segs.map((s) => Math.max(s.start + s.dur, s.holdUntil ?? 0) + 500))
 
   // ── 살아있는 움직임: 매 프레임 볼-추종 스티어링 시뮬레이션 ──
   // 지시(스크립트)가 없는 순간의 모든 선수는 "공 위치에 반응하는 목표점"을 향해
@@ -270,9 +270,28 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     for (const s of segs) {
       if (el < s.start) continue
       if (el <= s.start + s.dur) {
+        // 이 선수가 재생 전까지 자유 이동했다면, 계획을 세울 때의 from으로
+        // 되돌아가지 않고 현재 위치에서 같은 목적지로 경로를 다시 잡는다.
+        // 그렇지 않으면 지정 이동이 시작되는 첫 프레임에 순간이동한다.
+        if (!s.started) {
+          const start = { x: sim[s.id].x, y: sim[s.id].y }
+          const end = pointAtLength(s.pts, (s.capFrac ?? 1) * s.len)
+          const ctrl = {
+            x: start.x + (s.ctrl.x - s.from.x),
+            y: start.y + (s.ctrl.y - s.from.y),
+          }
+          s.pts = samplePath(start, ctrl, end)
+          s.len = pathLength(s.pts)
+          s.capFrac = 1
+          s.started = true
+        }
         const k = Math.min(ease((el - s.start) / s.dur), s.capFrac ?? 1)
         const pos = pointAtLength(s.pts, k * s.len)
         scripted.add(s.id)
+        Object.assign(sim[s.id], { x: pos.x, y: pos.y, vx: 0, vy: 0 })
+      } else if (s.holdUntil != null && el <= s.holdUntil) {
+        scripted.add(s.id)
+        const pos = pointAtLength(s.pts, (s.capFrac ?? 1) * s.len)
         Object.assign(sim[s.id], { x: pos.x, y: pos.y, vx: 0, vy: 0 })
       } else if (!s.done) {
         s.done = true
@@ -281,7 +300,12 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       }
     }
     if (interceptor) {
-      if (el <= interceptor.end) {
+      if (el >= interceptor.start && el <= interceptor.end) {
+        // 차단 선수도 그 전까지의 수비 이동 위치에서 출발해야 한다.
+        if (!interceptor.started) {
+          interceptor.from = { x: sim[interceptor.id].x, y: sim[interceptor.id].y }
+          interceptor.started = true
+        }
         const k = ease((el - interceptor.start) / (interceptor.end - interceptor.start))
         scripted.add(interceptor.id)
         Object.assign(sim[interceptor.id], {
@@ -290,7 +314,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           vx: 0,
           vy: 0,
         })
-      } else if (!interceptor.done) {
+      } else if (el > interceptor.end && !interceptor.done) {
         interceptor.done = true
         Object.assign(sim[interceptor.id], { x: interceptor.to.x, y: interceptor.to.y, vx: 0, vy: 0 })
       }
