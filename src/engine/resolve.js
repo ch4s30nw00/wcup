@@ -164,6 +164,24 @@ export function calcShot(action, opponents, prev = null) {
   })
   let z = C.B0 + C.B_DIST * lsFactor * D + C.B_ANG * theta + C.B_SKILL * (sEff - C.SEFF0) + block.z
 
+  // 일반 xG는 평균 골키퍼를 이미 포함한다. 다만 슈터와 GK만 남은 1대1은
+  // 공간·각도 우위가 크므로 별도 보너스를 준다. 슛길 중간에 필드 수비수가 있으면
+  // 단독 찬스가 아니므로 이 보너스를 적용하지 않는다.
+  const goalkeeper = opponents.find((o) => o.position === 'GK')
+  const gkLine = goalkeeper ? minDistToPath(pts, goalkeeper) : null
+  const fieldBlocker = opponents.some((o) => {
+    if (o.position === 'GK') return false
+    const hit = minDistToPath(pts, o)
+    return hit.frac > 0.12 && hit.d < C.ONE_ON_ONE_BLOCK_CLEARANCE
+  })
+  const oneOnOne =
+    !header &&
+    D <= C.ONE_ON_ONE_MAX_DIST &&
+    gkLine != null &&
+    gkLine.d <= C.ONE_ON_ONE_GK_LINE &&
+    !fieldBlocker
+  if (oneOnOne) z += C.ONE_ON_ONE_BONUS
+
   // 헤더 공중 듀얼: 슛 지점 최근접 수비수와 점프+키+몸싸움 경합 (예측력 50% 혼합은 defScale 몫)
   if (header) {
     let nearest = null
@@ -174,7 +192,7 @@ export function calcShot(action, opponents, prev = null) {
     }
     if (nearest && nearest.dd < C.R_BLOCK * 2) z += C.B_AIR * (airOf(action.actor) - airOf(nearest.o))
   }
-  return { z, worst: block.worst, header }
+  return { z, worst: block.worst, header, oneOnOne }
 }
 
 // --- 패스: 로그오즈 (리시버 지배) -------------------------------------------

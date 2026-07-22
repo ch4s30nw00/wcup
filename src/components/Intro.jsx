@@ -1,6 +1,6 @@
 // 인트로(타이틀) 화면과 경기 선택 화면.
 // 화면 전환 상태는 App이 들고, 여기는 표시와 콜백만 담당한다.
-import scenario from '../data/scenarios.json'
+import { MATCHES } from '../data/matches'
 
 // 아직 시나리오 데이터가 없는 예정 경기 — 카드로만 노출 (확장 로드맵 표시용)
 const UPCOMING_MATCHES = [
@@ -57,8 +57,7 @@ export function TitleScreen({ onStart }) {
   )
 }
 
-export function MatchSelect({ onPick, onBack, onTutorial }) {
-  const moment = scenario.moments[0]
+export function MatchSelect({ matchId, onPick, onBack, onTutorial }) {
   return (
     <div className="screen select-screen">
       <PitchBackdrop />
@@ -82,19 +81,28 @@ export function MatchSelect({ onPick, onBack, onTutorial }) {
             <div className="match-cta">튜토리얼 시작 ▶</div>
           </button>
 
-          <button className="match-card playable" onClick={onPick}>
-            <div className="match-card-top">
-              <span className="match-badge live">PLAYABLE</span>
-              <span className="match-minute">{displayMinute(moment.minute)}</span>
-            </div>
-            <div className="match-title">{scenario.title}</div>
-            <div className="match-score">
-              {scenario.home} <b>{moment.score[0]} : {moment.score[1]}</b> {scenario.away}
-            </div>
-            <p className="match-desc">{moment.situation}</p>
-            <div className="match-objective">🎯 {moment.objective}</div>
-            <div className="match-cta">경기 시작 ▶</div>
-          </button>
+          {MATCHES.map((m) => {
+            const moment = m.moments[0]
+            return (
+              <button
+                key={m.match_id}
+                className={`match-card playable${m.match_id === matchId ? ' current' : ''}`}
+                onClick={() => onPick(m.match_id)}
+              >
+                <div className="match-card-top">
+                  <span className="match-badge live">PLAYABLE</span>
+                  <span className="match-minute">{displayMinute(moment.minute)}</span>
+                </div>
+                <div className="match-title">{m.title}</div>
+                <div className="match-score">
+                  {m.home} <b>{moment.score[0]} : {moment.score[1]}</b> {m.away}
+                </div>
+                <p className="match-desc">{moment.situation}</p>
+                <div className="match-objective">🎯 {moment.objective}</div>
+                <div className="match-cta">경기 시작 ▶</div>
+              </button>
+            )
+          })}
 
           {UPCOMING_MATCHES.map((m) => (
             <div key={m.id} className="match-card locked" aria-disabled="true">

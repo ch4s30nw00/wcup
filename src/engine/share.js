@@ -88,7 +88,10 @@ export function decodeShare(str, { playerIds = [] } = {}) {
 }
 
 // 현재 페이지 URL에 전술을 얹은 공유 링크. origin+pathname만 쓰므로 기존 쿼리는 버린다.
-export function shareUrl({ seed, chainActs, runs, playerIds, origin, pathname }) {
+// 선수는 온필드 명단 인덱스로 담기는데 그 명단은 경기마다 다르므로 경기 id도 함께 실어야
+// 받는 쪽이 같은 명단으로 디코딩한다 (matchId 없으면 옛 형식 그대로 — 기본 경기로 해석된다).
+export function shareUrl({ seed, chainActs, runs, playerIds, matchId, origin, pathname }) {
   const p = encodeShare({ seed, chainActs, runs, playerIds })
-  return `${origin}${pathname}?p=${p}`
+  const m = matchId ? `&m=${encodeURIComponent(matchId)}` : ''
+  return `${origin}${pathname}?p=${p}${m}`
 }

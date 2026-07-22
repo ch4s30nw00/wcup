@@ -50,8 +50,7 @@ export default function TacticsBoard({
   interactive,
   defRadius,
   offsideIds, // 계획 단계 오프사이드 경고 대상 receiverId Set — 빨간 점멸
-  offsideLineX, // 계획 단계 경고 시 그릴 오프사이드 라인 x (없으면 null)
-  offsideFx, // 재생 중 { offside, offsideLineX } — 휘슬 순간부터 깃발·라인 표시
+  offsideFx, // 재생 중 오프사이드 깃발 효과
   selectedId,
   onPlayerClick,
   onRunSet,
@@ -63,7 +62,6 @@ export default function TacticsBoard({
   onPassCommit, // (receiverId | 'GOAL', toForGoal)
   onThroughCommit, // (receiverId, 공간 좌표) — 스루패스
   throughTargetOf, // (receiverId, pt) → 실제로 성립하는 도착점 (조준 미리보기용, 확정과 같은 계산)
-  pendingOffsideLineX, // 다음 액션이 마주할 오프사이드 라인 x
   offsidePosIds, // 지금 오프사이드 위치에 서 있는 아군 id Set
 }) {
   const svgRef = useRef(null)
@@ -148,8 +146,7 @@ export default function TacticsBoard({
     if (!d) return
     if (d.kind === 'aim') {
       // 조준을 놓는 순간 슛 확정 — 골문 안 y로 클램프된 좌표를 그대로 넘긴다
-      closeMenu()
-      return onPassCommit('GOAL', { x: 119, y: clamp(aimY, GOAL_AIM.y0, GOAL_AIM.y1) })
+      return commitShotAt(e)
     }
     if (d.kind === 'run') {
       // 패스 조준 중이면 동료 탭이 곧 패스 대상 선택
@@ -210,6 +207,15 @@ export default function TacticsBoard({
   }
 
   // 슛 조준 — 골문 안 y만 정한다 (기존과 같은 36.5~43.5 클램프)
+  const commitShotAt = (e) => {
+    const y = clamp(toPitch(e).y, GOAL_AIM.y0, GOAL_AIM.y1)
+    dragRef.current = null
+    setDragging(false)
+    setAimY(y)
+    closeMenu()
+    onPassCommit('GOAL', { x: 119, y })
+  }
+
   function aimDown(e) {
     e.stopPropagation()
     e.target.setPointerCapture(e.pointerId)
@@ -323,20 +329,6 @@ export default function TacticsBoard({
 
       {/* 오프사이드 라인 — 계획 중 경고가 있을 때, 재생 중엔 휘슬 이후 표시.
           최후방 2번째 수비수의 x에 세로선을 긋는다 (판정 기준선의 시각화). */}
-      {(() => {
-        const lineX = offsideFx?.offside ? offsideFx.offsideLineX : interactive ? offsideLineX : null
-        if (lineX == null) return null
-        return (
-          <g pointerEvents="none">
-            <line
-              x1={lineX} y1={1} x2={lineX} y2={PITCH_H - 1}
-              stroke="#ff3b30" strokeWidth="0.35" strokeDasharray="2 1.4" opacity="0.75"
-            />
-            <text x={lineX + 1} y={5} fontSize="2.2" fill="#ff6b5e" opacity="0.9">오프사이드 라인</text>
-          </g>
-        )
-      })()}
-
       {/* 재생 중 오프사이드 확정 — 부심 깃발 */}
       {offsideFx?.offside && (
         <g pointerEvents="none">
@@ -558,6 +550,10 @@ export default function TacticsBoard({
             height={GOAL_AIM.hitY1 - GOAL_AIM.hitY0}
             fill="rgba(255, 107, 94, 0.07)"
             onPointerDown={aimDown}
+            onPointerUp={(e) => {
+              e.stopPropagation()
+              if (dragRef.current?.kind === 'aim') commitShotAt(e)
+            }}
           />
           <g pointerEvents="none">
             {/* 골문 안 조준 가능 구간 */}
@@ -588,18 +584,6 @@ export default function TacticsBoard({
         return (
           <g pointerEvents="none">
             {/* 오프사이드 라인 — 스루패스는 오프사이드가 걸리는 지점이라 조준 중에 늘 보여준다 */}
-            {pendingOffsideLineX != null && (
-              <>
-                <line
-                  x1={pendingOffsideLineX} y1={1} x2={pendingOffsideLineX} y2={PITCH_H - 1}
-                  stroke="#ff3b30" strokeWidth="0.3" strokeDasharray="2 1.4" opacity="0.6"
-                />
-                <text x={pendingOffsideLineX + 1} y={PITCH_H - 2} fontSize="2.1" fill="#ff6b5e" opacity="0.8">
-                  오프사이드 라인
-                </text>
-              </>
-            )}
-
             {/* 안내 배너 */}
             <rect x={22} y={2.5} width={76} height={7} rx="1.6" fill="rgba(16,20,28,0.88)"
               stroke={recvOffside ? '#ff3b30' : '#7ee0a8'} strokeWidth="0.3" />

@@ -38,13 +38,23 @@ export const K = {
 
   // 슈팅 — 로지스틱 xG. z = B0 + B_DIST·lsFactor·D + B_ANG·θ + B_SKILL·(S_eff−SEFF0) + Σ B_BLOCK·e^(−d/R_BLOCK)
   SHOT: {
-    B0: -0.03, // 오픈플레이 절편 (앵커 fit)
-    B_DIST: -0.2, // 거리 감쇠 /m. 문헌 범위 [−0.1, −0.3] 중앙
-    B_ANG: 1.3, // 각도 개방도 /rad (양 포스트 사잇각)
+    // 중앙·무압박 발슈팅 앵커: 6/12/18/25yd = 0.42/0.18/0.09/0.04.
+    // 거리·각도만으로 캘리브레이션하고, 골키퍼는 평균 선방 수준으로 이 기본값에 내재화한다.
+    B0: -0.9702,
+    B_DIST: -0.1111, // 거리 감쇠 /m
+    B_ANG: 1.0659, // 골문 시야각 가산 /rad
     B_SKILL: 2.0, // 스킬 로그오즈 가중
     SEFF0: 0.7, // 스킬 중심점
-    B_BLOCK: -2.5, // 블로커 강도 (라인 위 d=0 → odds ×0.08)
+    // 한 수비수가 슛 라인을 완전히 막아도 xG가 거의 0이 되지 않도록 보정한다.
+    // d=0에서 odds ×0.47 (기존 ×0.08): 수비 차단은 반영하되 평균 GK 효과와 중복 감점하지 않는다.
+    B_BLOCK: -0.75,
     R_BLOCK: 2.0, // 블로커 위협 반경 m
+    // GK와 단독으로 맞선 상황: 수비수가 슛길을 막지 않을 때만 적용한다.
+    // 12yd 중앙 1대1은 평균적으로 약 0.55 xG가 되도록 캘리브레이션.
+    ONE_ON_ONE_BONUS: 1.7,
+    ONE_ON_ONE_MAX_DIST: 18,
+    ONE_ON_ONE_GK_LINE: 4,
+    ONE_ON_ONE_BLOCK_CLEARANCE: 3,
     PENALTY_XG: 0.76, // D=11 페널티킥 특례 상수 (코어 fit 제외 — PK 상황 도입 시 사용)
     LS_RELIEF: 0.5, // 중거리 스탯의 거리 감쇠 완화 기울기: lsFactor = 1 − LS_RELIEF·(norm(중거리)−MID)
     LS_MIN: 0.7, // lsFactor 하한/상한 — 거리 감쇠 부호가 뒤집히지 않게
