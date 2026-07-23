@@ -1772,10 +1772,10 @@
     "condition": 100
   },
   {
-    "id": "nor_15",
+    "id": "nor_14",
     "name": "프레드리크 아우르스네스",
     "team": "NOR",
-    "number": 15,
+    "number": 14,
     "position": "DF",
     "roles": [
       "RB"
@@ -1803,10 +1803,10 @@
     "condition": 100
   },
   {
-    "id": "nor_05",
+    "id": "nor_03",
     "name": "크리스토페르 아예르",
     "team": "NOR",
-    "number": 5,
+    "number": 3,
     "position": "DF",
     "roles": [
       "CB"
@@ -1834,10 +1834,10 @@
     "condition": 100
   },
   {
-    "id": "nor_06",
+    "id": "nor_17",
     "name": "토르비외른 헤겜",
     "team": "NOR",
-    "number": 6,
+    "number": 17,
     "position": "DF",
     "roles": [
       "CB"
@@ -1865,10 +1865,10 @@
     "condition": 100
   },
   {
-    "id": "nor_03",
+    "id": "nor_05",
     "name": "다비드 묄레르 볼페",
     "team": "NOR",
-    "number": 3,
+    "number": 5,
     "position": "DF",
     "roles": [
       "LB"
@@ -1927,10 +1927,10 @@
     "condition": 100
   },
   {
-    "id": "nor_18",
+    "id": "nor_06",
     "name": "파트리크 베르그",
     "team": "NOR",
-    "number": 18,
+    "number": 6,
     "position": "MF",
     "roles": [
       "DM"
@@ -1989,10 +1989,10 @@
     "condition": 100
   },
   {
-    "id": "nor_11",
+    "id": "nor_22",
     "name": "오스카르 보브",
     "team": "NOR",
-    "number": 11,
+    "number": 22,
     "position": "FW",
     "roles": [
       "RW"
@@ -2051,10 +2051,10 @@
     "condition": 100
   },
   {
-    "id": "nor_20",
+    "id": "nor_21",
     "name": "안드레아스 셸데루프",
     "team": "NOR",
-    "number": 20,
+    "number": 21,
     "position": "FW",
     "roles": [
       "LW"
@@ -2113,10 +2113,10 @@
     "condition": 100
   },
   {
-    "id": "bra_02",
+    "id": "bra_13",
     "name": "다닐루",
     "team": "BRA",
-    "number": 2,
+    "number": 13,
     "position": "DF",
     "roles": [
       "RB"
@@ -2206,10 +2206,10 @@
     "condition": 100
   },
   {
-    "id": "bra_06",
+    "id": "bra_16",
     "name": "도글라스 산투스",
     "team": "BRA",
-    "number": 6,
+    "number": 16,
     "position": "DF",
     "roles": [
       "LB"
@@ -2268,10 +2268,10 @@
     "condition": 100
   },
   {
-    "id": "bra_17",
+    "id": "bra_08",
     "name": "브루누 기마랑이스",
     "team": "BRA",
-    "number": 17,
+    "number": 8,
     "position": "MF",
     "roles": [
       "CM"
@@ -2330,10 +2330,10 @@
     "condition": 100
   },
   {
-    "id": "bra_16",
+    "id": "bra_18",
     "name": "다닐루 산투스",
     "team": "BRA",
-    "number": 16,
+    "number": 18,
     "position": "MF",
     "roles": [
       "CM"
@@ -2361,10 +2361,10 @@
     "condition": 100
   },
   {
-    "id": "bra_09",
+    "id": "bra_19",
     "name": "엔드리크",
     "team": "BRA",
-    "number": 9,
+    "number": 19,
     "position": "FW",
     "roles": [
       "ST"
@@ -2420,6 +2420,37 @@
       "anticipation": 16
     },
     "statSource": "fm26",
+    "condition": 100
+  },
+  {
+    "id": "bra_02",
+    "name": "에데르송",
+    "team": "BRA",
+    "number": 2,
+    "position": "MF",
+    "roles": [
+      "DM"
+    ],
+    "heightCm": 183,
+    "stats": {
+      "flair": 11,
+      "finishing": 8,
+      "dribbling": 12,
+      "longshots": 11,
+      "crossing": 10,
+      "passing": 14,
+      "heading": 12,
+      "strength": 14,
+      "acceleration": 12,
+      "pace": 12,
+      "jumping": 13,
+      "balance": 13,
+      "marking": 14,
+      "tackle": 15,
+      "positioning": 14,
+      "anticipation": 14
+    },
+    "statSource": "manual",
     "condition": 100
   },
   {
