@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import TacticsBoard from './components/TacticsBoard'
 import { TitleScreen, MatchSelect } from './components/Intro'
-import Tutorial from './components/Tutorial'
+import { TutorialCoach } from './components/Tutorial'
+import { TUTORIAL_STEPS } from './components/tutorialSteps'
 import { resolveSequence, planOffside, defenseTimeline, DEF_RADIUS } from './engine/resolve'
 import { checkOffside } from './engine/offside'
 import { initDefense } from './engine/defense'
@@ -46,6 +47,10 @@ function App() {
   // 선택된 경기. 여기서 온필드 명단·시작 좌표가 전부 유도되므로, 경기가 바뀌면
   // 아래 파생값이 통째로 새로 계산된다(그래서 전술도 같이 비워야 한다 — pickMatch 참고).
   const [matchId, setMatchId] = useState(INITIAL_MATCH.match_id)
+  // 튜토리얼: 실제 보드 위에서 돈다. null이면 비활성.
+  // tutReading = 설명 카드를 보는 중 / false면 그 기술을 직접 해보는 중.
+  const [tutStep, setTutStep] = useState(null)
+  const [tutReading, setTutReading] = useState(true)
   // 좌표 편집 모드 (개발 전용, 프로덕션 번들에서는 통째로 빠진다 — EDITABLE 참고).
   // editPos = 아직 저장 안 한 좌표 (id → {x,y}). null이면 데이터 원본 그대로.
   const [editMode, setEditMode] = useState(false)
@@ -440,6 +445,23 @@ function App() {
     setScreen('board')
   }
 
+  // ── 튜토리얼 ───────────────────────────────────────────────────────
+  // 빈 보드에서 시작한다 — 앞서 그려둔 전개가 남아 있으면 미션 완료가 이미 충족돼 버린다.
+  function startTutorial() {
+    clearAll()
+    setSelectedId(null)
+    setSheetMode(false)
+    setTutStep(0)
+    setTutReading(true)
+    setScreen('board')
+  }
+  const exitTutorial = () => setTutStep(null)
+  function nextTutorial() {
+    if (tutStep >= TUTORIAL_STEPS.length - 1) return exitTutorial()
+    setTutStep((n) => n + 1)
+    setTutReading(true)
+  }
+
   // ── 좌표 편집 (개발 전용) ──────────────────────────────────────────
   // 0.5 단위로 맞춘다 — 중계 화면 보고 찍는 값에 소수점 두 자리는 의미가 없고,
   // positions.json이 지저분해진다.
@@ -474,11 +496,9 @@ function App() {
         matchId={matchId}
         onPick={pickMatch}
         onBack={() => setScreen('intro')}
-        onTutorial={() => setScreen('tutorial')}
+        onTutorial={startTutorial}
       />
     )
-  if (screen === 'tutorial')
-    return <Tutorial onDone={() => setScreen('board')} onBack={() => setScreen('select')} />
 
   return (
     <div className="app">
@@ -838,6 +858,20 @@ function App() {
             <button className="ctrl egg-close" onClick={() => setEggClosed(true)}>닫기 ✕</button>
           </div>
         </div>
+      )}
+
+      {/* 튜토리얼 코치 — 실제 보드 위에 얹혀 단계별로 기술을 안내한다.
+          완료 판정은 이 화면이 이미 들고 있는 상태(체인·런·페이즈)만 본다. */}
+      {tutStep != null && (
+        <TutorialCoach
+          step={tutStep}
+          reading={tutReading}
+          state={{ chainActs, runs, phase }}
+          onPractice={() => setTutReading(false)}
+          onNext={nextTutorial}
+          onSkip={nextTutorial}
+          onExit={exitTutorial}
+        />
       )}
     </div>
   )
