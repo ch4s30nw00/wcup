@@ -26,10 +26,13 @@ const KIT = {
   SKY: { body: '#75aadb', gk: '#3b2f6f', ring: '#10314f', num: '#0d2438' },
   SKY_GKLIME: { body: '#75aadb', gk: '#a5d64c', ring: '#10314f', num: '#0d2438' }, // 결승 아르헨티나 — GK만 연두색
   NAVY: { body: '#1e3a6e', gk: '#3f6f2f', ring: '#cdd6e8', num: '#fff' },
+  NAVY_GKTEAL: { body: '#1e3a6e', gk: '#17a2b8', ring: '#cdd6e8', num: '#fff' }, // 4강 아르헨티나 — GK 청록
+  WHITE_GKYELLOW: { body: '#f2f5fa', gk: '#ffd23e', ring: '#c8102e', num: '#c8102e' }, // 4강 잉글랜드 — 흰 킷·빨간 테두리/번호, GK 노랑
 }
 // match_id → [홈 킷, 원정 킷]
 const MATCH_KIT = {
   por_esp_2026_r16: [KIT.WHITE, KIT.RED], // 홈=ESP 흰색 / 원정=포르투갈 빨강
+  eng_arg_2026_sf: [KIT.NAVY_GKTEAL, KIT.WHITE_GKYELLOW], // 홈=아르헨티나 남색(GK 청록) / 원정=잉글랜드 흰색(GK 노랑)
   arg_esp_2026_final: [KIT.RED_GKGREEN, KIT.SKY_GKLIME], // 홈=ESP 빨강(GK 녹색) / 원정=아르헨티나 하늘색(GK 연두)
 }
 const LEG_MARKER = { dribble: 'url(#ah-move)', pass: 'url(#ah-pass)', shot: 'url(#ah-shot)' }
