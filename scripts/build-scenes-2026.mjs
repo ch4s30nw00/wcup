@@ -56,7 +56,13 @@ function findPlayer(country, csvName) {
   return hit
 }
 
-function toPlayer({ id, team, country, csvName, name, number, position, roles }) {
+function toPlayer({ id, team, csvName, name, number, position, roles, stats, heightCm, country }) {
+  // csvName이 없으면 인라인 stats를 쓴다 — CSV 데이터베이스에 없는 선수(경기 중 투입된
+  // 교체 선수 등)를 임의 스탯으로 넣을 때. statSource로 fm26과 구분한다.
+  if (!csvName) {
+    if (!stats) throw new Error(`csvName도 stats도 없다: ${name}`)
+    return { id, name, team, number, position, roles, heightCm: heightCm ?? 180, stats, statSource: 'manual', condition: 100 }
+  }
   const r = findPlayer(country, csvName)
   return {
     id,
@@ -121,29 +127,35 @@ const POR_A = [
 // 크로스 판정 기하(K.CROSS: |y-40|≥18, 도착 x≥102)를 만족하도록 셸데루프를 y=14에 뒀다.
 const NOR = [
   { id: 'nor_01', csvName: 'Ørjan Haskjold NYLAND', name: '외르얀 뉠란', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'nor_15', csvName: 'Fredrik AURSNES', name: '프레드리크 아우르스네스', number: 15, position: 'DF', roles: ['RB'] },
-  { id: 'nor_05', csvName: 'Kristoffer Vassbakk Köpp AJER', name: '크리스토페르 아예르', number: 5, position: 'DF', roles: ['CB'] },
-  { id: 'nor_06', csvName: 'Torbjørn Lysaker HEGGEM', name: '토르비외른 헤겜', number: 6, position: 'DF', roles: ['CB'] },
-  { id: 'nor_03', csvName: 'David Møller WOLFE', name: '다비드 묄레르 볼페', number: 3, position: 'DF', roles: ['LB'] },
+  { id: 'nor_14', csvName: 'Fredrik AURSNES', name: '프레드리크 아우르스네스', number: 14, position: 'DF', roles: ['RB'] },
+  { id: 'nor_03', csvName: 'Kristoffer Vassbakk Köpp AJER', name: '크리스토페르 아예르', number: 3, position: 'DF', roles: ['CB'] },
+  { id: 'nor_17', csvName: 'Torbjørn Lysaker HEGGEM', name: '토르비외른 헤겜', number: 17, position: 'DF', roles: ['CB'] },
+  { id: 'nor_05', csvName: 'David Møller WOLFE', name: '다비드 묄레르 볼페', number: 5, position: 'DF', roles: ['LB'] },
   { id: 'nor_10', csvName: 'Martín ØDEGAARD', name: '마르틴 외데고르', number: 10, position: 'MF', roles: ['CAM'] },
-  { id: 'nor_18', csvName: 'Patrick BERG', name: '파트리크 베르그', number: 18, position: 'MF', roles: ['DM'] },
+  { id: 'nor_06', csvName: 'Patrick BERG', name: '파트리크 베르그', number: 6, position: 'MF', roles: ['DM'] },
   { id: 'nor_08', csvName: 'Sander Gard Bolin BERGE', name: '산데르 베르게', number: 8, position: 'MF', roles: ['CM'] },
-  { id: 'nor_11', csvName: 'Oscar BOBB', name: '오스카르 보브', number: 11, position: 'FW', roles: ['RW'] },
+  { id: 'nor_22', csvName: 'Oscar BOBB', name: '오스카르 보브', number: 22, position: 'FW', roles: ['RW'] },
   { id: 'nor_09', csvName: 'Erling Braut HAALAND', name: '엘링 홀란', number: 9, position: 'FW', roles: ['ST'] },
-  { id: 'nor_20', csvName: 'Andreas Rædergård SCHJELDERUP', name: '안드레아스 셸데루프', number: 20, position: 'FW', roles: ['LW'] },
+  { id: 'nor_21', csvName: 'Andreas Rædergård SCHJELDERUP', name: '안드레아스 셸데루프', number: 21, position: 'FW', roles: ['LW'] },
 ]
 const BRA = [
   { id: 'bra_01', csvName: 'Álisson Ramsés BECKER', name: '알리송', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'bra_02', csvName: 'Danilo Luiz DA SILVA', name: '다닐루', number: 2, position: 'DF', roles: ['RB'] },
+  { id: 'bra_13', csvName: 'Danilo Luiz DA SILVA', name: '다닐루', number: 13, position: 'DF', roles: ['RB'] },
   { id: 'bra_04', csvName: 'Marcos AOAS CORREA', name: '마르키뉴스', number: 4, position: 'DF', roles: ['CB'] },
   { id: 'bra_03', csvName: 'Gabriel DOS SANTOS MAGALHÃES', name: '가브리에우 마갈량이스', number: 3, position: 'DF', roles: ['CB'] },
-  { id: 'bra_06', csvName: 'Douglas DOS SANTOS JUSTINO DE MELO', name: '도글라스 산투스', number: 6, position: 'DF', roles: ['LB'] },
+  { id: 'bra_16', csvName: 'Douglas DOS SANTOS JUSTINO DE MELO', name: '도글라스 산투스', number: 16, position: 'DF', roles: ['LB'] },
   { id: 'bra_05', csvName: 'Carlos Henrique CASIMIRO', name: '카제미루', number: 5, position: 'MF', roles: ['DM'] },
-  { id: 'bra_17', csvName: 'Bruno GUIMARÃES RODRIGUEZ MOURA', name: '브루누 기마랑이스', number: 17, position: 'MF', roles: ['CM'] },
+  { id: 'bra_08', csvName: 'Bruno GUIMARÃES RODRIGUEZ MOURA', name: '브루누 기마랑이스', number: 8, position: 'MF', roles: ['CM'] },
   { id: 'bra_07', csvName: 'Vinicius José PAIXÃO DE OLIVEIRA JÚNIOR', name: '비니시우스 주니오르', number: 7, position: 'FW', roles: ['LW'] },
-  { id: 'bra_16', csvName: 'Danilo DOS SANTOS DE OLIVEIRA', name: '다닐루 산투스', number: 16, position: 'MF', roles: ['CM'] },
-  { id: 'bra_09', csvName: 'Endrick Felipe MOREIRA DE SOUSA PESSOA', name: '엔드리크', number: 9, position: 'FW', roles: ['ST'] },
+  { id: 'bra_18', csvName: 'Danilo DOS SANTOS DE OLIVEIRA', name: '다닐루 산투스', number: 18, position: 'MF', roles: ['CM'] },
+  { id: 'bra_19', csvName: 'Endrick Felipe MOREIRA DE SOUSA PESSOA', name: '엔드리크', number: 19, position: 'FW', roles: ['ST'] },
   { id: 'bra_10', csvName: 'Neymar DA SILVA SANTOS JÚNIOR', name: '네이마르', number: 10, position: 'FW', roles: ['CAM'] },
+  // 미드필더 에데르송(아탈란타) — 79분 브루누 기마랑이스와 교체 투입. CSV 데이터베이스에는
+  // 동명이인 골키퍼만 있어 스탯은 임의값(수비형 미드필더 기준)으로 넣는다.
+  {
+    id: 'bra_02', name: '에데르송', number: 2, position: 'MF', roles: ['DM'], heightCm: 183,
+    stats: { flair: 11, finishing: 8, dribbling: 12, longshots: 11, crossing: 10, passing: 14, heading: 12, strength: 14, acceleration: 12, pace: 12, jumping: 13, balance: 13, marking: 14, tackle: 15, positioning: 14, anticipation: 14 },
+  },
 ]
 
 // ── 로스터: 아래 5경기용 ────────────────────────────────────────────
@@ -415,10 +427,10 @@ const scenes = {
           score: [0, 0],
           situation: '79분. 0-0 팽팽한 균형. 하프타임에 들어온 셸데루프가 왼쪽을 허문다.',
           objective: '홀란의 머리에 크로스를 배달하라',
-          ball: 'nor_20',
+          ball: 'nor_21',
           positions: posOf('bra_nor_2026_r16'),
           easterEgg: {
-            passerId: 'nor_20',
+            passerId: 'nor_21',
             scorerId: 'nor_09',
             title: '그날, 진짜로 있었던 일',
             caption:
@@ -499,8 +511,8 @@ const scenes = {
     unverified: [
       'POR-ESP: 프리킥에서 빠르게 시작된 전개였는지는 ESPN 단독 서술이라 미확인. 현재는 오픈플레이로 배치했다.',
       'POR-ESP: 메리노 슛의 정확한 거리·각도, 85분 더블 교체 후 스페인의 실제 포지션 배열 미확인 (4-2-3-1 유지로 가정).',
-      'BRA-NOR: 브라질 선발 11번째 선수 미확인(마르티넬리 추정). 현재 79분 기준 온피치로 다닐루 산투스(bra_16)를 넣었다.',
-      'BRA-NOR: 79분 에데르송↔브루누 기마랑이스 교체가 골 앞인지 뒤인지 미확인. 기마랑이스가 아직 뛰는 것으로 뒀다.',
+      'BRA-NOR: 브라질 선발 11번째 선수 미확인(마르티넬리 추정). 현재 79분 기준 온피치로 다닐루 산투스(bra_18)를 넣었다.',
+      'BRA-NOR: 79분 에데르송↔브루누 기마랑이스 교체가 골 앞인지 뒤인지 미확인. 교체가 골보다 먼저였다고 보고 에데르송(bra_02)을 온필드에 뒀다. 이 에데르송은 미드필더(아탈란타)로, CSV에 없어 스탯은 임의값이다.',
       'BRA-NOR: 홀란 헤더의 박스 안 정확한 지점 미확인.',
       'ESP 등번호 수정: 포로 2→12, 쿠바르시 5→22 (스페인축구협회 발표 번호 기준). 기존 esp_02/esp_05 id도 함께 바뀌었다.',
       'POR26 등번호 수정: 달로트 20→5, 베이가 14→13, 네베스 18→15, 콘세이상 11→26. id도 p26_05/p26_13/p26_15/p26_26으로 함께 바뀌었다. ' +
