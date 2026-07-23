@@ -12,34 +12,25 @@ const DOT_R = 1.4
 const LEG_COLOR = { dribble: '#dbe4f2', pass: '#ffd23e', shot: '#ff6b5e' }
 
 // 팀 킷. 기본값은 조작하는 팀(홈) 빨강 / 상대 남색이고, 실제 유니폼이 그와 어긋나
-// 두 팀을 구분하기 어려운 경기만 팀 코드로 덮어쓴다.
-// num을 따로 두는 이유: 흰 킷에서는 등번호를 흰색으로 쓰면 안 보인다.
-const KIT_HOME = { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' }
-const KIT_AWAY = { body: '#1e3a6e', gk: '#3f6f2f', ring: '#cdd6e8', num: '#fff' }
-const TEAM_KIT = {
-  ESP: { body: '#f2f5fa', gk: '#f0a500', ring: '#1a2330', num: '#10141c' },
-  POR: { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' },
-  POR26: { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' },
+// 두 팀을 구분하기 어려운 경기만 덮어쓴다.
+//
+// 팀이 아니라 경기로 거는 이유: 같은 팀도 상대에 따라 홈/원정 킷이 갈린다.
+// 스페인은 포르투갈(빨강)을 만나면 흰색, 결승에서 아르헨티나를 만나면 빨간색이다.
+//
+// num을 따로 두는 이유: 흰 킷에서 등번호를 흰색으로 쓰면 보이지 않는다.
+// ring은 테두리이자 공 소유자를 감싸는 점선 색이라, 밝은 킷에서는 어두워야 한다.
+const KIT = {
+  RED: { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' },
+  RED_GKGREEN: { body: '#c8102e', gk: '#2f9e44', ring: '#fff', num: '#fff' }, // 결승 스페인 — GK만 녹색
+  WHITE: { body: '#f2f5fa', gk: '#f0a500', ring: '#1a2330', num: '#10141c' },
+  SKY: { body: '#75aadb', gk: '#3b2f6f', ring: '#10314f', num: '#0d2438' },
+  SKY_GKLIME: { body: '#75aadb', gk: '#a5d64c', ring: '#10314f', num: '#0d2438' }, // 결승 아르헨티나 — GK만 연두색
+  NAVY: { body: '#1e3a6e', gk: '#3f6f2f', ring: '#cdd6e8', num: '#fff' },
 }
-// 킷이 겹치면 원정팀이 갈아입는다 (실제 경기 규칙과 같다). 팀별 킷을 손으로 넣다 보면
-// 홈과 같은 색이 걸리는데(2022 한국-포르투갈이 둘 다 빨강이었다), 그러면 보드에서
-// 두 팀을 구분할 수 없다. 새 경기가 추가돼도 자동으로 걸리도록 색 거리로 판정한다.
-const KIT_ALT = { body: '#f2f5fa', gk: '#f0a500', ring: '#1a2330', num: '#10141c' } // 3순위: 흰색
-const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))
-const colorGap = (a, b) => {
-  const [r1, g1, b1] = hexRgb(a)
-  const [r2, g2, b2] = hexRgb(b)
-  // 사람 눈이 녹색에 가장 민감하고 파랑에 둔한 것을 반영한 가중 거리
-  return Math.hypot((r1 - r2) * 0.9, (g1 - g2) * 1.2, (b1 - b2) * 0.7)
-}
-const KIT_GAP_MIN = 90 // 이보다 가까우면 잔디 위 작은 원에서 같은 색으로 보인다
-const kitOf = (team, fallback) => TEAM_KIT[team] ?? fallback
-// 홈 킷과 겹치지 않는 원정 킷을 고른다: 팀 지정 → 기본 남색 → 흰색 순
-const awayKitFor = (awayTeam, homeKit) => {
-  for (const kit of [kitOf(awayTeam, KIT_AWAY), KIT_AWAY, KIT_ALT]) {
-    if (colorGap(homeKit.body, kit.body) >= KIT_GAP_MIN) return kit
-  }
-  return KIT_ALT
+// match_id → [홈 킷, 원정 킷]
+const MATCH_KIT = {
+  por_esp_2026_r16: [KIT.WHITE, KIT.RED], // 홈=ESP 흰색 / 원정=포르투갈 빨강
+  arg_esp_2026_final: [KIT.RED_GKGREEN, KIT.SKY_GKLIME], // 홈=ESP 빨강(GK 녹색) / 원정=아르헨티나 하늘색(GK 연두)
 }
 const LEG_MARKER = { dribble: 'url(#ah-move)', pass: 'url(#ah-pass)', shot: 'url(#ah-shot)' }
 
@@ -95,15 +86,13 @@ export default function TacticsBoard({
   throughTargetOf, // (receiverId, pt) → 실제로 성립하는 도착점 (조준 미리보기용, 확정과 같은 계산)
   offsidePosIds, // 지금 오프사이드 위치에 서 있는 아군 id Set
   flipX, // 보기만 좌우 반전 — 그날 중계에서 홈팀이 왼쪽으로 공격한 경기 (좌표는 그대로)
-  homeTeam, // 팀 코드 — 킷 색을 고르는 데만 쓴다 (TEAM_KIT 참고)
-  awayTeam,
+  matchId, // 킷 색을 고르는 데만 쓴다 (MATCH_KIT 참고)
   // 좌표 편집 모드(개발 전용). 켜면 전술 조작 대신 양 팀 아무나 끌어서 자리를 옮긴다.
   // 장면 좌표를 중계 화면 보고 맞추는 용도라, 실제 게임 조작과는 완전히 분리한다.
   editMode,
   onEditMove, // (playerId, {x, y})
 }) {
-  const homeKit = kitOf(homeTeam, KIT_HOME)
-  const awayKit = awayKitFor(awayTeam, homeKit)
+  const [homeKit, awayKit] = MATCH_KIT[matchId] ?? [KIT.RED, KIT.NAVY]
   const svgRef = useRef(null)
   const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
   const [ballDrag, setBallDrag] = useState(null)
