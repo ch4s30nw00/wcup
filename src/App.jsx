@@ -581,8 +581,7 @@ function App() {
               players={basePlayers}
               opponents={opponents}
               flipX={scenario.viewFlipX ?? false}
-              homeTeam={scenario.home}
-              awayTeam={scenario.away}
+              matchId={scenario.match_id}
               // 이전 시트를 열람 중이면 그 시점까지의 체인·좌표만 보여준다
               runLegs={isViewingPast ? runLegs.filter((r) => r.afterIndex <= shownSheet) : runLegs}
               chain={isViewingPast ? chain.slice(0, shownSheet + 1) : chain}

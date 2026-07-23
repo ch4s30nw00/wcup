@@ -462,6 +462,9 @@ const scenes = {
       home: 'ESP',
       away: 'ARG',
       actual: '스페인 1 : 0 아르헨티나 (연장, 2026-07-19, 뉴저지 메트라이프 스타디움)',
+      // 그날 중계 방향에 맞춘다 — 좌표는 엔진 규칙대로(홈이 x=120으로 공격) 두고,
+      // 보드를 그릴 때만 좌우를 뒤집는다.
+      viewFlipX: true,
       moments: [
         {
           id: 'm106_ferran',
