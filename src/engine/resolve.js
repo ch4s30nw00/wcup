@@ -168,7 +168,6 @@ export function calcShot(action, opponents, prev = null) {
   // 공간·각도 우위가 크므로 별도 보너스를 준다. 슛길 중간에 필드 수비수가 있으면
   // 단독 찬스가 아니므로 이 보너스를 적용하지 않는다.
   const goalkeeper = opponents.find((o) => o.position === 'GK')
-  const gkLine = goalkeeper ? minDistToPath(pts, goalkeeper) : null
   const fieldBlocker = opponents.some((o) => {
     if (o.position === 'GK') return false
     const hit = minDistToPath(pts, o)
@@ -177,10 +176,17 @@ export function calcShot(action, opponents, prev = null) {
   const oneOnOne =
     !header &&
     D <= C.ONE_ON_ONE_MAX_DIST &&
-    gkLine != null &&
-    gkLine.d <= C.ONE_ON_ONE_GK_LINE &&
+    goalkeeper != null &&
+    goalkeeper.x >= K.GOAL.x - C.ONE_ON_ONE_GK_GOAL_DEPTH &&
     !fieldBlocker
-  if (oneOnOne) z += C.ONE_ON_ONE_BONUS
+  if (oneOnOne) {
+    // 가까울수록 BONUS 전액, MAX_DIST로 갈수록 FAR_BONUS로 선형 감쇠.
+    const t = Math.min(1, Math.max(0, (D - C.ONE_ON_ONE_FULL_BONUS_DIST) / (C.ONE_ON_ONE_MAX_DIST - C.ONE_ON_ONE_FULL_BONUS_DIST)))
+    z += C.ONE_ON_ONE_BONUS + (C.ONE_ON_ONE_FAR_BONUS - C.ONE_ON_ONE_BONUS) * t
+    // 사용자 규칙: 막는 사람 없는 진짜 1대1은 마무리=1이어도 최소 40%. 이 바닥은
+    // 이 상황에만 적용되고, 막힌 슛·일반 슛은 기존 모델 그대로다.
+    z = Math.max(z, Math.log(C.ONE_ON_ONE_MIN_XG / (1 - C.ONE_ON_ONE_MIN_XG)))
+  }
 
   // 헤더 공중 듀얼: 슛 지점 최근접 수비수와 점프+키+몸싸움 경합 (예측력 50% 혼합은 defScale 몫)
   if (header) {
