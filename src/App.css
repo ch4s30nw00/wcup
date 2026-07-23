@@ -1041,3 +1041,130 @@ header h1 .sub {
     gap: 10px;
   }
 }
+
+/* ── 튜토리얼 코치 ──────────────────────────────────────────────────
+   실제 보드 위에 떠서 단계별로 안내한다. 보드를 가리면 안 되므로 화면 아래쪽에
+   고정하고, 실습 중(coach-strip)에는 한 줄로 접어 미션만 남긴다. */
+.coach {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 90;
+  width: min(560px, calc(100vw - 24px));
+  background: #10141c;
+  border: 1px solid #2c3648;
+  border-radius: 12px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+  padding: 12px 14px;
+  color: #dbe4f2;
+}
+.coach-card {
+  border-color: #ffd23e;
+}
+.coach-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.coach-step {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #ffd23e;
+}
+.coach-x {
+  background: none;
+  border: none;
+  color: #6b7689;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  font-family: inherit;
+}
+.coach-x:hover {
+  color: #dbe4f2;
+}
+.coach h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: #fff;
+}
+.coach-body {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #b9c3d4;
+}
+.coach-tip {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8a94a8;
+  background: #161b26;
+  border-radius: 7px;
+  padding: 7px 9px;
+}
+.coach-mission {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.coach-mission .wait {
+  color: #6b7689;
+}
+.coach-mission .ok {
+  color: #4ade80;
+}
+.coach-actions {
+  display: flex;
+  gap: 8px;
+}
+.coach-go {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #10141c;
+  background: #ffd23e;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.coach-go:hover {
+  filter: brightness(1.08);
+}
+.coach-skip {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #8a94a8;
+  background: none;
+  border: 1px solid #2c3648;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.coach-skip:hover {
+  color: #dbe4f2;
+}
+
+/* 가로 화면(모바일 landscape)에서는 세로 공간이 귀하다 — 카드를 더 납작하게 */
+@media (max-height: 520px) {
+  .coach {
+    bottom: 8px;
+    padding: 9px 12px;
+  }
+  .coach-body {
+    font-size: 12px;
+    line-height: 1.45;
+    margin-bottom: 6px;
+  }
+  .coach-tip {
+    display: none;
+  }
+}

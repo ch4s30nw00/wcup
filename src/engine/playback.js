@@ -135,14 +135,16 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
 
   // 선수별 "약속" 이벤트: t 시점까지 point 근처에 있어야 한다 — 스크립트 출발점,
   // 스크립트 종점, 패스 받을 지점. 마지막 약속이 지나면 자유(팀 셰이프) 상태.
+  // kind: 'recv'(패스 받을 지점)는 다른 약속과 구분한다 — 공이 그리로 날아가므로
+  // 그 자리를 반드시 지켜야 하고, 나머지 약속은 늦어도 화면상 티가 나지 않는다.
   const events = {}
-  const addEvent = (id, tm, point) => (events[id] ??= []).push({ t: tm, point })
+  const addEvent = (id, tm, point, kind = 'move') => (events[id] ??= []).push({ t: tm, point, kind })
   for (const s of segs) {
     addEvent(s.id, s.start, s.pts[0])
     addEvent(s.id, s.start + s.dur, pointAtLength(s.pts, (s.capFrac ?? 1) * s.len))
   }
   for (const leg of legs) {
-    if (leg.type === 'pass' && leg.receiverId) addEvent(leg.receiverId, leg.start + leg.dur, leg.to)
+    if (leg.type === 'pass' && leg.receiverId) addEvent(leg.receiverId, leg.start + leg.dur, leg.to, 'recv')
   }
   for (const list of Object.values(events)) list.sort((a, b) => a.t - b.t)
 
@@ -334,6 +336,14 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         } else if (!done) {
           ownerId = null
           ball = pointAtLength(leg.pts, Math.min(k, capFrac) * leg.len)
+          // 성공할 패스는 리시버의 "실제" 위치로 유도한다.
+          // 궤적은 계획 좌표로 그려지는데 선수는 조향·노이즈로 그 자리에서 밀려나 있을 수 있고,
+          // 그대로 두면 공이 빈 잔디에 떨어졌다가 선수에게 튀어 "공이 혼자 움직이는" 것처럼 보인다.
+          // 보정을 k²로 실어 초반 비행은 계획 궤적 그대로, 끝에서만 발밑으로 붙는다.
+          // (실제 패스도 "받을 사람이 있을 자리"로 차므로 연출상으로도 자연스럽다)
+          // 공은 그려진 궤적 그대로 날아간다. 빗나가면 빗나간 자리로 가야 한다 —
+          // 리시버 쪽으로 휘게 만들면 "유도탄"이 되어 패스의 의미가 사라진다.
+          // 대신 리시버가 약속 지점을 지키게 해서(아래 3번 블록) 애초에 어긋나지 않게 한다.
         } else if (leg.step.success && leg.type === 'pass') {
           ownerId = leg.receiverId
         } else {
@@ -373,6 +383,23 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     let defWaypoint = null
     for (const leg of legs) if (el >= leg.start) defWaypoint = leg.step.defPos ?? defWaypoint
 
+    // 선수별 "약속" 조회 — 지원 런 선발보다 먼저 알아야 한다.
+    // 곧 공을 받을 선수를 다른 곳으로 뛰게 하면 패스가 빈 자리에 떨어지기 때문.
+    const lastPast = (id) => {
+      let pt = null
+      for (const e of events[id] ?? []) if (e.t <= el) pt = e.point
+      return pt
+    }
+    const nextPending = (id) => (events[id] ?? []).find((e) => e.t > el)
+    // 이 시간 안에 약속이 잡힌 선수는 "예약된" 상태로 본다 (지원 런 제외 대상)
+    const RESERVED_MS = 2500
+    // 패스 받을 선수가 미리 자리를 잡기 시작하는 여유 — 공보다 먼저 도착해 있어야 한다
+    const RECV_HOLD_MS = 2500
+    const reserved = (id) => {
+      const e = nextPending(id)
+      return !!e && e.t - el <= RESERVED_MS
+    }
+
     // 압박: 공과 가까운 자유 상태 상대 2명이 공을 향해 다가간다
     const pressers = new Set()
     if (mode === 'live') {
@@ -394,18 +421,21 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           return { id: p.id, d: supPrev.has(p.id) ? d - 4 : d }
         })
         .filter((c) => c.d > 3 && c.d < 45) // 공 소유자(발밑)와 너무 먼 선수는 제외
+        .filter((c) => !reserved(c.id)) // 곧 공을 받을 선수는 자리를 지킨다
         .sort((a, b) => a.d - b.d)
         .slice(0, 3)
         .forEach((c) => supporters.add(c.id))
     }
     supPrev = supporters
 
-    // 조향 적분: 목표를 향해 가속하되 가속 한계·도착 감속으로 무게감을 준다
-    const integrate = (id, rawTarget, maxSpeed) => {
+    // 조향 적분: 목표를 향해 가속하되 가속 한계·도착 감속으로 무게감을 준다.
+    // noiseScale: 약속 장소로 갈 때는 잔 움직임을 죽인다 — 공 받을 자리에서 흔들리면
+    // 패스가 발밑에 안 떨어진 것처럼 보인다.
+    const integrate = (id, rawTarget, maxSpeed, noiseScale = 1) => {
       const s = sim[id]
       const nz = noise(id, sec)
-      const tx = clamp(rawTarget.x + nz.x, 1.5, 118.5)
-      const ty = clamp(rawTarget.y + nz.y, 1.5, 78.5)
+      const tx = clamp(rawTarget.x + nz.x * noiseScale, 1.5, 118.5)
+      const ty = clamp(rawTarget.y + nz.y * noiseScale, 1.5, 78.5)
       const speed = freeze ? maxSpeed * 0.12 : maxSpeed
       const dx = tx - s.x
       const dy = ty - s.y
@@ -426,27 +456,25 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       s.x = clamp(s.x + s.vx * dt, 1.5, 118.5)
       s.y = clamp(s.y + s.vy * dt, 1.5, 78.5)
     }
-    const lastPast = (id) => {
-      let pt = null
-      for (const e of events[id] ?? []) if (e.t <= el) pt = e.point
-      return pt
-    }
-    const nextPending = (id) => (events[id] ?? []).find((e) => e.t > el)
-
     // 3) 아군 자유 선수: 약속 장소 대기 → 팀 셰이프(라인 업다운) / 세리머니 / 복귀
     for (const p of players) {
       if (scripted.has(p.id)) continue
       const pending = nextPending(p.id)
       let target = null
       let spd = 4.5
+      let nz = 1 // 노이즈 배율 — 약속 장소로 향할 때 낮춘다
       if (pending) {
-        // 약속 장소(런 출발점·패스 수신점)에 미리 가서 못 박혀 있지 않는다 —
-        // 이동 소요시간이 임박할 때까지는 아래 일반 무빙을 계속하다가 그때 출발
         const s = sim[p.id]
         const need = (Math.hypot(pending.point.x - s.x, pending.point.y - s.y) / 5.5) * 1000
-        if (pending.t - el <= need + 500) {
+        // 패스를 받을 선수는 공이 그 자리로 날아오므로 일찍 자리를 잡고 지킨다.
+        // (공을 리시버 쪽으로 휘게 하는 대신 여기서 어긋남을 없앤다 — 궤적은 그린 대로 간다)
+        // 나머지 약속은 늦어도 티가 안 나므로 임박할 때까지 일반 무빙을 계속한다.
+        const hold = pending.kind === 'recv' ? RECV_HOLD_MS : 0
+        if (pending.t - el <= need + 500 + hold) {
           target = pending.point
           spd = 6.5
+          // 도착이 임박할수록 잔 움직임을 줄여, 받는 순간엔 그 자리에 정확히 선다
+          nz = pending.kind === 'recv' ? clamp((pending.t - el) / 1400, 0.05, 1) : clamp((pending.t - el) / 900, 0.15, 1)
         }
       }
       if (!target) {
@@ -469,7 +497,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           spd = 5.5 * urgency // 템포가 오르면 라인 전체가 급해진다
         }
       }
-      integrate(p.id, target, spd)
+      integrate(p.id, target, spd, nz)
     }
     // 4) 상대 자유 선수: 라인 다운·볼사이드 시프트 / 압박 / 마킹 / 리액션
     for (const o of opponents) {
