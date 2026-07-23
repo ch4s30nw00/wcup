@@ -21,7 +21,26 @@ const TEAM_KIT = {
   POR: { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' },
   POR26: { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' },
 }
+// 킷이 겹치면 원정팀이 갈아입는다 (실제 경기 규칙과 같다). 팀별 킷을 손으로 넣다 보면
+// 홈과 같은 색이 걸리는데(2022 한국-포르투갈이 둘 다 빨강이었다), 그러면 보드에서
+// 두 팀을 구분할 수 없다. 새 경기가 추가돼도 자동으로 걸리도록 색 거리로 판정한다.
+const KIT_ALT = { body: '#f2f5fa', gk: '#f0a500', ring: '#1a2330', num: '#10141c' } // 3순위: 흰색
+const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))
+const colorGap = (a, b) => {
+  const [r1, g1, b1] = hexRgb(a)
+  const [r2, g2, b2] = hexRgb(b)
+  // 사람 눈이 녹색에 가장 민감하고 파랑에 둔한 것을 반영한 가중 거리
+  return Math.hypot((r1 - r2) * 0.9, (g1 - g2) * 1.2, (b1 - b2) * 0.7)
+}
+const KIT_GAP_MIN = 90 // 이보다 가까우면 잔디 위 작은 원에서 같은 색으로 보인다
 const kitOf = (team, fallback) => TEAM_KIT[team] ?? fallback
+// 홈 킷과 겹치지 않는 원정 킷을 고른다: 팀 지정 → 기본 남색 → 흰색 순
+const awayKitFor = (awayTeam, homeKit) => {
+  for (const kit of [kitOf(awayTeam, KIT_AWAY), KIT_AWAY, KIT_ALT]) {
+    if (colorGap(homeKit.body, kit.body) >= KIT_GAP_MIN) return kit
+  }
+  return KIT_ALT
+}
 const LEG_MARKER = { dribble: 'url(#ah-move)', pass: 'url(#ah-pass)', shot: 'url(#ah-shot)' }
 
 // 터치 화면은 손가락 기준 — 보이지 않는 히트 영역과 클릭/드래그 판정 거리를 키운다.
@@ -84,7 +103,7 @@ export default function TacticsBoard({
   onEditMove, // (playerId, {x, y})
 }) {
   const homeKit = kitOf(homeTeam, KIT_HOME)
-  const awayKit = kitOf(awayTeam, KIT_AWAY)
+  const awayKit = awayKitFor(awayTeam, homeKit)
   const svgRef = useRef(null)
   const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
   const [ballDrag, setBallDrag] = useState(null)

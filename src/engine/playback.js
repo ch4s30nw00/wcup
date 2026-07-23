@@ -135,14 +135,16 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
 
   // 선수별 "약속" 이벤트: t 시점까지 point 근처에 있어야 한다 — 스크립트 출발점,
   // 스크립트 종점, 패스 받을 지점. 마지막 약속이 지나면 자유(팀 셰이프) 상태.
+  // kind: 'recv'(패스 받을 지점)는 다른 약속과 구분한다 — 공이 그리로 날아가므로
+  // 그 자리를 반드시 지켜야 하고, 나머지 약속은 늦어도 화면상 티가 나지 않는다.
   const events = {}
-  const addEvent = (id, tm, point) => (events[id] ??= []).push({ t: tm, point })
+  const addEvent = (id, tm, point, kind = 'move') => (events[id] ??= []).push({ t: tm, point, kind })
   for (const s of segs) {
     addEvent(s.id, s.start, s.pts[0])
     addEvent(s.id, s.start + s.dur, pointAtLength(s.pts, (s.capFrac ?? 1) * s.len))
   }
   for (const leg of legs) {
-    if (leg.type === 'pass' && leg.receiverId) addEvent(leg.receiverId, leg.start + leg.dur, leg.to)
+    if (leg.type === 'pass' && leg.receiverId) addEvent(leg.receiverId, leg.start + leg.dur, leg.to, 'recv')
   }
   for (const list of Object.values(events)) list.sort((a, b) => a.t - b.t)
 
@@ -339,30 +341,9 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           // 그대로 두면 공이 빈 잔디에 떨어졌다가 선수에게 튀어 "공이 혼자 움직이는" 것처럼 보인다.
           // 보정을 k²로 실어 초반 비행은 계획 궤적 그대로, 끝에서만 발밑으로 붙는다.
           // (실제 패스도 "받을 사람이 있을 자리"로 차므로 연출상으로도 자연스럽다)
-          if (leg.type === 'pass') {
-            // 궤적은 계획 좌표로 그려지지만 선수는 조향·노이즈로 그 자리에서 밀려나 있다.
-            // 양쪽 끝을 선수의 "실제" 위치에 고정하지 않으면 공이 빈 잔디에서 출발하거나
-            // 빈 잔디에 떨어졌다가 선수에게 튄다 — 공이 혼자 움직이는 것처럼 보이는 원인.
-            //   출발: 차는 선수 발밑에서 떠나야 한다 (직전 리시버가 밀려나 있을 수 있다)
-            //   도착: 받는 선수 발밑에 떨어져야 한다 (성공한 패스만 — 빠진 패스는 흘러가야 하므로)
-            const ap = getPos(leg.actorId)
-            const rp = leg.step.success && leg.receiverId ? getPos(leg.receiverId) : null
-            // wStart: k=0에서 1 → k=0.5에서 0 / wEnd: k=0.1에서 0 → k=0.9에서 1
-            // 끝 보정을 0.9에서 미리 100%로 끝내야 소유권이 넘어가는 프레임에 잔차가 없다.
-            const wStart = k >= 0.5 ? 0 : ((0.5 - k) / 0.5) ** 2
-            const wEnd = k <= 0.1 ? 0 : k >= 0.9 ? 1 : ((k - 0.1) / 0.8) ** 2
-            let dx = 0
-            let dy = 0
-            if (ap) {
-              dx += (ap.x - leg.from.x) * wStart
-              dy += (ap.y - leg.from.y) * wStart
-            }
-            if (rp) {
-              dx += (rp.x - leg.to.x) * wEnd
-              dy += (rp.y - leg.to.y) * wEnd
-            }
-            ball = { x: ball.x + dx, y: ball.y + dy }
-          }
+          // 공은 그려진 궤적 그대로 날아간다. 빗나가면 빗나간 자리로 가야 한다 —
+          // 리시버 쪽으로 휘게 만들면 "유도탄"이 되어 패스의 의미가 사라진다.
+          // 대신 리시버가 약속 지점을 지키게 해서(아래 3번 블록) 애초에 어긋나지 않게 한다.
         } else if (leg.step.success && leg.type === 'pass') {
           ownerId = leg.receiverId
         } else {
@@ -412,6 +393,8 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     const nextPending = (id) => (events[id] ?? []).find((e) => e.t > el)
     // 이 시간 안에 약속이 잡힌 선수는 "예약된" 상태로 본다 (지원 런 제외 대상)
     const RESERVED_MS = 2500
+    // 패스 받을 선수가 미리 자리를 잡기 시작하는 여유 — 공보다 먼저 도착해 있어야 한다
+    const RECV_HOLD_MS = 2500
     const reserved = (id) => {
       const e = nextPending(id)
       return !!e && e.t - el <= RESERVED_MS
@@ -481,15 +464,17 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       let spd = 4.5
       let nz = 1 // 노이즈 배율 — 약속 장소로 향할 때 낮춘다
       if (pending) {
-        // 약속 장소(런 출발점·패스 수신점)에 미리 가서 못 박혀 있지 않는다 —
-        // 이동 소요시간이 임박할 때까지는 아래 일반 무빙을 계속하다가 그때 출발
         const s = sim[p.id]
         const need = (Math.hypot(pending.point.x - s.x, pending.point.y - s.y) / 5.5) * 1000
-        if (pending.t - el <= need + 500) {
+        // 패스를 받을 선수는 공이 그 자리로 날아오므로 일찍 자리를 잡고 지킨다.
+        // (공을 리시버 쪽으로 휘게 하는 대신 여기서 어긋남을 없앤다 — 궤적은 그린 대로 간다)
+        // 나머지 약속은 늦어도 티가 안 나므로 임박할 때까지 일반 무빙을 계속한다.
+        const hold = pending.kind === 'recv' ? RECV_HOLD_MS : 0
+        if (pending.t - el <= need + 500 + hold) {
           target = pending.point
           spd = 6.5
           // 도착이 임박할수록 잔 움직임을 줄여, 받는 순간엔 그 자리에 정확히 선다
-          nz = clamp((pending.t - el) / 900, 0.15, 1)
+          nz = pending.kind === 'recv' ? clamp((pending.t - el) / 1400, 0.05, 1) : clamp((pending.t - el) / 900, 0.15, 1)
         }
       }
       if (!target) {
