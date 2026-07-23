@@ -11,12 +11,13 @@
 import { mulberry32 } from './resolve.js'
 import { commentaryFor } from './commentary.js'
 import { midpoint, samplePath, pathLength, pointAtLength } from './geometry.js'
+import { movementDistance, movementDuration } from './sheets.js'
 import { K } from './constants.js'
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
 // 이동/공 속도 (피치 단위 ≈ m/s) — 판정의 수비 이동 예산(resolve.js)과 공유
 const SPEED = K.SPEED
-const durFor = (len, v) => clamp((len / v) * 1000, 400, 6000)
+const durFor = (len, v, minMs = 400) => clamp((len / v) * 1000, minMs, 6000)
 const ease = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
 
 const ROW_K_HOME = { GK: 0.08, DF: 0.42, MF: 0.65, FW: 0.85 } // 공 전진량을 얼마나 따라 올라가나
@@ -65,7 +66,10 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       missFrac = origLen / (pathLength(pts) || 1)
     }
     const len = pathLength(pts)
-    const dur = durFor(len, SPEED[a.type] ?? SPEED.pass)
+    // 패스·크로스는 연출 전용 PASS_SPEED로 — sheets의 타이밍과 일치시켜, 에디터가
+    // 성립한다고 본 스루패스가 화면에서도 리시버 도착 안에 떨어진다.
+    const isPass = a.type === 'pass' || a.type === 'cross'
+    const dur = durFor(len, isPass ? K.PLAY.PASS_SPEED : (SPEED[a.type] ?? SPEED.pass), isPass ? K.PLAY.PASS_MIN_MS : 400)
     const prev = legs[legs.length - 1]
     legs.push({ ...a, step, pts, len, missFrac, start: prev ? prev.start + prev.dur + 200 : 300, dur })
   })
@@ -90,7 +94,10 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       const consumer = legs.find(
         (leg) => leg.index >= rl.afterIndex && (leg.receiverId === rl.id || leg.actorId === rl.id),
       )
-      return { rl, pts, len: pathLength(pts), dur: durFor(pathLength(pts), SPEED.run), consumer }
+      // 런 소요시간은 에디터 링과 같은 정지→가속 물리(movementDuration)로 — 링이
+      // 약속한 도달 거리와 실제 애니메이션 속도가 어긋나지 않게.
+      const len = pathLength(pts)
+      return { rl, pts, len, dur: Math.max(1, movementDuration(byId[rl.id], len) * 1000), consumer }
     })
     // 마감이 이른 런부터 처리 — 지연이 생기면 뒤 레그들의 마감에 순서대로 전파되도록
     .sort((a, b) => (a.consumer?.index ?? Infinity) - (b.consumer?.index ?? Infinity))
@@ -109,7 +116,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       const tail = legs[legs.length - 1]
       start = Math.max(earliest, (anchorLeg ? anchorLeg.start : tail ? tail.start + tail.dur : 300) - 120)
     }
-    segs.push({ id: rp.rl.id, from: rp.rl.from, ctrl: rp.rl.ctrl, pts: rp.pts, len: rp.len, start, dur: rp.dur, holdUntil })
+    segs.push({ id: rp.rl.id, from: rp.rl.from, ctrl: rp.rl.ctrl, pts: rp.pts, len: rp.len, start, dur: rp.dur, holdUntil, runner: true })
   }
   const endLeg = legs[legs.length - 1]
   const chainEnd = endLeg ? endLeg.start + endLeg.dur + 200 : 500
@@ -287,7 +294,11 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           s.capFrac = 1
           s.started = true
         }
-        const k = Math.min(ease((el - s.start) / s.dur), s.capFrac ?? 1)
+        // 에디터가 지정한 런은 물리 속도 곡선(정지→가속)으로, 공·드리블은 기존
+        // 영화적 이징으로 움직인다.
+        const k = s.runner
+          ? Math.min(1, movementDistance(byId[s.id], Math.max(0, el - s.start) / 1000) / (s.len || 1))
+          : Math.min(ease((el - s.start) / s.dur), s.capFrac ?? 1)
         const pos = pointAtLength(s.pts, k * s.len)
         scripted.add(s.id)
         Object.assign(sim[s.id], { x: pos.x, y: pos.y, vx: 0, vy: 0 })

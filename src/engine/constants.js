@@ -34,7 +34,13 @@ export const K = {
   // 연출 전용 (playback.js) — 판정에 영향 없음.
   // PASS_OVERRUN: 아무도 안 건드린 패스 실패 = "빠진 패스". 목표 지점을 지나쳐
   //   이만큼 더 굴러간다 (사용자 요청 "공이 쭉 흐르는 애니메이션").
-  PLAY: { PASS_OVERRUN: 16 },
+  PLAY: {
+    PASS_OVERRUN: 16,
+    // 연출 전용 패스 타이밍. 판정 모델보다 일부러 느리게 둬서 스루패스가 읽히고
+    // 런 선수가 자연스럽게 도착할 수 있게 한다.
+    PASS_SPEED: 15,
+    PASS_MIN_MS: 650,
+  },
 
   // 슈팅 — 로지스틱 xG. z = B0 + B_DIST·lsFactor·D + B_ANG·θ + B_SKILL·(S_eff−SEFF0) + Σ B_BLOCK·e^(−d/R_BLOCK)
   SHOT: {
@@ -139,7 +145,15 @@ export const K = {
 
   // 시트(페이즈) 설계 UI — 가동범위 동심원 (sheets.js). 판정과 무관한 표시용.
   // 바깥 링 = 전력 100%, 안쪽 링 = 여유 70% (스프린트로 가긴 가는데 받을 준비는 안 되는 거리).
-  SHEET: { EASY_FRAC: 0.7 },
+  SHEET: {
+    EASY_FRAC: 0.7,
+    // 시트 런 선수는 정지에서 출발한다. 주력이 최종 최고속도를, 가속도가 그 속도에
+    // 도달하는 빠르기를 정한다. 단위: m/s, m/s².
+    RUN_SPEED_MIN: 5.8,
+    RUN_SPEED_MAX: 8.8,
+    ACCEL_MIN: 3.4,
+    ACCEL_MAX: 7.4,
+  },
 
   // xT (xt.js) — 플레이 설계 점수. **판정과 완전히 독립**이라 밸런싱해도 앵커에 영향 없다.
   XT: {

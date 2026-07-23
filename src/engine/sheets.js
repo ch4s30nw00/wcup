@@ -14,23 +14,58 @@
 //   speedOf는 defense.js와 같은 공식 — 보이는 반경과 수비가 실제로 따라잡는 거리가
 //   어긋나면 "왜 저기까지 못 가지?"가 되므로 반드시 공유한다.
 
-import { speedOf } from './defense.js'
-import { samplePath, pathLength } from './geometry.js'
+import { midpoint, samplePath, pathLength } from './geometry.js'
 import { K } from './constants.js'
 
 // 이 액션이 소비하는 시간(초). resolve.js actionSeconds와 같은 정의 —
 // 패스류는 비행시간 + 인지 반응시간, 드리블은 주행시간.
 export function actionDuration(action) {
   if (!action) return 0
-  const pts = samplePath(action.from, action.ctrl, action.to)
+  const pts = samplePath(action.from, action.ctrl ?? midpoint(action.from, action.to), action.to)
   const L = pathLength(pts)
-  const v = K.SPEED[action.type] ?? K.SPEED.pass
-  return L / v + (action.type === 'dribble' ? 0 : K.DEF.REACT)
+  const isPass = action.type === 'pass' || action.type === 'cross'
+  const v = isPass ? K.PLAY.PASS_SPEED : (K.SPEED[action.type] ?? K.SPEED.pass)
+  const flight = Math.max(L / v, isPass ? K.PLAY.PASS_MIN_MS / 1000 : 0)
+  return flight + (action.type === 'dribble' ? 0 : K.DEF.REACT)
+}
+
+const stat01 = (player, key) => Math.min(1, Math.max(0, (player?.stats?.[key] ?? K.STAT.FM_MAX / 2) / K.STAT.FM_MAX))
+
+// 런 선수는 정지에서 출발한다: 짧은 이동엔 가속도가, 최고속도까지 오른 뒤엔 주력이
+// 지배한다. 수비 AI 속도(defense.js)와는 의도적으로 분리한다.
+export function movementProfile(player) {
+  const pace = stat01(player, 'pace')
+  const acceleration = stat01(player, 'acceleration')
+  return {
+    topSpeed: K.SHEET.RUN_SPEED_MIN + (K.SHEET.RUN_SPEED_MAX - K.SHEET.RUN_SPEED_MIN) * pace,
+    acceleration: K.SHEET.ACCEL_MIN + (K.SHEET.ACCEL_MAX - K.SHEET.ACCEL_MIN) * acceleration,
+  }
+}
+
+// 정지→가속 물리로 durSec 동안 간 거리(m).
+export function movementDistance(player, durSec) {
+  const t = Math.max(0, durSec)
+  const { topSpeed, acceleration } = movementProfile(player)
+  const rampTime = topSpeed / acceleration
+  if (t <= rampTime) return 0.5 * acceleration * t * t
+  return 0.5 * acceleration * rampTime * rampTime + topSpeed * (t - rampTime)
+}
+
+// movementDistance의 역함수 — distance만큼 가는 데 걸리는 시간(s). playback이 에디터
+// 링과 같은 스탯을 공유한다.
+export function movementDuration(player, distance) {
+  const d = Math.max(0, distance)
+  if (d === 0) return 0
+  const { topSpeed, acceleration } = movementProfile(player)
+  const rampTime = topSpeed / acceleration
+  const rampDistance = 0.5 * acceleration * rampTime * rampTime
+  if (d <= rampDistance) return Math.sqrt((2 * d) / acceleration)
+  return rampTime + (d - rampDistance) / topSpeed
 }
 
 // 전력(100%)으로 갈 수 있는 반경(m). 여유 링은 SHEET.EASY_FRAC 배.
 export function reachRadius(player, durSec) {
-  return speedOf(player) * Math.max(0, durSec)
+  return movementDistance(player, durSec)
 }
 
 // 오프볼 런 목표를 가동범위 안으로 끌어당긴다 (반경 밖이면 경계로 클램프).
@@ -61,7 +96,6 @@ export function clampToReach(from, to, radius) {
 //   want       — 유저가 찍은 지점
 // → want가 이미 성립하면 want 그대로, 아니면 runnerFrom→want 선분 위의 가장 먼 성립점.
 export function throughTarget({ runnerFrom, ballFrom, want, player }) {
-  const speed = speedOf(player)
   const dx = want.x - runnerFrom.x
   const dy = want.y - runnerFrom.y
   const maxD = Math.hypot(dx, dy)
@@ -72,8 +106,12 @@ export function throughTarget({ runnerFrom, ballFrom, want, player }) {
   // f(d) ≤ 0 이면 그 지점은 "공보다 먼저(또는 같이) 도착 가능" = 성립
   const f = (d) => {
     const p = at(d)
-    const ballT = Math.hypot(p.x - ballFrom.x, p.y - ballFrom.y) / K.SPEED.pass + K.DEF.REACT
-    return d / speed - ballT
+    // playback과 정확히 일치시킨다 — 스루패스 리시버는 화면상 공 비행시간 안에 도착해야 한다.
+    const ballT = Math.max(
+      Math.hypot(p.x - ballFrom.x, p.y - ballFrom.y) / K.PLAY.PASS_SPEED,
+      K.PLAY.PASS_MIN_MS / 1000,
+    )
+    return movementDuration(player, d) - ballT
   }
   if (f(maxD) <= 0) return want // 찍은 지점이 이미 성립 — 손대지 않는다
   let lo = 0

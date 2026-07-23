@@ -8,7 +8,7 @@ import { calcShot, calcPass, calcDribble, resolveSequence, planOffside, probOf }
 import { checkOffside, offsideLineX } from '../src/engine/offside.js'
 import { initDefense, advanceDefense } from '../src/engine/defense.js'
 import { matchScore } from '../src/engine/match.js'
-import { throughTarget } from '../src/engine/sheets.js'
+import { throughTarget, movementDuration } from '../src/engine/sheets.js'
 import { encodeShare, decodeShare } from '../src/engine/share.js'
 import { XT_GRID, xtAt, planScore, planGrade } from '../src/engine/xt.js'
 import { midpoint } from '../src/engine/geometry.js'
@@ -167,11 +167,15 @@ console.log('\n[스루패스] 도착점이 리시버 가동범위 안에 들어�
   const runnerFrom = { x: 53, y: 46 }
   const ballFrom = { x: 48, y: 34 }
   const player = neutral({ pace: 15, acceleration: 15 })
-  const speed = K.DEF.SPD_MIN + (K.DEF.SPD_MAX - K.DEF.SPD_MIN) * (15 / K.STAT.FM_MAX)
-  // 공이 도착하는 시간 안에 리시버가 그 지점까지 갈 수 있어야 한다
+  // 공이 도착하는 시간 안에 리시버가 그 지점까지 갈 수 있어야 한다.
+  // throughTarget과 같은 모델을 쓴다 — 런은 정지→가속 물리(movementDuration),
+  // 공은 연출 속도(PASS_SPEED, 최소 PASS_MIN_MS).
   const feasible = (p) => {
-    const runT = Math.hypot(p.x - runnerFrom.x, p.y - runnerFrom.y) / speed
-    const ballT = Math.hypot(p.x - ballFrom.x, p.y - ballFrom.y) / K.SPEED.pass + K.DEF.REACT
+    const runT = movementDuration(player, Math.hypot(p.x - runnerFrom.x, p.y - runnerFrom.y))
+    const ballT = Math.max(
+      Math.hypot(p.x - ballFrom.x, p.y - ballFrom.y) / K.PLAY.PASS_SPEED,
+      K.PLAY.PASS_MIN_MS / 1000,
+    )
     return runT <= ballT + 1e-6
   }
   // 너무 먼 지점(47m)을 찍으면 성립하는 데까지 당겨야 한다 — 예전엔 그대로 통과해
@@ -182,8 +186,8 @@ console.log('\n[스루패스] 도착점이 리시버 가동범위 안에 들어�
   const d = Math.hypot(got.x - runnerFrom.x, got.y - runnerFrom.y)
   checkDir(`당겨진 도착점 ${d.toFixed(1)}m → 성립`, feasible(got))
   checkDir('원래 찍은 방향 위에 있다', Math.abs((got.x - runnerFrom.x) * (want.y - runnerFrom.y) - (got.y - runnerFrom.y) * (want.x - runnerFrom.x)) < 1e-6)
-  // 가까운 지점은 손대지 않는다
-  const near = { x: 58, y: 47 }
+  // 가까운 지점은 손대지 않는다 (새 물리에서도 성립하는 근접점)
+  const near = { x: 54, y: 46 }
   const keep = throughTarget({ runnerFrom, ballFrom, want: near, player })
   checkDir('성립하는 지점은 그대로 둔다', keep.x === near.x && keep.y === near.y)
 }
