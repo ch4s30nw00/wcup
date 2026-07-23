@@ -52,8 +52,14 @@ export const K = {
     // GK와 단독으로 맞선 상황: 수비수가 슛길을 막지 않을 때만 적용한다.
     // 12yd 중앙 1대1은 평균적으로 약 0.55 xG가 되도록 캘리브레이션.
     ONE_ON_ONE_BONUS: 1.7,
-    ONE_ON_ONE_MAX_DIST: 18,
-    ONE_ON_ONE_GK_LINE: 4,
+    // 골키퍼는 슛 방향을 비껴 차면 뚫리므로, 열린 슛이 GK가 슛 라인 위에 정확히
+    // 서 있기를 요구해선 안 된다. 대신 GK가 골문 근처(깊이 GK_GOAL_DEPTH 안)에
+    // 있고 슛길에 필드 수비수가 없으면 단독 찬스로 본다.
+    ONE_ON_ONE_MAX_DIST: 28,
+    ONE_ON_ONE_FULL_BONUS_DIST: 13, // 이 거리 안에선 BONUS 전액, 멀어질수록 FAR_BONUS로 감쇠
+    ONE_ON_ONE_FAR_BONUS: 1.4,
+    ONE_ON_ONE_MIN_XG: 0.4, // 진짜 열린 1대1은 마무리 1이어도 최소 40%
+    ONE_ON_ONE_GK_GOAL_DEPTH: 9,
     ONE_ON_ONE_BLOCK_CLEARANCE: 3,
     PENALTY_XG: 0.76, // D=11 페널티킥 특례 상수 (코어 fit 제외 — PK 상황 도입 시 사용)
     LS_RELIEF: 0.5, // 중거리 스탯의 거리 감쇠 완화 기울기: lsFactor = 1 − LS_RELIEF·(norm(중거리)−MID)
