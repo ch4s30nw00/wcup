@@ -26,6 +26,11 @@ jobs:
       - name: 엔진 검증 (앵커 15개 포함)
         run: node scripts/verify.mjs
 
+      # 연출 회귀: 패스가 선수 발밑에서 출발해 발밑에 떨어지는지 프레임을 실제로 돌려 확인한다.
+      # (공이 빈 잔디에 떨어졌다가 선수에게 순간이동하던 버그를 잡은 검사)
+      - name: 재생 검증
+        run: node scripts/verify-playback.mjs
+
       - name: 린트
         run: npm run lint
 

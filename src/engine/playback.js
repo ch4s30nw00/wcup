@@ -334,6 +334,35 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         } else if (!done) {
           ownerId = null
           ball = pointAtLength(leg.pts, Math.min(k, capFrac) * leg.len)
+          // 성공할 패스는 리시버의 "실제" 위치로 유도한다.
+          // 궤적은 계획 좌표로 그려지는데 선수는 조향·노이즈로 그 자리에서 밀려나 있을 수 있고,
+          // 그대로 두면 공이 빈 잔디에 떨어졌다가 선수에게 튀어 "공이 혼자 움직이는" 것처럼 보인다.
+          // 보정을 k²로 실어 초반 비행은 계획 궤적 그대로, 끝에서만 발밑으로 붙는다.
+          // (실제 패스도 "받을 사람이 있을 자리"로 차므로 연출상으로도 자연스럽다)
+          if (leg.type === 'pass') {
+            // 궤적은 계획 좌표로 그려지지만 선수는 조향·노이즈로 그 자리에서 밀려나 있다.
+            // 양쪽 끝을 선수의 "실제" 위치에 고정하지 않으면 공이 빈 잔디에서 출발하거나
+            // 빈 잔디에 떨어졌다가 선수에게 튄다 — 공이 혼자 움직이는 것처럼 보이는 원인.
+            //   출발: 차는 선수 발밑에서 떠나야 한다 (직전 리시버가 밀려나 있을 수 있다)
+            //   도착: 받는 선수 발밑에 떨어져야 한다 (성공한 패스만 — 빠진 패스는 흘러가야 하므로)
+            const ap = getPos(leg.actorId)
+            const rp = leg.step.success && leg.receiverId ? getPos(leg.receiverId) : null
+            // wStart: k=0에서 1 → k=0.5에서 0 / wEnd: k=0.1에서 0 → k=0.9에서 1
+            // 끝 보정을 0.9에서 미리 100%로 끝내야 소유권이 넘어가는 프레임에 잔차가 없다.
+            const wStart = k >= 0.5 ? 0 : ((0.5 - k) / 0.5) ** 2
+            const wEnd = k <= 0.1 ? 0 : k >= 0.9 ? 1 : ((k - 0.1) / 0.8) ** 2
+            let dx = 0
+            let dy = 0
+            if (ap) {
+              dx += (ap.x - leg.from.x) * wStart
+              dy += (ap.y - leg.from.y) * wStart
+            }
+            if (rp) {
+              dx += (rp.x - leg.to.x) * wEnd
+              dy += (rp.y - leg.to.y) * wEnd
+            }
+            ball = { x: ball.x + dx, y: ball.y + dy }
+          }
         } else if (leg.step.success && leg.type === 'pass') {
           ownerId = leg.receiverId
         } else {
@@ -373,6 +402,21 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     let defWaypoint = null
     for (const leg of legs) if (el >= leg.start) defWaypoint = leg.step.defPos ?? defWaypoint
 
+    // 선수별 "약속" 조회 — 지원 런 선발보다 먼저 알아야 한다.
+    // 곧 공을 받을 선수를 다른 곳으로 뛰게 하면 패스가 빈 자리에 떨어지기 때문.
+    const lastPast = (id) => {
+      let pt = null
+      for (const e of events[id] ?? []) if (e.t <= el) pt = e.point
+      return pt
+    }
+    const nextPending = (id) => (events[id] ?? []).find((e) => e.t > el)
+    // 이 시간 안에 약속이 잡힌 선수는 "예약된" 상태로 본다 (지원 런 제외 대상)
+    const RESERVED_MS = 2500
+    const reserved = (id) => {
+      const e = nextPending(id)
+      return !!e && e.t - el <= RESERVED_MS
+    }
+
     // 압박: 공과 가까운 자유 상태 상대 2명이 공을 향해 다가간다
     const pressers = new Set()
     if (mode === 'live') {
@@ -394,18 +438,21 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           return { id: p.id, d: supPrev.has(p.id) ? d - 4 : d }
         })
         .filter((c) => c.d > 3 && c.d < 45) // 공 소유자(발밑)와 너무 먼 선수는 제외
+        .filter((c) => !reserved(c.id)) // 곧 공을 받을 선수는 자리를 지킨다
         .sort((a, b) => a.d - b.d)
         .slice(0, 3)
         .forEach((c) => supporters.add(c.id))
     }
     supPrev = supporters
 
-    // 조향 적분: 목표를 향해 가속하되 가속 한계·도착 감속으로 무게감을 준다
-    const integrate = (id, rawTarget, maxSpeed) => {
+    // 조향 적분: 목표를 향해 가속하되 가속 한계·도착 감속으로 무게감을 준다.
+    // noiseScale: 약속 장소로 갈 때는 잔 움직임을 죽인다 — 공 받을 자리에서 흔들리면
+    // 패스가 발밑에 안 떨어진 것처럼 보인다.
+    const integrate = (id, rawTarget, maxSpeed, noiseScale = 1) => {
       const s = sim[id]
       const nz = noise(id, sec)
-      const tx = clamp(rawTarget.x + nz.x, 1.5, 118.5)
-      const ty = clamp(rawTarget.y + nz.y, 1.5, 78.5)
+      const tx = clamp(rawTarget.x + nz.x * noiseScale, 1.5, 118.5)
+      const ty = clamp(rawTarget.y + nz.y * noiseScale, 1.5, 78.5)
       const speed = freeze ? maxSpeed * 0.12 : maxSpeed
       const dx = tx - s.x
       const dy = ty - s.y
@@ -426,19 +473,13 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       s.x = clamp(s.x + s.vx * dt, 1.5, 118.5)
       s.y = clamp(s.y + s.vy * dt, 1.5, 78.5)
     }
-    const lastPast = (id) => {
-      let pt = null
-      for (const e of events[id] ?? []) if (e.t <= el) pt = e.point
-      return pt
-    }
-    const nextPending = (id) => (events[id] ?? []).find((e) => e.t > el)
-
     // 3) 아군 자유 선수: 약속 장소 대기 → 팀 셰이프(라인 업다운) / 세리머니 / 복귀
     for (const p of players) {
       if (scripted.has(p.id)) continue
       const pending = nextPending(p.id)
       let target = null
       let spd = 4.5
+      let nz = 1 // 노이즈 배율 — 약속 장소로 향할 때 낮춘다
       if (pending) {
         // 약속 장소(런 출발점·패스 수신점)에 미리 가서 못 박혀 있지 않는다 —
         // 이동 소요시간이 임박할 때까지는 아래 일반 무빙을 계속하다가 그때 출발
@@ -447,6 +488,8 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         if (pending.t - el <= need + 500) {
           target = pending.point
           spd = 6.5
+          // 도착이 임박할수록 잔 움직임을 줄여, 받는 순간엔 그 자리에 정확히 선다
+          nz = clamp((pending.t - el) / 900, 0.15, 1)
         }
       }
       if (!target) {
@@ -469,7 +512,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           spd = 5.5 * urgency // 템포가 오르면 라인 전체가 급해진다
         }
       }
-      integrate(p.id, target, spd)
+      integrate(p.id, target, spd, nz)
     }
     // 4) 상대 자유 선수: 라인 다운·볼사이드 시프트 / 압박 / 마킹 / 리액션
     for (const o of opponents) {
