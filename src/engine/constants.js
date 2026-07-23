@@ -1,0 +1,174 @@
+// engine/constants.js — CALC_SPEC v2.1 확정 초기값 (산식확정 보고서 §6 + 데이터담당 요청사항 반영).
+// 모든 매직넘버는 이 한 파일에 모은다. 전부 밸런싱 대상(플레이테스트로 조정).
+// 변수(거리·각도·스탯 등)는 여기 없다 — 보드·players.json에서 실시간 계산. 여기엔 가중치만.
+//
+// v2 → v2.1 변경 요약:
+//  - 스탯 스케일: 0~100 → FM 1~20 (데이터담당 CSV 이관, 보고서 부록 A 어댑터 교체)
+//  - 수비 스탯 스케일: 압박 β를 수비수별(위치선정·마크·태클 + 예측력)로 스케일 (보고서 §4.4 보류분 해제)
+//  - 중거리(longshots): 거리 감쇠 완화 계수 — "중거리는 거리값에서 빠지는 값 적어지게" (데이터 요청 §8)
+//  - 헤더 슛: 골결:헤더 = 3:7 + 공중 듀얼(점프+키+몸싸움) (데이터 요청 §2·3)
+//  - 드리블 몸싸움 듀얼: 몸싸움+균형 상시 보정 (데이터 요청 §5)
+//  - SEQ.FLOW 축소: 수비 붕괴는 이제 수비수 위치 재계산(defense.js)이 주 메커니즘, FLOW는 잔여 기세 보정
+
+export const K = {
+  // 전역
+  STAT_FLOOR: 0.3, // norm() 하한 — 저능력도 최소 기여 (게임디자인 floor, 보고서 부록 B)
+  P_MIN: 0.02, // 전역 clamp — 0%·100% 없음 (기적·실수의 여지)
+  P_MAX: 0.97,
+  GOAL: { x: 120, y: 40, postA: 43.66, postB: 36.34 },
+
+  // 스탯 어댑터 — FM 1~20 (부록 A: norm(v) = 0.3 + 0.7·v/20, 출력 [0.335, 1.0])
+  STAT: {
+    FM_MAX: 20,
+    MID: 0.7, // 스킬·수비 항 공통 중심점 (FM ≈ 11.4 = 월드컵 출전급 평균)
+    DEF_GAIN: 1.5, // 수비 스탯 → 압박 β 스케일 기울기
+    DEF_MIN: 0.75, // 스케일 하한 (스탯 최저여도 압박의 3/4는 유지)
+    DEF_MAX: 1.3, // 스케일 상한
+    H_MIN: 165, // 키 정규화 구간 (165~200cm → [0.3, 1.0])
+    H_RANGE: 35,
+  },
+
+  // 이동/공 속도 (피치 단위 ≈ m/s) — 연출(playback)과 수비 재배치 시간 예산이 공유
+  SPEED: { run: 9, dribble: 6.5, pass: 22, shot: 30 },
+
+  // 연출 전용 (playback.js) — 판정에 영향 없음.
+  // PASS_OVERRUN: 아무도 안 건드린 패스 실패 = "빠진 패스". 목표 지점을 지나쳐
+  //   이만큼 더 굴러간다 (사용자 요청 "공이 쭉 흐르는 애니메이션").
+  PLAY: {
+    PASS_OVERRUN: 16,
+    // Animation-only pass timing. It is deliberately slower than the outcome
+    // model so through balls remain readable and runners can arrive naturally.
+    PASS_SPEED: 15,
+    PASS_MIN_MS: 650,
+  },
+
+  // 슈팅 — 로지스틱 xG. z = B0 + B_DIST·lsFactor·D + B_ANG·θ + B_SKILL·(S_eff−SEFF0) + Σ B_BLOCK·e^(−d/R_BLOCK)
+  SHOT: {
+    // 중앙·무압박 발슈팅 앵커: 6/12/18/25yd = 0.42/0.18/0.09/0.04.
+    // 거리·각도만으로 캘리브레이션하고, 골키퍼는 평균 선방 수준으로 이 기본값에 내재화한다.
+    B0: -0.9702,
+    B_DIST: -0.1111, // 거리 감쇠 /m
+    B_ANG: 1.0659, // 골문 시야각 가산 /rad
+    B_SKILL: 2.0, // 스킬 로그오즈 가중
+    SEFF0: 0.7, // 스킬 중심점
+    // 한 수비수가 슛 라인을 완전히 막아도 xG가 거의 0이 되지 않도록 보정한다.
+    // d=0에서 odds ×0.47 (기존 ×0.08): 수비 차단은 반영하되 평균 GK 효과와 중복 감점하지 않는다.
+    B_BLOCK: -0.75,
+    R_BLOCK: 2.0, // 블로커 위협 반경 m
+    // GK와 단독으로 맞선 상황: 수비수가 슛길을 막지 않을 때만 적용한다.
+    // 12yd 중앙 1대1은 평균적으로 약 0.55 xG가 되도록 캘리브레이션.
+    ONE_ON_ONE_BONUS: 1.7,
+    // A keeper can be beaten by aiming away from them, so an open shot must not
+    // require the keeper to sit directly on the drawn shot line.
+    ONE_ON_ONE_MAX_DIST: 28,
+    ONE_ON_ONE_FULL_BONUS_DIST: 13,
+    ONE_ON_ONE_FAR_BONUS: 1.4,
+    ONE_ON_ONE_MIN_XG: 0.4,
+    ONE_ON_ONE_GK_GOAL_DEPTH: 9,
+    ONE_ON_ONE_BLOCK_CLEARANCE: 3,
+    PENALTY_XG: 0.76, // D=11 페널티킥 특례 상수 (코어 fit 제외 — PK 상황 도입 시 사용)
+    LS_RELIEF: 0.5, // 중거리 스탯의 거리 감쇠 완화 기울기: lsFactor = 1 − LS_RELIEF·(norm(중거리)−MID)
+    LS_MIN: 0.7, // lsFactor 하한/상한 — 거리 감쇠 부호가 뒤집히지 않게
+    LS_MAX: 1.2,
+    B_AIR: 2.0, // 헤더 공중 듀얼 가중: z += B_AIR·(air_공격수 − air_수비수)
+    HEAD_FIN: 0.3, // 헤더 스킬 = 골결 3 : 헤더 7 (데이터 요청 §3)
+  },
+
+  // 패스 — 로그오즈, 리시버 근접 수비가 지배.
+  // z = Z0 + B_LEN·L + B_PASS·(S_pass−0.70) + B_RECV·defScale·e^(−d_recv/R_RECV) + Σ B_LANE·defScale·e^(−d/R_LANE)
+  PASS: {
+    Z0: 2.933, // 무압박 앵커 절편 (8m→0.90, 20m→0.75, 30m→0.55)
+    B_LEN: -0.0917, // 호 길이 감쇠 /m (곡선은 L이 길어져 자연 페널티)
+    B_PASS: 1.5,
+    B_RECV: -2.0, // 리시버 압박 (지배 레버)
+    R_RECV: 4.0,
+    B_LANE: -1.0, // 경로 압박 (수비수당, 보조)
+    R_LANE: 3.0,
+  },
+
+  // 크로스 판정 기하: 측면(|y−40| ≥ WIDE_Y)에서 MIN_L 이상 날아와 박스 안(BOX_X, BOX_Y0~Y1)에 떨어지는 패스.
+  // 크로스는 패스 스킬 대신 크로스 스탯 + 예측력 보정, 직후 슛은 헤더로 판정 (데이터 요청 §2·3·7)
+  CROSS: { MIN_L: 18, WIDE_Y: 18, BOX_X: 102, BOX_Y0: 18, BOX_Y1: 62 },
+
+  // 드리블 — 1v1 기하 지배, 능력치는 약한 modifier (근접 1v1 ≈ 0.5)
+  // + 몸싸움 듀얼: z += B_BODY·e^(−d/R_DEF)·(body_공격수 − body_수비수), body = (몸싸움+균형)/2
+  // 근접 수비에 막히는 것은 의도된 동작 — 계수 그대로 유지 (사용자 확인, 2026-07-20).
+  DRIB: { Z0: 2.2, B_SKILL: 1.2, B_LEN: -0.06, B_DEF: -2.2, R_DEF: 3.0, B_BODY: 0.8 },
+
+  // 경합 게이트 (v2.2 신규) — "수비수가 없으면 드리블은 실패하지 않는다".
+  //
+  // 사용자 확정(2026-07-20): **드리블에만** 적용한다.
+  //   드리블 = 내 발 밑의 공을 내가 몰고 가는 것. 뺏을 사람이 없으면 실패할 이유가 없다.
+  //   패스   = 적용하지 않는다. 아무도 없어도 세게 차서 빠질 수 있다 (사용자 지적).
+  //   슛     = 적용하지 않는다. 아무도 없어도 골결정력으로 빗나갈 수 있어야 한다.
+  //
+  //   p = 1 − (1 − p_raw) · gate(press),   gate(press) = 1 − e^(−press/KAPPA)
+  //   press = 그 액션에 걸린 수비 압박 로그오즈의 크기(≥0)
+  //
+  // press=0(무압박) → gate=0 → p=1. 압박이 커질수록 gate→1이라 기존 산식으로 수렴한다.
+  // 연속 함수라 "경계"가 없다 — 임계값으로 끊으면 확률이 튀어 체감이 이상해진다.
+  // 근접(0.5m) 1v1은 49%로 사실상 그대로고, 멀어질수록 100%에 수렴한다.
+  CONTEST: { KAPPA: 0.35 },
+
+  // 수비 재배치 (defense.js) — 액션마다 수비수가 볼에 반응해 움직인다.
+  // FM류 매치엔진과 같은 구조: 수비는 틱마다 조널/마킹/압박 목표를 재계산하고,
+  // "볼 스피드 > 수비 이동력"일 때 공간이 열린다(수비 붕괴는 상수가 아니라 기하에서 창발).
+  DEF: {
+    REACT: 0.45, // 패스 인지 반응 시간 s — 이동 시간 예산 = 비행시간 + REACT
+    SPD_MIN: 3.2, // 수비수 이동 속도 범위 m/s (주력+가속도 스탯으로 보간)
+    SPD_MAX: 7.6,
+    EFF: 0.6, // 이동 효율 — 최고속도 유지 불가·방향전환 손실 (공격 우위 아케이드 보정)
+    MOVE_CAP: 9, // 액션 1개당 이동 상한 m — 긴 드리블 동안 수비가 무한 회복하는 것 방지
+    K_LINE: 0.35, // 볼 전진량 대비 라인 후퇴 비율
+    K_SIDE: 0.3, // 볼사이드 시프트 비율
+    PRESS_N: 2, // 볼 도착점을 압박하러 가는 인원
+    PRESS_R: 26, // 이 거리 안에 있어야 압박 가담
+    GOALSIDE: 1.8, // 압박 위치: 볼과 자기 골문 사이 골사이드 오프셋 m
+    MARK_R: 10, // 이 거리 안의 공격수를 마킹
+    MARK_GOALSIDE: 1.2, // 마킹 위치: 공격수의 골사이드 오프셋 m
+    GK_X: 116.5, // GK 기본 x
+    GK_TRACK: 0.25, // GK가 볼 y를 따라가는 비율
+  },
+
+  // 시퀀스 — 수비 붕괴의 주 메커니즘은 위치 재계산(위 DEF). FLOW는 잔여 "기세" 보정만 담당
+  // (v2의 0.25 → 0.1로 축소: 연속 성공당 다음 액션 로그오즈 +FLOW, 상한 FLOW_MAX)
+  SEQ: { FLOW: 0.1, FLOW_MAX: 1.0 },
+
+  // 궤적 매칭 — 가우시안 커널, 1m 등간격 리샘플링, 임계 ≥90 완전 / 70~90 부분
+  MATCH: { SIGMA: 3.0, RESAMPLE_M: 1.0, FULL: 90, PARTIAL: 70 },
+
+  // 오프사이드 (offside.js) — 순수 기하. 계수가 아니라 규칙 상수라 밸런싱 대상이 아니다.
+  // EPS: 동일선상 허용 오차 m. 실축 규칙과 같이 "같은 선 = 온사이드"라, 보드 조작의
+  //      픽셀 단위 흔들림으로 억울한 오프사이드가 나오지 않게 하는 완충.
+  OFFSIDE: { HALFWAY_X: 60, EPS: 0.15 },
+
+  // 시트(페이즈) 설계 UI — 가동범위 동심원 (sheets.js). 판정과 무관한 표시용.
+  // 바깥 링 = 전력 100%, 안쪽 링 = 여유 70% (스프린트로 가긴 가는데 받을 준비는 안 되는 거리).
+  SHEET: {
+    EASY_FRAC: 0.7,
+    // Sheet runners start from rest. Pace controls eventual top speed and
+    // acceleration controls how quickly that speed is reached. Units: m/s, m/s².
+    RUN_SPEED_MIN: 5.8,
+    RUN_SPEED_MAX: 8.8,
+    ACCEL_MIN: 3.4,
+    ACCEL_MAX: 7.4,
+  },
+
+  // xT (xt.js) — 플레이 설계 점수. **판정과 완전히 독립**이라 밸런싱해도 앵커에 영향 없다.
+  XT: {
+    NX: 16, // 존 분할 (16×12 = 192존, 존 하나 7.5m × 6.67m)
+    NY: 12,
+    SHOT_MAX: 0.35, // 골문 바로 앞에서의 슛 시도 확률 상한
+    SHOT_R: 11, // 슛 시도 확률의 거리 감쇠 상수 m
+    MOVE_R: 14, // 이동 전이의 거리 감쇠 상수 m (짧은 패스가 흔하다)
+    MOVE_MAX: 45, // 이 거리를 넘는 이동은 전이 후보에서 제외 m
+    FWD_BIAS: 0.55, // 전진 편향 — 앞으로 가는 이동에 가중 (0이면 등방)
+    // 액션 1회를 버티고 공을 지킬 확률. 이게 없으면(=1) 그리드가 평평해진다 — xt.js 주석 참고.
+    // 낮출수록 "골문 근처"의 가치가 상대적으로 커지고 먼 곳의 전진 보상이 작아진다.
+    RETAIN: 0.7,
+    ITERS: 200, // 벨만 반복 상한
+    EPS: 1e-7, // 수렴 판정
+    // PlanScore 등급 경계 (xT 델타 합)
+    GRADES: { S: 0.14, A: 0.07, B: 0.025, C: 0.0 },
+  },
+}
