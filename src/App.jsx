@@ -216,14 +216,31 @@ function App() {
     setViewSheet(null)
   }
 
-  // 이스터에그 — 실제 경기 재현 감지: 골로 끝났고, 마지막 슛을 실제 득점자가 쐈고,
-  // 그에게 간 마지막 패스를 실제 도움 선수가 줬으면 "그날의 장면" 팝업을 띄운다.
+  // 이스터에그 — 실제 경기 재현 감지.
+  // 새 방식(egg.sequence 있으면): 골로 끝났고, "공을 주고받은 선수 순서"가 시나리오와
+  //   똑같고, 마지막 슛을 친 위치가 실제 슛 지점(egg.shot) 근처(tol 반경)면 성공.
+  //   드리블·패스를 정확히 어디서 했는지는 보지 않는다 — 순서와 마무리 지점만.
+  // 구 방식(폴백): 골 + 마지막 슛을 득점자가 + 마지막 패스가 passer→scorer.
   const egg = moment.easterEgg
   const [eggClosed, setEggClosed] = useState(false)
   const eggMatched = useMemo(() => {
     if (!egg || result?.outcome !== 'GOAL') return false
     const shot = chain[chain.length - 1]
-    if (shot?.type !== 'shot' || shot.actorId !== egg.scorerId) return false
+    if (shot?.type !== 'shot') return false
+    if (egg.sequence) {
+      // 공을 잡은 선수 순서 (같은 선수의 연속 드리블은 한 번으로)
+      const touchers = []
+      for (const leg of chain) if (touchers[touchers.length - 1] !== leg.actorId) touchers.push(leg.actorId)
+      const seqOk =
+        touchers.length === egg.sequence.length && touchers.every((id, i) => id === egg.sequence[i])
+      if (!seqOk) return false
+      if (egg.shot) {
+        const tol = egg.shot.tol ?? 15
+        if (Math.hypot(shot.from.x - egg.shot.x, shot.from.y - egg.shot.y) > tol) return false
+      }
+      return true
+    }
+    if (shot.actorId !== egg.scorerId) return false
     const lastPass = chain.findLast((l) => l.type === 'pass')
     return lastPass?.actorId === egg.passerId && lastPass?.receiverId === egg.scorerId
   }, [egg, result, chain])
