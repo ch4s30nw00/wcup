@@ -2,23 +2,9 @@
 // 화면 전환 상태는 App이 들고, 여기는 표시와 콜백만 담당한다.
 import { MATCHES } from '../data/matches'
 
-// 아직 시나리오 데이터가 없는 예정 경기 — 카드로만 노출 (확장 로드맵 표시용)
-const UPCOMING_MATCHES = [
-  {
-    id: 'kor_ita_2002',
-    title: '2002 한일 월드컵 16강 — 대한민국 vs 이탈리아',
-    minute: '연장 후반 117′',
-    desc: '골든골 한 방이면 8강. 안정환의 순간으로.',
-  },
-  {
-    id: 'kor_ger_2018',
-    title: '2018 러시아 월드컵 F조 3차전 — 대한민국 vs 독일',
-    minute: '후반 추가시간',
-    desc: '카잔의 기적 — 디펜딩 챔피언을 무너뜨린 두 골.',
-  },
-]
-
+// 연장(90 초과)은 "90+x"가 아니라 실제 분을 그대로 쓴다 — 모먼트가 minuteLabel을 주면 그걸 우선한다.
 const displayMinute = (m) => (m > 90 ? `90+${m - 90}′` : `${m}′`)
+const minuteText = (moment) => moment.minuteLabel ?? displayMinute(moment.minute)
 
 // 배경: 전술보드와 같은 규격(120x80)의 피치 라인을 은은하게 깔아 세계관을 통일
 function PitchBackdrop() {
@@ -91,7 +77,7 @@ export function MatchSelect({ matchId, onPick, onBack, onTutorial }) {
               >
                 <div className="match-card-top">
                   <span className="match-badge live">PLAYABLE</span>
-                  <span className="match-minute">{displayMinute(moment.minute)}</span>
+                  <span className="match-minute">{minuteText(moment)}</span>
                 </div>
                 <div className="match-title">{m.title}</div>
                 <div className="match-score">
@@ -103,18 +89,6 @@ export function MatchSelect({ matchId, onPick, onBack, onTutorial }) {
               </button>
             )
           })}
-
-          {UPCOMING_MATCHES.map((m) => (
-            <div key={m.id} className="match-card locked" aria-disabled="true">
-              <div className="match-card-top">
-                <span className="match-badge soon">COMING SOON</span>
-                <span className="match-minute">{m.minute}</span>
-              </div>
-              <div className="match-title">{m.title}</div>
-              <p className="match-desc">{m.desc}</p>
-              <div className="match-lock">🔒</div>
-            </div>
-          ))}
         </div>
       </div>
     </div>

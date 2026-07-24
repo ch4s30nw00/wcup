@@ -195,32 +195,6 @@ const CZE = [
   { id: 'cze_22', csvName: 'Tomáš SOUČEK', name: '토마시 소우체크', number: 22, position: 'MF', roles: ['DM'] },
   { id: 'cze_24', csvName: 'Alexandr SOJKA', name: '알렉산드르 소이카', number: 24, position: 'MF', roles: ['CM'] },
 ]
-const MEX = [
-  { id: 'mex_01', csvName: 'José Raúl RANGEL AGUILAR', name: '라울 랑헬', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'mex_02', csvName: 'Jorge Eduardo SÁNCHEZ RAMOS', name: '호르헤 산체스', number: 2, position: 'DF', roles: ['RB'] },
-  { id: 'mex_04', csvName: 'Edson Omar ÁLVAREZ VELÁZQUEZ', name: '에드손 알바레스', number: 4, position: 'DF', roles: ['CB'] },
-  { id: 'mex_05', csvName: 'Johan Felipe VÁSQUEZ IBARRA', name: '요한 바스케스', number: 5, position: 'DF', roles: ['CB'] },
-  { id: 'mex_06', csvName: 'Erik Antonio LIRA MÉNDEZ', name: '에릭 리라', number: 6, position: 'MF', roles: ['DM'] },
-  { id: 'mex_11', csvName: 'Santiago Tomás GIMENEZ', name: '산티아고 히메네스', number: 11, position: 'FW', roles: ['ST'] },
-  { id: 'mex_15', csvName: 'Israel REYES ROMERO', name: '이스라엘 레예스', number: 15, position: 'DF', roles: ['RB'] },
-  { id: 'mex_17', csvName: 'Orbelín PINEDA ALVARADO', name: '오르벨린 피네다', number: 17, position: 'MF', roles: ['CAM'] },
-  { id: 'mex_18', csvName: 'Obed Goméz VARGAS', name: '오베드 바르가스', number: 18, position: 'MF', roles: ['CM'] },
-  { id: 'mex_21', csvName: 'César Saúl HUERTA VALERA', name: '세사르 우에르타', number: 21, position: 'FW', roles: ['LW'] },
-  { id: 'mex_23', csvName: 'Jesús Daniel GALLARDO VASCONCELOS', name: '헤수스 가야르도', number: 23, position: 'DF', roles: ['LB'] },
-]
-const RSA = [
-  { id: 'rsa_01', csvName: 'Ronwen Hayden WILLIAMS', name: '론웬 윌리엄스', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'rsa_05', csvName: 'Thalente Wandile MBATHA', name: '탈렌테 음바타', number: 5, position: 'DF', roles: ['CB'] },
-  { id: 'rsa_06', csvName: 'Aubrey Maphosa MODIBA', name: '오브리 모디바', number: 6, position: 'DF', roles: ['LB'] },
-  { id: 'rsa_07', csvName: 'Oswin Reagan APPOLLIS', name: '오스윈 아폴리스', number: 7, position: 'FW', roles: ['LW'] },
-  { id: 'rsa_10', csvName: 'Relebohile MOFOKENG', name: '렐레보힐레 모포켕', number: 10, position: 'MF', roles: ['CAM'] },
-  { id: 'rsa_12', csvName: 'Thapelo MASEKO', name: '타펠로 마세코', number: 12, position: 'FW', roles: ['RW'] },
-  { id: 'rsa_13', csvName: "Sphephelo S'miso SITHOLE", name: '스페펠로 시톨레', number: 13, position: 'MF', roles: ['DM'] },
-  { id: 'rsa_14', csvName: 'Mbekezeli Mfanukile MBOKAZI', name: '음베케젤리 음보카지', number: 14, position: 'DF', roles: ['CB'] },
-  { id: 'rsa_17', csvName: 'Sekotori Evidence MAKGOPA', name: '에비던스 마크고파', number: 17, position: 'FW', roles: ['ST'] },
-  { id: 'rsa_20', csvName: 'Khuliso Johnson MUDAU', name: '쿨리소 무다우', number: 20, position: 'DF', roles: ['RB'] },
-  { id: 'rsa_21', csvName: 'Ime Daniel OKON', name: '이메 오콘', number: 21, position: 'MF', roles: ['DM'] },
-]
 const ENG = [
   { id: 'eng_01', csvName: 'Jordan Lee PICKFORD', name: '조던 픽퍼드', number: 1, position: 'GK', roles: ['GK'] },
   { id: 'eng_02', csvName: 'Ezri Ngoyo KONSA', name: '에즈리 콘사', number: 2, position: 'DF', roles: ['RB'] },
@@ -274,8 +248,6 @@ const players = [
   ...mk(BRA, 'BRA', 'Brazil'),
   ...mk(KOR26, 'KOR26', 'Korea Republic'),
   ...mk(CZE, 'CZE', 'Czechia'),
-  ...mk(MEX, 'MEX', 'Mexico'),
-  ...mk(RSA, 'RSA', 'South Africa'),
   ...mk(ENG, 'ENG', 'England'),
   ...mk(ARG, 'ARG', 'Argentina'),
 ]
@@ -326,60 +298,6 @@ const scenes = {
             title: '그날, 진짜로 있었던 일',
             caption:
               '2026년 6월 11일 과달라하라. 동점골의 주인공 황인범이 이번엔 오른쪽에서 크로스를 올렸고, 교체 투입된 오현규가 80분에 역전골을 넣었다. 대한민국 2:1 체키아 — 이 대회 유일한 승리이자 유일한 역전이었다.',
-            images: [],
-          },
-        },
-      ],
-    },
-    {
-      match_id: 'kor_mex_2026_g2',
-      title: '2026 북중미 월드컵 A조 2차전 — 대한민국 vs 멕시코',
-      home: 'KOR26',
-      away: 'MEX',
-      actual: '멕시코 1 : 0 대한민국 (2026-06-18, 과달라하라)',
-      moments: [
-        {
-          id: 'm87_cho',
-          minute: 87,
-          score: [0, 1],
-          situation:
-            '87분, 0-1. 50분에 키뇨네스의 크로스를 김승규가 이기혁과 부딪히며 놓쳤고 로모가 빈 골문에 밀어넣었다. 그 한 골을 되돌릴 마지막 기회 — 왼쪽 엄지성이 공을 잡았고 박스 안에는 조규성이 서 있다.',
-          objective: '조규성의 머리에 크로스를 배달하라',
-          ball: 'k26_25',
-          positions: posOf('kor_mex_2026_g2'),
-          easterEgg: {
-            passerId: 'k26_25',
-            scorerId: 'k26_09',
-            title: '그날, 진짜로 있었던 일',
-            caption:
-              '2026년 6월 18일 과달라하라. 크로스는 정확히 조규성의 머리에 닿았지만 라울 랑헬이 막아냈고, 흘러나온 공을 양현준이 다시 때린 것도 잡혔다. 멕시코 1:0 — 이 더블 세이브가 한국의 32강을 막았다.',
-            images: [],
-          },
-        },
-      ],
-    },
-    {
-      match_id: 'kor_rsa_2026_g3',
-      title: '2026 북중미 월드컵 A조 3차전 — 대한민국 vs 남아프리카공화국',
-      home: 'KOR26',
-      away: 'RSA',
-      actual: '남아프리카공화국 1 : 0 대한민국 (2026-06-24, 몬테레이)',
-      moments: [
-        {
-          id: 'm60_oh_header',
-          minute: 60,
-          score: [0, 0],
-          situation:
-            '60분, 0-0. 전반 유효슈팅 0개. 하프타임에 손흥민을 포함해 셋을 한꺼번에 바꿨다. 다른 경기장에서 멕시코가 앞서간다는 소식에 몬테레이 관중석이 술렁인 직후, 오른쪽의 설영우가 고개를 들었다.',
-          objective: '오현규의 머리에 크로스를 배달하라',
-          ball: 'k26_22',
-          positions: posOf('kor_rsa_2026_g3'),
-          easterEgg: {
-            passerId: 'k26_22',
-            scorerId: 'k26_18',
-            title: '그날, 진짜로 있었던 일',
-            caption:
-              '2026년 6월 24일 몬테레이. 설영우의 크로스, 오현규의 헤더 — 론웬 윌리엄스의 손에 걸렸다. 3분 뒤 타펠로 마세코가 결승골을 넣었고 남아공은 사상 첫 조별리그 통과, 한국은 1승 2패 조 3위로 탈락했다.',
             images: [],
           },
         },
@@ -520,11 +438,7 @@ const scenes = {
         'ESPN 라인업과 FPF 발표 번호 두 출처가 일치한다. 그 다섯(칸셀루·누누 멘드스·비티냐·페드루 네투·주앙 펠릭스)과 ' +
         '스페인의 다니 올모(10, 85분 메리노와 교체)를 로스터에 넣어 번호가 다시 밀리지 않게 했다.',
       'ARG: 결승 102분에 교체 투입된 세네시의 등번호가 출처마다 다르다. 협회 발표 번호 목록에는 2번이 발레르디로 돼 있으나 CSV 로스터·경기 리포트에는 세네시가 있다. 현재 세네시를 2번으로 뒀다.',
-      'RSA: ESPN 라인업이 음바타(5)를 수비수로 표기했다. 통상 미드필더라 센터백 조합(음바타-음보카지)이 맞는지 확인 필요.',
-      'KOR-MEX / KOR-RSA: 선발·교체 시각과 등번호는 ESPN 라인업으로 확인했으나, 득점 장면의 정확한 좌표(크로스 지점·헤더 위치)는 미확인이다.',
       'KOR-CZE: 크로스 지점과 오현규의 마무리 지점은 여전히 미확인이다. 라인업·교체 시각은 ESPN으로 확인했다.',
-      'KOR-MEX: 87분 장면은 실제로는 득점이 아니라 랑헬의 선방이다. 이스터에그 caption에 그렇게 적었지만, 엔진이 easterEgg를 "실제 골"로 취급한다면 표현을 손봐야 한다.',
-      'KOR-RSA: 60분 설영우 크로스 → 오현규 헤더는 기획 자료 기반이며 경기 리포트에서 분 단위로 확인하지 못했다.',
       'ENG-ARG: 90+2분 결승골 득점자를 라우타로 마르티네스로 뒀다. 일부 요약문이 엔소 페르난데스로 잘못 적고 있으나 Sky·ESPN 헤드라인은 라우타로다.',
       'ENG-ARG: 85분 장면 좌표는 84:46 "De Paul control" 프레임(105×68m)을 120×80으로 환산해 넣었다. 다음 두 값만 프레임에서 오지 않았다 — ' +
         '(1) 에밀리아노 마르티네스(arg_23)가 프레임에 아예 없어 기존 90+2분 장면의 (32, 40)을 그대로 뒀다. ' +

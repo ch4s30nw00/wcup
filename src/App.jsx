@@ -529,7 +529,7 @@ function App() {
         <div className="mission-card">
           <div className="mission-title">{scenario.title}</div>
           <div className="mission-body">
-            <strong>{moment.minute}'</strong> · 스코어 {moment.score[0]} : {moment.score[1]} — {moment.situation}
+            <strong>{moment.minuteLabel ?? `${moment.minute}'`}</strong> · 스코어 {moment.score[0]} : {moment.score[1]} — {moment.situation}
           </div>
         </div>
       </header>
