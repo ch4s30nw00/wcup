@@ -60,7 +60,7 @@ const CASES = [
       { type: 'pass', actorId: 'kor_11', receiverId: 'kor_09' },
     ],
   },
-  { name: '긴 전환 패스', acts: [{ type: 'pass', actorId: 'kor_07', receiverId: 'kor_18' }] },
+  { name: '긴 전환 패스', acts: [{ type: 'pass', actorId: 'kor_07', receiverId: 'kor_16' }] },
   {
     name: '드리블 후 침투 패스',
     acts: [

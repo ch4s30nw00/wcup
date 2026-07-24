@@ -617,10 +617,10 @@
     "condition": 100
   },
   {
-    "id": "por_10",
+    "id": "por_17",
     "name": "주앙 마리우",
     "team": "POR",
-    "number": 10,
+    "number": 17,
     "position": "MF",
     "roles": [
       "RW",
@@ -6330,6 +6330,262 @@
     },
     "statSource": "estimated",
     "overall": 76,
+    "condition": 100
+  },
+  {
+    "id": "kor_13",
+    "name": "손준호",
+    "team": "KOR",
+    "number": 13,
+    "position": "MF",
+    "roles": [
+      "DM"
+    ],
+    "heightCm": 183,
+    "stats": {
+      "flair": 9,
+      "finishing": 6,
+      "dribbling": 10,
+      "longshots": 10,
+      "crossing": 9,
+      "passing": 13,
+      "heading": 13,
+      "strength": 14,
+      "acceleration": 10,
+      "pace": 10,
+      "jumping": 10,
+      "balance": 12,
+      "marking": 12,
+      "tackle": 14,
+      "positioning": 13,
+      "anticipation": 13
+    },
+    "statSource": "estimated",
+    "overall": 74,
+    "condition": 100
+  },
+  {
+    "id": "kor_16",
+    "name": "황의조",
+    "team": "KOR",
+    "number": 16,
+    "position": "FW",
+    "roles": [
+      "ST"
+    ],
+    "heightCm": 182,
+    "stats": {
+      "flair": 11,
+      "finishing": 14,
+      "dribbling": 12,
+      "longshots": 12,
+      "crossing": 8,
+      "passing": 10,
+      "heading": 13,
+      "strength": 12,
+      "acceleration": 13,
+      "pace": 13,
+      "jumping": 12,
+      "balance": 11,
+      "marking": 4,
+      "tackle": 5,
+      "positioning": 14,
+      "anticipation": 14
+    },
+    "statSource": "estimated",
+    "overall": 75,
+    "condition": 100
+  },
+  {
+    "id": "kor_19",
+    "name": "김영권",
+    "team": "KOR",
+    "number": 19,
+    "position": "DF",
+    "roles": [
+      "CB"
+    ],
+    "heightCm": 186,
+    "stats": {
+      "flair": 6,
+      "finishing": 5,
+      "dribbling": 7,
+      "longshots": 5,
+      "crossing": 6,
+      "passing": 10,
+      "heading": 14,
+      "strength": 14,
+      "acceleration": 10,
+      "pace": 11,
+      "jumping": 13,
+      "balance": 11,
+      "marking": 14,
+      "tackle": 13,
+      "positioning": 14,
+      "anticipation": 12
+    },
+    "statSource": "estimated",
+    "overall": 74,
+    "condition": 100
+  },
+  {
+    "id": "por_06",
+    "name": "주앙 팔리냐",
+    "team": "POR",
+    "number": 6,
+    "position": "MF",
+    "roles": [
+      "DM"
+    ],
+    "heightCm": 190,
+    "stats": {
+      "flair": 10,
+      "finishing": 7,
+      "dribbling": 11,
+      "longshots": 11,
+      "crossing": 10,
+      "passing": 15,
+      "heading": 14,
+      "strength": 15,
+      "acceleration": 11,
+      "pace": 11,
+      "jumping": 11,
+      "balance": 13,
+      "marking": 14,
+      "tackle": 16,
+      "positioning": 14,
+      "anticipation": 14
+    },
+    "statSource": "estimated",
+    "overall": 80,
+    "condition": 100
+  },
+  {
+    "id": "por_09",
+    "name": "안드레 실바",
+    "team": "POR",
+    "number": 9,
+    "position": "FW",
+    "roles": [
+      "ST"
+    ],
+    "heightCm": 185,
+    "stats": {
+      "flair": 12,
+      "finishing": 15,
+      "dribbling": 13,
+      "longshots": 13,
+      "crossing": 9,
+      "passing": 11,
+      "heading": 14,
+      "strength": 13,
+      "acceleration": 14,
+      "pace": 14,
+      "jumping": 13,
+      "balance": 12,
+      "marking": 5,
+      "tackle": 6,
+      "positioning": 14,
+      "anticipation": 15
+    },
+    "statSource": "estimated",
+    "overall": 78,
+    "condition": 100
+  },
+  {
+    "id": "por_10",
+    "name": "베르나르두 실바",
+    "team": "POR",
+    "number": 10,
+    "position": "MF",
+    "roles": [
+      "CAM"
+    ],
+    "heightCm": 169,
+    "stats": {
+      "flair": 17,
+      "finishing": 16,
+      "dribbling": 17,
+      "longshots": 18,
+      "crossing": 14,
+      "passing": 17,
+      "heading": 9,
+      "strength": 10,
+      "acceleration": 15,
+      "pace": 15,
+      "jumping": 9,
+      "balance": 16,
+      "marking": 7,
+      "tackle": 8,
+      "positioning": 13,
+      "anticipation": 14
+    },
+    "statSource": "estimated",
+    "overall": 85,
+    "condition": 100
+  },
+  {
+    "id": "por_15",
+    "name": "하파엘 레앙",
+    "team": "POR",
+    "number": 15,
+    "position": "FW",
+    "roles": [
+      "LW"
+    ],
+    "heightCm": 188,
+    "stats": {
+      "flair": 16,
+      "finishing": 14,
+      "dribbling": 16,
+      "longshots": 13,
+      "crossing": 17,
+      "passing": 14,
+      "heading": 9,
+      "strength": 14,
+      "acceleration": 17,
+      "pace": 17,
+      "jumping": 10,
+      "balance": 15,
+      "marking": 7,
+      "tackle": 8,
+      "positioning": 12,
+      "anticipation": 13
+    },
+    "statSource": "estimated",
+    "overall": 84,
+    "condition": 100
+  },
+  {
+    "id": "por_23",
+    "name": "마테우스 누네스",
+    "team": "POR",
+    "number": 23,
+    "position": "MF",
+    "roles": [
+      "CM"
+    ],
+    "heightCm": 183,
+    "stats": {
+      "flair": 14,
+      "finishing": 10,
+      "dribbling": 15,
+      "longshots": 14,
+      "crossing": 12,
+      "passing": 14,
+      "heading": 9,
+      "strength": 13,
+      "acceleration": 12,
+      "pace": 14,
+      "jumping": 9,
+      "balance": 13,
+      "marking": 10,
+      "tackle": 11,
+      "positioning": 12,
+      "anticipation": 14
+    },
+    "statSource": "estimated",
+    "overall": 79,
     "condition": 100
   }
 ]
