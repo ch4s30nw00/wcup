@@ -9,7 +9,6 @@ import { initDefense } from './engine/defense'
 import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
 import { actionDuration, reachRadius, clampToReach, throughTarget } from './engine/sheets'
-import { planScore, planGrade } from './engine/xt'
 import { isMuted, setMuted, resumeAudio, whistle, goalRoar, startMurmur, stopMurmur } from './engine/sound'
 import { decodeShare, shareUrl } from './engine/share'
 import { buildMatch, findMatch } from './data/matches'
@@ -144,11 +143,6 @@ function App() {
     for (const p of basePlayers) planPos[p.id] = posOf(p.id)
     return { chain, runLegs: Object.values(runLegMap), planPos, carrierId: carrier, snaps, carrierAt }
   }, [chainActs, runs, basePlayers, basePos, moment])
-
-  // 플레이 설계 점수 (xT 델타 합) — 판정과 독립이라 계획 단계에서 바로 보여줘도
-  // "성공률 프리뷰"가 되지 않는다. 확률이 아니라 "얼마나 위협적인 자리로 옮겼나"의 축.
-  const plan = useMemo(() => planScore(chain), [chain])
-  const grade = planGrade(plan.total)
 
   const shotTaken = chainActs.some((a) => a.type === 'shot')
   const ballPlanPos = chain.length ? chain[chain.length - 1].to : basePos(moment.ball)
@@ -773,39 +767,6 @@ function App() {
                   </li>
                 ))}
               </ul>
-            )}
-          </section>
-
-          <section className="panel">
-            <h2>플레이 설계 점수</h2>
-            {chain.length === 0 ? (
-              <p className="muted">전개를 설계하면 위협도(xT) 변화가 표시됩니다.</p>
-            ) : (
-              <div className="plan-score">
-                <div className="plan-head">
-                  <span className={`plan-grade g-${grade.label}`}>{grade.label}</span>
-                  <span className={`plan-total ${plan.total >= 0 ? 'up' : 'down'}`}>
-                    {plan.total >= 0 ? '+' : ''}
-                    {(plan.total * 100).toFixed(1)}
-                  </span>
-                </div>
-                <div className="plan-text">{grade.text}</div>
-                <ul className="plan-steps">
-                  {plan.steps.map((s) => (
-                    <li key={s.index}>
-                      <span>{s.index + 1}. {TYPE_LABEL[s.type]}</span>
-                      <span className={s.delta >= 0 ? 'up' : 'down'}>
-                        {s.delta >= 0 ? '+' : ''}
-                        {(s.delta * 100).toFixed(1)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="plan-note">
-                  각 스텝이 공을 얼마나 위협적인 지역으로 옮겼는지(xT 델타)의 합입니다.
-                  <b> 성공 확률과는 무관</b>합니다 — 판정은 실행해봐야 압니다.
-                </div>
-              </div>
             )}
           </section>
 
