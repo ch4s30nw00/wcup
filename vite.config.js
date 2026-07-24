@@ -41,11 +41,17 @@ function positionsWriter() {
             store.positions[matchId] = positions
             write('./src/data/positions.json', store)
 
-            // 화면이 읽는 쪽도 같이
-            if (matchId === 'kor_por_2022') {
-              const scn = read('./src/data/scenarios.json')
+            // 화면이 읽는 쪽도 같이. 경기마다 파일이 다르다 — 손으로 쓴 과거 명경기는
+            // 각자 파일에, CSV 생성 2026 경기는 scenes-2026.json 안에 들어있다.
+            const SOLO_FILE = {
+              kor_por_2022: './src/data/scenarios.json',
+              kor_ita_2002: './src/data/kor_ita_2002.json',
+              kor_ger_2018: './src/data/kor_ger_2018.json',
+            }
+            if (SOLO_FILE[matchId]) {
+              const scn = read(SOLO_FILE[matchId])
               scn.moments[0].positions = positions
-              write('./src/data/scenarios.json', scn)
+              write(SOLO_FILE[matchId], scn)
             } else {
               const scenes = read('./src/data/scenes-2026.json')
               const m = scenes.matches.find((x) => x.match_id === matchId)

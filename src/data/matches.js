@@ -11,12 +11,15 @@
 import playersData from './players.json'
 import formations from './formations.json'
 import korPor from './scenarios.json'
+import korIta2002 from './kor_ita_2002.json'
+import korGer2018 from './kor_ger_2018.json'
 import scenes2026 from './scenes-2026.json'
 
 const slots = formations['4-2-3-1']
 
 // 순서 = 경기 선택 화면의 카드 순서
-export const MATCHES = [korPor, ...scenes2026.matches]
+// 손으로 쓴 과거 명경기(2002·2018·2022)를 앞에, CSV 생성 2026 경기를 뒤에.
+export const MATCHES = [korPor, korIta2002, korGer2018, ...scenes2026.matches]
 export const DEFAULT_MATCH_ID = korPor.match_id
 
 // 모르는 id(옛 공유 링크·오타)는 기본 경기로 — 빈 화면보다 낫다
