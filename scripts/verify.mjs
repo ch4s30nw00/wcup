@@ -8,7 +8,7 @@ import { calcShot, calcPass, calcDribble, resolveSequence, planOffside, probOf }
 import { checkOffside, offsideLineX } from '../src/engine/offside.js'
 import { initDefense, advanceDefense } from '../src/engine/defense.js'
 import { matchScore } from '../src/engine/match.js'
-import { movementDuration, throughTarget } from '../src/engine/sheets.js'
+import { throughTarget, throughBallDuration, throughSpeedLimits, actionDuration, runSpeedOf } from '../src/engine/sheets.js'
 import { encodeShare, decodeShare } from '../src/engine/share.js'
 import { XT_GRID, xtAt, planScore, planGrade } from '../src/engine/xt.js'
 import { midpoint } from '../src/engine/geometry.js'
@@ -38,8 +38,8 @@ const checkDir = (label, cond, detail) => {
 }
 
 // ── 1. 보고서 검증 앵커 ──────────────────────────────────────────────
-console.log('\n[앵커] 패스 무압박 (L=8/20/30 → 0.90/0.75/0.55)')
-for (const [L, want] of [[8, 0.9], [20, 0.75], [30, 0.55]]) {
+console.log('\n[앵커] 패스 무압박 (L=8/20/30 → 0.91/0.75/0.55)')
+for (const [L, want] of [[8, 0.913], [20, 0.75], [30, 0.55]]) {
   const a = act('pass', { x: 40, y: 40 }, { x: 40 + L, y: 40 })
   check(`L=${L}m`, sigmoid(calcPass(a, []).z), want)
 }
@@ -80,6 +80,13 @@ for (const [g, want] of [[0.5, 0.49], [2, 0.67], [3, 0.74], [5, 0.81]]) {
   check(`간격 ${g}m`, sigmoid(calcDribble(a, [defAt(43, 40 + g)]).z), want)
 }
 
+console.log('[reach radius] a long dribble keeps increasing beyond six seconds')
+{
+  const longDribble = act('dribble', { x: 20, y: 40 }, { x: 70, y: 40 })
+  const seconds = actionDuration(longDribble)
+  checkDir('50m dribble duration > 6 seconds', seconds > 6, `${seconds.toFixed(2)} seconds`)
+}
+
 console.log('[앵커] 궤적 매칭 커널 (편차 1/2/3/5m → 0.95/0.80/0.61/0.25)')
 for (const [d, want] of [[1, 95], [2, 80], [3, 61], [5, 25]]) {
   const answer = [{ x: 10, y: 40 }, { x: 30, y: 40 }]
@@ -110,6 +117,21 @@ console.log('[신규] 크로스→헤더 — 골결:헤더 3:7 + 공중 듀얼 (
   checkDir('일반 슛은 header 아님', calcShot(act('shot', { x: 110, y: 40 }, { x: 119, y: 40 }), []).header === false)
 }
 
+console.log('[신규] 로빙 연계 — 다음 패스·슛은 헤더 스탯을 약하게 반영')
+{
+  const lob = { ...act('pass', { x: 94, y: 40 }, { x: 108, y: 40 }), passKind: 'lob' }
+  const headedShot = (actor) => calcShot({ ...act('shot', { x: 108, y: 40 }, { x: 119, y: 40 }), actor }, [], lob)
+  const headedPass = (actor) => calcPass({ ...act('pass', { x: 108, y: 40 }, { x: 114, y: 40 }), actor }, [], lob)
+  const strongHeader = neutral({ finishing: 11, heading: 18 })
+  const weakHeader = neutral({ finishing: 11, heading: 3 })
+  checkDir('로빙 직후 슛은 헤더 판정', headedShot(neutral()).header === true)
+  checkDir('로빙 직후 패스도 헤더 판정', headedPass(neutral()).header === true)
+  checkDir('헤딩 높은 선수가 로빙 직후 슛에 유리', headedShot(strongHeader).z > headedShot(weakHeader).z)
+  checkDir('헤딩 높은 선수가 로빙 직후 패스에 유리', headedPass(strongHeader).z > headedPass(weakHeader).z)
+  const finisher = neutral({ finishing: 18, heading: 5 })
+  checkDir('로빙 헤딩은 일반 크로스 헤더보다 골결 비중이 커 과도하게 불리하지 않음', headedShot(finisher).z > calcShot({ ...act('shot', { x: 108, y: 40 }, { x: 119, y: 40 }), actor: finisher }, [], { ...lob, from: { x: 95, y: 70 }, to: { x: 108, y: 40 }, passKind: 'ground' }).z)
+}
+
 console.log('[신규] 수비 스탯 스케일 — 위치선정·예측력 (데이터 요청 §6·7)')
 {
   const a = act('pass', { x: 40, y: 40 }, { x: 60, y: 40 })
@@ -138,7 +160,12 @@ console.log('\n[경합 게이트] 드리블 — 압박이 없으면 실패도 �
   checkDir(`수비수 0명 · 6m → ${(drib([]) * 100).toFixed(1)}% (= 100%)`, drib([]) === 1)
   checkDir(`수비수 0명 · 25m 장거리도 100% (${(drib([], 25) * 100).toFixed(1)}%)`, drib([], 25) === 1)
   // 멀리 있는 수비수는 사실상 없는 것과 같다 (연속적으로 1에 수렴 — 임계 점프 없음)
-  const far = drib([defAt(40, 70)])
+  const farExact = drib([defAt(40, 70)])
+  checkDir('far defender outside contest range means certain dribble success', farExact === 1)
+  // Preserve the historical continuous-probability smoke check below.
+  const far = Math.min(farExact, 1 - Number.EPSILON)
+  const outOfContest = drib([defAt(43, 48)])
+  checkDir('8m defender outside contest range means certain dribble success', outOfContest === 1)
   checkDir(`30m 밖 수비수 → ${(far * 100).toFixed(2)}% (> 99%)`, far > 0.99 && far < 1)
   // 근접 수비는 기존과 동일하게 막는다 (사용자: "근처에 있으면 막히는 것도 맞고")
   const near = drib([defAt(43, 40.5)])
@@ -167,13 +194,11 @@ console.log('\n[스루패스] 도착점이 리시버 가동범위 안에 들어�
   const runnerFrom = { x: 53, y: 46 }
   const ballFrom = { x: 48, y: 34 }
   const player = neutral({ pace: 15, acceleration: 15 })
+  const speed = runSpeedOf(player)
   // 공이 도착하는 시간 안에 리시버가 그 지점까지 갈 수 있어야 한다
-  const feasible = (p) => {
-    const runT = movementDuration(player, Math.hypot(p.x - runnerFrom.x, p.y - runnerFrom.y))
-    const ballT = Math.max(
-      Math.hypot(p.x - ballFrom.x, p.y - ballFrom.y) / K.PLAY.PASS_SPEED,
-      K.PLAY.PASS_MIN_MS / 1000,
-    )
+  const feasible = (p, passKind = 'through') => {
+    const runT = Math.hypot(p.x - runnerFrom.x, p.y - runnerFrom.y) / speed
+    const ballT = throughBallDuration({ runnerFrom, ballFrom, to: p, player, passKind })
     return runT <= ballT + 1e-6
   }
   // 너무 먼 지점(47m)을 찍으면 성립하는 데까지 당겨야 한다 — 예전엔 그대로 통과해
@@ -183,9 +208,15 @@ console.log('\n[스루패스] 도착점이 리시버 가동범위 안에 들어�
   const got = throughTarget({ runnerFrom, ballFrom, want, player })
   const d = Math.hypot(got.x - runnerFrom.x, got.y - runnerFrom.y)
   checkDir(`당겨진 도착점 ${d.toFixed(1)}m → 성립`, feasible(got))
+  const ground = throughTarget({ runnerFrom, ballFrom, want, player, passKind: 'ground' })
+  const dGround = Math.hypot(ground.x - runnerFrom.x, ground.y - runnerFrom.y)
+  const nearMin = throughSpeedLimits(5, 'through').min
+  const farMin = throughSpeedLimits(50, 'through').min
+  checkDir(`far through ball minimum keeps more force (${farMin.toFixed(1)} > ${nearMin.toFixed(1)} m/s)`, farMin > nearMin)
+  checkDir(`느린 스루패스가 일반 패스보다 더 넓은 침투 공간을 허용 (${d.toFixed(1)}m > ${dGround.toFixed(1)}m)`, d > dGround)
   checkDir('원래 찍은 방향 위에 있다', Math.abs((got.x - runnerFrom.x) * (want.y - runnerFrom.y) - (got.y - runnerFrom.y) * (want.x - runnerFrom.x)) < 1e-6)
   // 가까운 지점은 손대지 않는다
-  const near = { x: 54, y: 46.5 }
+  const near = { x: 56.5, y: 46 }
   const keep = throughTarget({ runnerFrom, ballFrom, want: near, player })
   checkDir('성립하는 지점은 그대로 둔다', keep.x === near.x && keep.y === near.y)
 }
@@ -358,6 +389,58 @@ console.log('\n[스모크] 실제 데이터로 resolveSequence (손흥민 드리
   checkDir('확률이 유효 범위', res.steps.every((s) => s.p >= K.P_MIN && s.p <= K.P_MAX))
 }
 
+// ── 4b. 경기 데이터 무결성 — 경기 선택 화면에 뜨는 모든 경기 ─────────
+// 장면 데이터가 참조하는 선수 id가 players.json에 없으면 보드가 빈 채로 뜬다.
+// 좌표 오타(피치 밖)나 팀 배정 실수도 여기서 잡는다 — 브라우저를 열기 전에.
+// data/matches.js의 MATCHES와 같은 소스를 같은 순서로 본다.
+console.log('\n[경기 데이터] 플레이 가능한 모든 경기의 참조 무결성')
+{
+  const load = (f) => JSON.parse(readFileSync(new URL(`../src/data/${f}`, import.meta.url), 'utf-8'))
+  const players = load('players.json')
+  const byId = Object.fromEntries(players.map((p) => [p.id, p]))
+  const matches = [load('scenarios.json'), ...load('scenes-2026.json').matches]
+
+  checkDir(`플레이 가능한 경기 ${matches.length}개 (선택 화면 카드 수)`, matches.length >= 1)
+  checkDir('경기 id 중복 없음', new Set(matches.map((m) => m.match_id)).size === matches.length)
+
+  for (const scn of matches) {
+    const moment = scn.moments[0]
+    const ids = Object.keys(moment.positions ?? {})
+    const missing = ids.filter((id) => !byId[id])
+    checkDir(`${scn.match_id}: 참조 선수 ${ids.length}명 전원 players.json에 존재`, missing.length === 0, missing.join(', '))
+    checkDir(`${scn.match_id}: 공 소유자(${moment.ball})가 온필드`, ids.includes(moment.ball))
+    // home = 플레이어가 조작하는 팀. 공이 상대에게 있으면 보드가 통째로 뒤집힌다.
+    checkDir(`${scn.match_id}: 공 소유자가 home(${scn.home}) 소속`, byId[moment.ball]?.team === scn.home)
+
+    const home = ids.filter((id) => byId[id]?.team === scn.home)
+    const away = ids.filter((id) => byId[id]?.team === scn.away)
+    // 퇴장이 있었으면 그 팀은 11명이 아니다 (2026 결승: 엔소 페르난데스 퇴장으로
+    // 아르헨티나가 연장을 10명으로 치렀다). moment.sentOff에 적힌 만큼만 깎아준다 —
+    // 그냥 "11명 이하"로 풀면 좌표를 빠뜨린 진짜 실수를 못 잡는다.
+    const sentOff = moment.sentOff ?? []
+    const expected = (team) => 11 - sentOff.filter((id) => byId[id]?.team === team).length
+    const note = sentOff.length ? ` · 퇴장 ${sentOff.length}명` : ''
+    checkDir(
+      `${scn.match_id}: ${scn.home} ${home.length}명 vs ${scn.away} ${away.length}명 (기대 ${expected(scn.home)}/${expected(scn.away)}${note})`,
+      home.length === expected(scn.home) && away.length === expected(scn.away),
+    )
+    // sentOff에 적은 선수가 실수로 온필드에 남아 있으면 안 된다
+    const stillOn = sentOff.filter((id) => ids.includes(id))
+    if (sentOff.length) checkDir(`${scn.match_id}: 퇴장 선수가 온필드에 없음`, stillOn.length === 0, stillOn.join(', '))
+    checkDir(`${scn.match_id}: 양 팀 GK 1명씩`, [home, away].every((t) => t.filter((id) => byId[id].position === 'GK').length === 1))
+
+    const oob = ids.filter((id) => {
+      const { x, y } = moment.positions[id]
+      return !(x >= 0 && x <= 120 && y >= 0 && y <= 80)
+    })
+    checkDir(`${scn.match_id}: 전원 좌표가 피치(120×80) 안`, oob.length === 0, oob.join(', '))
+    checkDir(
+      `${scn.match_id}: 좌표 중복 없음 (겹쳐 선 선수)`,
+      new Set(ids.map((id) => `${moment.positions[id].x},${moment.positions[id].y}`)).size === ids.length,
+    )
+  }
+}
+
 // ── 5. 공유 링크 인코딩 (engine/share.js) ────────────────────────────
 // 링크가 깨지면 "내 전술 봐라"가 성립하지 않는다 — 왕복이 무손실인지 확인한다.
 console.log('\n[공유 링크] 전술 → URL → 전술 왕복')
@@ -365,7 +448,7 @@ console.log('\n[공유 링크] 전술 → URL → 전술 왕복')
   const ids = ['kor_01', 'kor_07', 'kor_11', 'kor_09']
   const acts = [
     { type: 'dribble', to: { x: 82.3, y: 36.7 }, ctrl: null },
-    { type: 'pass', receiverId: 'kor_11', to: null, ctrl: { x: 90.5, y: 30.2 } }, // 곡선 패스
+    { type: 'pass', receiverId: 'kor_11', to: null, ctrl: { x: 90.5, y: 30.2 }, passKind: 'lob' }, // 곡선 로빙패스
     { type: 'shot', receiverId: 'GOAL', to: { x: 119, y: 39.4 }, ctrl: null },
   ]
   const runs = [{ id: 'kor_09', to: { x: 100.1, y: 52.6 }, ctrl: null, afterIndex: 1 }]
@@ -378,6 +461,7 @@ console.log('\n[공유 링크] 전술 → URL → 전술 왕복')
   checkDir('액션 수 왕복', back?.chainActs.length === 3)
   checkDir('드리블 좌표 왕복 (0.1m 오차 내)', Math.abs(back.chainActs[0].to.x - 82.3) < 0.05 && Math.abs(back.chainActs[0].to.y - 36.7) < 0.05)
   checkDir('패스 수신자 왕복', back.chainActs[1].receiverId === 'kor_11')
+  checkDir('로빙패스 종류 왕복', back.chainActs[1].passKind === 'lob')
   checkDir('곡선 ctrl 보존', Math.abs(back.chainActs[1].ctrl.x - 90.5) < 0.05)
   checkDir('직선 ctrl은 null 유지 (URL 절약)', back.chainActs[0].ctrl === null)
   checkDir("슛의 receiverId='GOAL' 복원", back.chainActs[2].receiverId === 'GOAL' && back.chainActs[2].type === 'shot')

@@ -49,6 +49,11 @@ const POOL = {
     ({ a, d }) => `${ui(a)} 슛 — ${ui(d)} 블록에 걸립니다!`,
     ({ d }) => `${ga(d)} 몸을 던졌습니다! 슛이 막힙니다!`,
   ],
+  shotSaved: [
+    ({ a, d }) => `${d} saves ${a}'s shot!`,
+    ({ d }) => `${d} stays on the shot line and makes the save!`,
+    ({ a, d }) => `${a} shoots, but ${d} saves it!`,
+  ],
   passCut: [
     ({ a, d }) => `아! ${ga(d)} ${ui(a)} 패스를 끊어냅니다!`,
     ({ d }) => `${ga(d)} 정확히 읽고 가로챕니다!`,

@@ -1,48 +1,49 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import TacticsBoard from './components/TacticsBoard'
 import { TitleScreen, MatchSelect } from './components/Intro'
-import Tutorial from './components/Tutorial'
+import { TutorialCoach } from './components/Tutorial'
+import { TUTORIAL_STEPS } from './components/tutorialSteps'
 import { resolveSequence, planOffside, defenseTimeline, DEF_RADIUS } from './engine/resolve'
 import { checkOffside } from './engine/offside'
 import { initDefense } from './engine/defense'
 import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
-import { actionDuration, reachRadius, clampToReach, throughTarget } from './engine/sheets'
-import { planScore, planGrade } from './engine/xt'
+import { actionDuration, reachRadius, clampToReach, throughPassSpeed, throughTarget } from './engine/sheets'
 import { isMuted, setMuted, resumeAudio, whistle, goalRoar, startMurmur, stopMurmur } from './engine/sound'
 import { decodeShare, shareUrl } from './engine/share'
-import playersData from './data/players.json'
-import formations from './data/formations.json'
-import scenario from './data/scenarios.json'
+import { buildMatch, findMatch } from './data/matches'
 import './App.css'
-
-const slots = formations['4-2-3-1']
-const homeSquad = playersData.filter((p) => p.team === scenario.home)
-const awaySquad = playersData.filter((p) => p.team === scenario.away)
-const moment = scenario.moments[0]
-// 모먼트가 위치를 직접 지정하면 그 좌표가 곧 그 시점의 온필드 명단(교체 반영, 로스터의 나머지는 벤치),
-// 없으면 로스터 앞 11명을 포메이션 기본값으로 (상대는 좌우 반전)
-const onPitch = (squad) => (moment.positions ? squad.filter((p) => moment.positions[p.id]) : squad)
-const basePlayers = onPitch(homeSquad).map((p, i) => ({ ...p, x: slots[i]?.x, y: slots[i]?.y, ...moment.positions?.[p.id] }))
-const opponents = onPitch(awaySquad).map((p, i) => ({ ...p, x: 120 - (slots[i]?.x ?? 0), y: 80 - (slots[i]?.y ?? 0), ...moment.positions?.[p.id] }))
-const byId = Object.fromEntries([...basePlayers, ...opponents].map((p) => [p.id, p]))
 
 // --- 공유 링크 해석 ---
 // ?p= 는 "시드 + 전술"을 통째로 담은 공유 링크(engine/share.js). 받은 사람이 내가 짠
 // 전술을 그대로 본다. ?seed= 만 있는 옛 링크도 계속 동작한다(시드만 재현).
 // 선수 인덱스는 온필드 명단 순서 기준 — 인코딩·디코딩이 같은 배열을 봐야 한다.
-const PLAYER_IDS = basePlayers.map((p) => p.id)
+// 그 명단은 경기마다 다르므로 ?m=(경기 id)을 먼저 읽어 명단을 정한 뒤 전술을 푼다.
+// ?m= 이 없는 옛 링크는 기본 경기(대한민국-포르투갈) 명단으로 풀린다 — 그때는 경기가 하나뿐이었다.
 const QS = new URLSearchParams(window.location.search)
-const SHARED = decodeShare(QS.get('p'), { playerIds: PLAYER_IDS })
+const INITIAL_MATCH = findMatch(QS.get('m'))
+const SHARED = decodeShare(QS.get('p'), { playerIds: buildMatch(INITIAL_MATCH).playerIds })
 const SEED_PARAM = Number(QS.get('seed'))
 const HAS_SEED_LINK = !!SHARED || (Number.isFinite(SEED_PARAM) && SEED_PARAM > 0)
 const SEED = SHARED ? SHARED.seed : HAS_SEED_LINK ? SEED_PARAM : Math.floor(Math.random() * 1e9)
 
+// 좌표 편집은 장면을 만드는 사람이 쓰는 개발 도구다. import.meta.env.DEV는 빌드 때
+// false로 접혀서, 관련 UI와 저장 코드는 배포 번들에 아예 들어가지 않는다.
+const EDITABLE = import.meta.env.DEV
+
 const TYPE_LABEL = { dribble: '드리블', pass: '패스', shot: '슛' }
+const PASS_KIND_LABEL = {
+  ground: '패스',
+  pass: '패스',
+  lob: '로빙패스',
+  through: '스루패스',
+  lobThrough: '로빙스루',
+}
 const OUTCOME_LABEL = {
   GOAL: '⚽ GOAL!',
   ADVANCE: '✅ 전개 성공',
   INTERCEPTED: '🛡️ 차단당함',
+  SAVED: '🧤 선방!',
   MISS: '❌ 무산...',
   OFFSIDE: '🚩 오프사이드',
 }
@@ -50,6 +51,33 @@ const OUTCOME_LABEL = {
 function App() {
   // 화면 흐름: intro → select → board. seed 공유 링크는 재현이 목적이므로 인트로를 건너뛴다.
   const [screen, setScreen] = useState(HAS_SEED_LINK ? 'board' : 'intro')
+  // 선택된 경기. 여기서 온필드 명단·시작 좌표가 전부 유도되므로, 경기가 바뀌면
+  // 아래 파생값이 통째로 새로 계산된다(그래서 전술도 같이 비워야 한다 — pickMatch 참고).
+  const [matchId, setMatchId] = useState(INITIAL_MATCH.match_id)
+  // 튜토리얼: 실제 보드 위에서 돈다. null이면 비활성.
+  // tutReading = 설명 카드를 보는 중 / false면 그 기술을 직접 해보는 중.
+  const [tutStep, setTutStep] = useState(null)
+  const [tutReading, setTutReading] = useState(true)
+  // 좌표 편집 모드 (개발 전용, 프로덕션 번들에서는 통째로 빠진다 — EDITABLE 참고).
+  // editPos = 아직 저장 안 한 좌표 (id → {x,y}). null이면 데이터 원본 그대로.
+  const [editMode, setEditMode] = useState(false)
+  const [editPos, setEditPos] = useState(null)
+  const [saveMsg, setSaveMsg] = useState(null)
+  const { scenario, moment, basePlayers, opponents, byId, playerIds: PLAYER_IDS } = useMemo(() => {
+    const m = buildMatch(findMatch(matchId))
+    if (!editPos) return m
+    // 편집 중인 좌표를 명단 위에 얹는다. 여기서 갈아끼우면 planPos·체인·수비 반응까지
+    // 전부 새 좌표로 따라온다 — 편집 결과를 그대로 실행해볼 수 있다.
+    const apply = (arr) => arr.map((p) => (editPos[p.id] ? { ...p, ...editPos[p.id] } : p))
+    const nextHome = apply(m.basePlayers)
+    const nextOpp = apply(m.opponents)
+    return {
+      ...m,
+      basePlayers: nextHome,
+      opponents: nextOpp,
+      byId: Object.fromEntries([...nextHome, ...nextOpp].map((p) => [p.id, p])),
+    }
+  }, [matchId, editPos])
   // 공 전개 체인 (순서 있는 액션 리스트) — 같은 선수가 여러 번 드리블/수신 가능
   // { type:'dribble', to, ctrl } | { type:'pass'|'shot', receiverId, to(슛만), ctrl }
   const [chainActs, setChainActs] = useState(SHARED?.chainActs ?? [])
@@ -72,7 +100,8 @@ function App() {
   const [copied, setCopied] = useState(null) // 공유 버튼 피드백: null | 'ok' | 'fail'
   const goalSoundRef = useRef(false) // 재생 1회당 골 함성 1번만
 
-  const basePos = (id) => ({ x: byId[id].x, y: byId[id].y })
+  // 경기가 바뀌면 byId가 통째로 갈리므로 basePos도 같이 새로 만들어져야 한다
+  const basePos = useCallback((id) => ({ x: byId[id].x, y: byId[id].y }), [byId])
 
   // 체인 + 런을 시간 순서대로 걸어가며 좌표를 유도.
   // 선수 위치가 체인을 따라 갱신되므로 "드리블→패스→되받아→다시 드리블",
@@ -82,12 +111,24 @@ function App() {
     const posOf = (id) => pos[id] ?? basePos(id)
     const runLegMap = {}
     const len = chainActs.length
-    const applyRunsAt = (i) => {
+    const applyRunsAt = (i, { timeBudget = null, throughBallFrom = null, throughReceiverId = null, passKind = 'through' } = {}) => {
       runs.forEach((r, key) => {
         if (Math.min(r.afterIndex, len) === i && !runLegMap[key]) {
           const from = posOf(r.id)
-          runLegMap[key] = { key, id: r.id, from, to: r.to, ctrl: r.ctrl ?? midpoint(from, r.to), afterIndex: r.afterIndex }
-          pos[r.id] = r.to
+          // A run tied to a dribble must use the same time budget everywhere:
+          // radius display, planned receiver position, and playback.
+          const player = byId[r.id]
+          let to = timeBudget != null && player
+            ? clampToReach(from, r.to, reachRadius(player, timeBudget))
+            : r.to
+          // A through-pass receiver must be at the endpoint when the ball is
+          // there.  Recalculate older/shared targets too, not only newly drawn
+          // through passes, so planning and playback cannot diverge.
+          if (throughBallFrom && r.id === throughReceiverId && player) {
+            to = throughTarget({ runnerFrom: from, ballFrom: throughBallFrom, want: to, player, passKind })
+          }
+          runLegMap[key] = { key, id: r.id, from, to, ctrl: r.ctrl ?? midpoint(from, to), afterIndex: r.afterIndex }
+          pos[r.id] = to
         }
       })
     }
@@ -100,15 +141,38 @@ function App() {
     const chain = chainActs.map((act, index) => {
       snaps.push(snapshot())
       carrierAt.push(carrier)
-      applyRunsAt(index)
       const cur = posOf(carrier)
       if (act.type === 'dribble') {
+        // Clamp parallel off-ball runs again while deriving the actual chain.
+        // This also repairs older shared plans whose saved target predates the
+        // reach-radius rule, so the subsequent pass uses the same endpoint.
+        const timingLeg = { type: 'dribble', from: cur, to: act.to, ctrl: act.ctrl ?? midpoint(cur, act.to) }
+        applyRunsAt(index, { timeBudget: actionDuration(timingLeg) })
         const leg = { type: 'dribble', actorId: carrier, from: cur, to: act.to, ctrl: act.ctrl ?? midpoint(cur, act.to), index }
         pos[carrier] = act.to
         return leg
       }
+      const isThrough = act.through || act.passKind === 'through' || act.passKind === 'lobThrough'
+      const receiverFrom = act.receiverId === 'GOAL' ? null : posOf(act.receiverId)
+      applyRunsAt(index, isThrough
+        ? { throughBallFrom: cur, throughReceiverId: act.receiverId, passKind: act.passKind ?? 'through' }
+        : undefined)
       const to = act.receiverId === 'GOAL' ? act.to : posOf(act.receiverId)
-      const leg = { type: act.type, actorId: carrier, receiverId: act.receiverId, from: cur, to, ctrl: act.ctrl ?? midpoint(cur, to), index }
+      const passKind = act.passKind ?? (act.through ? 'through' : 'ground')
+      const passSpeed = isThrough && receiverFrom && byId[act.receiverId]
+        ? throughPassSpeed({ runnerFrom: receiverFrom, ballFrom: cur, to, player: byId[act.receiverId], passKind })
+        : undefined
+      const leg = {
+        type: act.type,
+        passKind,
+        passSpeed,
+        actorId: carrier,
+        receiverId: act.receiverId,
+        from: cur,
+        to,
+        ctrl: act.ctrl ?? midpoint(cur, to),
+        index,
+      }
       if (act.receiverId !== 'GOAL') {
         pos[act.receiverId] = to
         carrier = act.receiverId
@@ -121,12 +185,7 @@ function App() {
     const planPos = {}
     for (const p of basePlayers) planPos[p.id] = posOf(p.id)
     return { chain, runLegs: Object.values(runLegMap), planPos, carrierId: carrier, snaps, carrierAt }
-  }, [chainActs, runs])
-
-  // 플레이 설계 점수 (xT 델타 합) — 판정과 독립이라 계획 단계에서 바로 보여줘도
-  // "성공률 프리뷰"가 되지 않는다. 확률이 아니라 "얼마나 위협적인 자리로 옮겼나"의 축.
-  const plan = useMemo(() => planScore(chain), [chain])
-  const grade = planGrade(plan.total)
+  }, [chainActs, runs, basePlayers, basePos, byId, moment])
 
   const shotTaken = chainActs.some((a) => a.type === 'shot')
   const ballPlanPos = chain.length ? chain[chain.length - 1].to : basePos(moment.ball)
@@ -135,7 +194,7 @@ function App() {
   // 실행 시의 확정 실패 판정과 같은 함수·같은 좌표를 쓴다 (engine/offside.js).
   const offsideWarn = useMemo(
     () => (chain.length ? planOffside(chain, { opponents, players: basePlayers }) : []),
-    [chain],
+    [chain, opponents, basePlayers],
   )
   const offsideIds = useMemo(() => new Set(offsideWarn.map((w) => w.receiverId)), [offsideWarn])
 
@@ -145,7 +204,7 @@ function App() {
   const pendingDefense = useMemo(() => {
     const tl = defenseTimeline(chain, { opponents, players: basePlayers })
     return tl.length ? tl[tl.length - 1].after : initDefense(opponents)
-  }, [chain])
+  }, [chain, opponents, basePlayers])
   // 지금 이 순간 오프사이드 위치에 서 있는 아군 — 이들에게 스루패스를 주면 깃발이 오른다.
   // (뒤에서 출발해 달려드는 침투는 온사이드이므로, 여기 걸리는 건 "이미 넘어가 있는" 선수뿐)
   const offsidePosIds = useMemo(() => {
@@ -156,7 +215,7 @@ function App() {
       if (checkOffside({ receiver: at, opponents: pendingDefense, ball: ballPlanPos }).offside) s.add(p.id)
     }
     return s
-  }, [planPos, pendingDefense, ballPlanPos])
+  }, [planPos, pendingDefense, ballPlanPos, basePlayers])
 
   // --- 시트 모드 파생값 ---
   // 편집 중인 시트 = sheetCount 인덱스. 그 시트의 공 액션이 걸리는 시간이
@@ -164,10 +223,6 @@ function App() {
   const editIndex = sheetCount
   const editLeg = chain[editIndex] ?? null
   const sheetDur = actionDuration(editLeg)
-  // In one-shot mode, a direct carrier drag creates the active movement window.
-  const reachIndex = sheetMode ? editIndex : chain.length - 1
-  const reachLeg = reachIndex >= 0 ? chain[reachIndex] : null
-  const reachDur = actionDuration(reachLeg)
   const totalSheets = Math.max(chain.length, sheetCount + 1)
   // 열람 중인 시트 (null = 편집 중인 시트). 마지막 시트만 편집 가능.
   const shownSheet = viewSheet ?? editIndex
@@ -175,13 +230,22 @@ function App() {
 
   // 가동범위 동심원 — 이번 시트 시작 좌표를 중심으로, 전력(100%)·여유(70%) 두 겹.
   // 공 액션을 아직 안 그렸으면 시간 예산이 0이라 원도 없다 (그리면 그때 나타난다).
+  const oneShotDribbleIndex =
+    !sheetMode && chainActs.length > 0 && chainActs[chainActs.length - 1]?.type === 'dribble'
+      ? chainActs.length - 1
+      : null
+  // 원샷에서도 마지막 액션이 드리블이면 그 드리블 시간 동안의 오프볼 런을
+  // 같은 시트처럼 취급한다. 반경 표시·좌표 제한·재생 타이밍이 함께 맞춰진다.
+  const runWindowIndex = sheetMode ? editIndex : oneShotDribbleIndex
+  const runWindowLeg = runWindowIndex != null ? chain[runWindowIndex] : null
+  const runWindowDur = runWindowLeg ? actionDuration(runWindowLeg) : 0
   const reachCircles = useMemo(() => {
-    if ((sheetMode && isViewingPast) || (!sheetMode && reachLeg?.type !== 'dribble') || phase !== 'plan' || !(reachDur > 0)) return null
-    const at = snaps[reachIndex] ?? planPos
+    if (runWindowIndex == null || isViewingPast || phase !== 'plan' || !(runWindowDur > 0)) return null
+    const at = snaps[runWindowIndex] ?? planPos
     return basePlayers
-      .filter((p) => p.id !== carrierAt[reachIndex]) // 공 소유자는 액션 본인이라 제외
-      .map((p) => ({ id: p.id, ...at[p.id], r: reachRadius(p, reachDur) }))
-  }, [sheetMode, isViewingPast, phase, reachLeg, reachDur, snaps, reachIndex, planPos, carrierAt])
+      .filter((p) => p.id !== carrierAt[runWindowIndex]) // 공 소유자는 액션 본인이라 제외
+      .map((p) => ({ id: p.id, ...at[p.id], r: reachRadius(p, runWindowDur) }))
+  }, [runWindowIndex, isViewingPast, phase, runWindowDur, snaps, planPos, carrierAt, basePlayers])
 
   // 시트 확정 — 이번 시트에 공 액션이 있어야 넘어갈 수 있다
   const canConfirmSheet = sheetMode && phase === 'plan' && !isViewingPast && chain.length > sheetCount
@@ -198,14 +262,31 @@ function App() {
     setViewSheet(null)
   }
 
-  // 이스터에그 — 실제 경기 재현 감지: 골로 끝났고, 마지막 슛을 실제 득점자가 쐈고,
-  // 그에게 간 마지막 패스를 실제 도움 선수가 줬으면 "그날의 장면" 팝업을 띄운다.
+  // 이스터에그 — 실제 경기 재현 감지.
+  // 새 방식(egg.sequence 있으면): 골로 끝났고, "공을 주고받은 선수 순서"가 시나리오와
+  //   똑같고, 마지막 슛을 친 위치가 실제 슛 지점(egg.shot) 근처(tol 반경)면 성공.
+  //   드리블·패스를 정확히 어디서 했는지는 보지 않는다 — 순서와 마무리 지점만.
+  // 구 방식(폴백): 골 + 마지막 슛을 득점자가 + 마지막 패스가 passer→scorer.
   const egg = moment.easterEgg
   const [eggClosed, setEggClosed] = useState(false)
   const eggMatched = useMemo(() => {
     if (!egg || result?.outcome !== 'GOAL') return false
     const shot = chain[chain.length - 1]
-    if (shot?.type !== 'shot' || shot.actorId !== egg.scorerId) return false
+    if (shot?.type !== 'shot') return false
+    if (egg.sequence) {
+      // 공을 잡은 선수 순서 (같은 선수의 연속 드리블은 한 번으로)
+      const touchers = []
+      for (const leg of chain) if (touchers[touchers.length - 1] !== leg.actorId) touchers.push(leg.actorId)
+      const seqOk =
+        touchers.length === egg.sequence.length && touchers.every((id, i) => id === egg.sequence[i])
+      if (!seqOk) return false
+      if (egg.shot) {
+        const tol = egg.shot.tol ?? 15
+        if (Math.hypot(shot.from.x - egg.shot.x, shot.from.y - egg.shot.y) > tol) return false
+      }
+      return true
+    }
+    if (shot.actorId !== egg.scorerId) return false
     const lastPass = chain.findLast((l) => l.type === 'pass')
     return lastPass?.actorId === egg.passerId && lastPass?.receiverId === egg.scorerId
   }, [egg, result, chain])
@@ -214,7 +295,7 @@ function App() {
   // 드래그 시작(isFirst) 때 한 번만 판단: 이 선수의 마지막 런이 아직 체인에 "소비"되지
   // 않았으면(그 뒤로 받거나 준 적 없음) 그 런을 조정, 소비됐으면 새 런을 추가.
   // 소비된 런을 건드리면 그 위치로 유도된 패스 선들이 전부 따라 움직이기 때문.
-  const setRunTarget = (id, to, _isFirst) => {
+  const setRunTarget = (id, to, isFirst) => {
     // 시트 모드: 이번 시트의 런은 이번 시트 시작 좌표에서 출발하고,
     // 공 액션이 걸리는 시간 안에 갈 수 있는 거리(동심원) 밖으로는 못 나간다.
     if (sheetMode) {
@@ -227,20 +308,27 @@ function App() {
         return rs.map((r, i) => (i === mine ? { ...r, to, ctrl: null } : r))
       })
     }
-    // A direct carrier drag in one-shot mode creates a live dribble window.
-    // Runs set now share that action's start and each player's reachable radius.
-    const activeIndex = chainActs.length - 1
-    const activeLeg = activeIndex >= 0 ? chain[activeIndex] : null
-    const dribbleWindow = activeLeg?.type === 'dribble' && actionDuration(activeLeg) > 0
-    const afterIndex = dribbleWindow ? activeIndex : chainActs.length
-    if (dribbleWindow) {
-      const from = (snaps[activeIndex] ?? planPos)[id]
+    // 원샷의 마지막 액션이 드리블이면, 오프볼 런도 그 드리블과 동시에
+    // 시작한다. 이전에는 드리블 뒤(afterIndex = chainActs.length)에 붙어
+    // 가동 반경이 없어지고 재생 타이밍도 어긋났다.
+    if (oneShotDribbleIndex != null && runWindowDur > 0) {
+      const from = (snaps[oneShotDribbleIndex] ?? planPos)[id]
       const player = byId[id]
-      if (from && player) to = clampToReach(from, to, reachRadius(player, actionDuration(activeLeg)))
+      if (from && player) to = clampToReach(from, to, reachRadius(player, runWindowDur))
+      return setRuns((rs) => {
+        const mine = rs.findLastIndex((r) => r.id === id && r.afterIndex === oneShotDribbleIndex)
+        if (mine === -1) return [...rs, { id, to, ctrl: null, afterIndex: oneShotDribbleIndex }]
+        return rs.map((r, i) => (i === mine ? { ...r, to, ctrl: null } : r))
+      })
     }
     setRuns((rs) => {
-      const lastIdx = rs.findLastIndex((r) => r.id === id && r.afterIndex === afterIndex)
-      if (lastIdx === -1) return [...rs, { id, to, ctrl: null, afterIndex }]
+      const lastIdx = rs.findLastIndex((r) => r.id === id)
+      if (isFirst) {
+        const consumed =
+          lastIdx === -1 ||
+          chain.some((leg) => (leg.actorId === id || leg.receiverId === id) && leg.index >= rs[lastIdx].afterIndex)
+        if (consumed) return [...rs, { id, to, ctrl: null, afterIndex: chainActs.length }]
+      }
       return rs.map((r, i) => (i === lastIdx ? { ...r, to, ctrl: null } : r))
     })
   }
@@ -254,7 +342,28 @@ function App() {
   // --- 체인 편집 ---
   // 공 가진 선수 드래그 = 드리블. 드래그 시작(isFirst)에 새 레그 추가, 이후엔 목표만 갱신.
   // 직전 레그가 이미 드리블이면 그 레그를 다시 조정하는 것으로 취급.
-  const setDribble = (pt, isFirst) =>
+  const setDribble = (pt, isFirst) => {
+    // 원샷에서 런을 먼저 그리고 나중에 드리블을 그린 경우도 예외 없이
+    // 드리블 시간 안에서 갈 수 있는 거리로 다시 제한한다.
+    const lastAct = chainActs[chainActs.length - 1]
+    const dribbleIndex = lastAct?.type === 'dribble' ? chainActs.length - 1 : chainActs.length
+    const existingDribble = lastAct?.type === 'dribble' ? chain[chain.length - 1] : null
+    const dribbleFrom = existingDribble?.from ?? planPos[carrierId]
+    // 오프볼 런을 먼저 찍고 드리블을 나중에 그린 경우도 포함한다.
+    // 시트/원샷 어느 쪽이든 새 드리블 시간에 맞춰 목표를 즉시 반경 안으로 당긴다.
+    if (dribbleFrom) {
+      const dribble = { type: 'dribble', from: dribbleFrom, to: pt, ctrl: midpoint(dribbleFrom, pt) }
+      const maxMove = actionDuration(dribble)
+      setRuns((rs) =>
+        rs.map((r) => {
+          if (r.afterIndex !== dribbleIndex) return r
+          const from = (snaps[dribbleIndex] ?? planPos)[r.id]
+          const player = byId[r.id]
+          if (!from || !player) return r
+          return { ...r, to: clampToReach(from, r.to, reachRadius(player, maxMove)), ctrl: null }
+        }),
+      )
+    }
     setChainActs((cs) => {
       const last = cs[cs.length - 1]
       // 시트 모드: 이번 시트에 이미 드리블이 있으면 그걸 조정, 다른 액션이면 무시
@@ -265,6 +374,7 @@ function App() {
       if (isFirst && last?.type !== 'dribble') return [...cs, { type: 'dribble', to: pt, ctrl: null }]
       return cs.map((c, i) => (i === cs.length - 1 ? { ...c, to: pt, ctrl: isFirst ? null : c.ctrl } : c))
     })
+  }
   const dropDribble = (pt) => {
     const leg = chain[chain.length - 1]
     if (leg?.type === 'dribble' && Math.hypot(pt.x - leg.from.x, pt.y - leg.from.y) < 3.5) {
@@ -273,9 +383,18 @@ function App() {
   }
   // 시트 모드에서는 시트 1장에 공 액션 1개 — 이미 그렸으면 확정하고 넘어가야 한다
   const sheetFull = sheetMode && chain.length > sheetCount
-  const addPass = (receiverId, to) => {
+  const addPass = (receiverId, to, passKind = 'ground') => {
     if (sheetFull) return
-    setChainActs((cs) => [...cs, { type: receiverId === 'GOAL' ? 'shot' : 'pass', receiverId, to, ctrl: null }])
+    setChainActs((cs) => [
+      ...cs,
+      {
+        type: receiverId === 'GOAL' ? 'shot' : 'pass',
+        receiverId,
+        to,
+        ctrl: null,
+        ...(receiverId === 'GOAL' ? {} : { passKind }),
+      },
+    ])
   }
   // 스루패스 = "리시버의 침투 런" + "그 도착점으로 가는 패스".
   // 새 액션 타입을 만들지 않는다 — 런이 패스보다 먼저 적용되므로(applyRunsAt(i)가
@@ -285,25 +404,25 @@ function App() {
   //   · offside : 판정 기준은 패스 출발 순간의 리시버 좌표(런 반영 전)라 온사이드가 된다
   // 찍은 지점 → 실제로 성립하는 도착점. 조준 중 미리보기와 확정이 같은 계산을 쓰도록
   // 한 곳에 모아둔다 (미리보기와 결과가 다르면 그게 제일 나쁜 UX다).
-  const throughTargetOf = (receiverId, pt) => {
-    // In both editing modes, solve one shared arrival condition for the runner
-    // and the displayed ball. Otherwise a successful one-shot through pass can
-    // reach the target before its receiver and appear to teleport on receipt.
+  const throughTargetOf = (receiverId, pt, passKind = 'through') => {
+    // This applies in both one-shot and sheet mode.  Leaving one-shot targets
+    // unrestricted made the ball arrive before its receiver could move there.
+    // Solve the shared ball/runner arrival time before committing the action.
     const idx = chainActs.length
     const at = snaps[idx] ?? planPos
     const runnerFrom = at[receiverId]
     const ballFrom = at[carrierAt[idx] ?? carrierId] ?? ballPlanPos
     const player = byId[receiverId]
     if (!runnerFrom || !ballFrom || !player) return pt
-    return throughTarget({ runnerFrom, ballFrom, want: pt, player })
+    return throughTarget({ runnerFrom, ballFrom, want: pt, player, passKind })
   }
 
-  const addThroughPass = (receiverId, pt) => {
+  const addThroughPass = (receiverId, pt, passKind = 'through') => {
     if (sheetFull) return
     const idx = chainActs.length // 이 패스가 놓일 체인 인덱스 = 런의 앵커
-    const to = throughTargetOf(receiverId, pt)
+    const to = throughTargetOf(receiverId, pt, passKind)
     setRuns((rs) => [...rs, { id: receiverId, to, ctrl: null, afterIndex: idx }])
-    setChainActs((cs) => [...cs, { type: 'pass', receiverId, to: null, ctrl: null, through: true }])
+    setChainActs((cs) => [...cs, { type: 'pass', receiverId, to: null, ctrl: null, through: true, passKind }])
   }
 
   const setChainHandle = (i, h) => {
@@ -330,6 +449,7 @@ function App() {
       chainActs,
       runs,
       playerIds: PLAYER_IDS,
+      matchId,
       origin: window.location.origin,
       pathname: window.location.pathname,
     })
@@ -415,16 +535,76 @@ function App() {
   }
 
   if (screen === 'intro') return <TitleScreen onStart={() => setScreen('select')} />
+  // 경기 선택 → 보드. 다른 경기를 고르면 전술을 비운다 — 체인·런은 그 경기의 선수와
+  // 좌표를 가리키고 있어서 그대로 두면 다른 명단 위에 얹힌 엉뚱한 전개가 된다.
+  function pickMatch(id) {
+    if (id !== matchId) {
+      clearAll()
+      setSelectedId(null)
+      setSheetMode(false)
+      setMatchId(id)
+      // 편집 중이던 좌표는 그 경기 것이다 — 경기가 바뀌면 같이 버린다
+      setEditPos(null)
+      setEditMode(false)
+      setSaveMsg(null)
+    }
+    setScreen('board')
+  }
+
+  // ── 튜토리얼 ───────────────────────────────────────────────────────
+  // 빈 보드에서 시작한다 — 앞서 그려둔 전개가 남아 있으면 미션 완료가 이미 충족돼 버린다.
+  function startTutorial() {
+    clearAll()
+    setSelectedId(null)
+    setSheetMode(false)
+    setTutStep(0)
+    setTutReading(true)
+    setScreen('board')
+  }
+  const exitTutorial = () => setTutStep(null)
+  function nextTutorial() {
+    if (tutStep >= TUTORIAL_STEPS.length - 1) return exitTutorial()
+    setTutStep((n) => n + 1)
+    setTutReading(true)
+  }
+
+  // ── 좌표 편집 (개발 전용) ──────────────────────────────────────────
+  // 0.5 단위로 맞춘다 — 중계 화면 보고 찍는 값에 소수점 두 자리는 의미가 없고,
+  // positions.json이 지저분해진다.
+  function moveForEdit(id, pt) {
+    const snap = (v) => Math.round(v * 2) / 2
+    setEditPos((prev) => ({ ...(prev ?? {}), [id]: { x: snap(pt.x), y: snap(pt.y) } }))
+  }
+
+  async function savePositions() {
+    const positions = Object.fromEntries(
+      [...basePlayers, ...opponents].map((p) => [p.id, { x: p.x, y: p.y }]),
+    )
+    try {
+      const res = await fetch('/__positions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ matchId, positions }),
+      })
+      const out = await res.json()
+      // 서버가 positions.json과 화면이 읽는 파일을 둘 다 고쳤다. editPos는 그대로 둔다 —
+      // 지우면 HMR이 돌아오기 전 한 프레임 동안 옛 좌표가 보인다.
+      setSaveMsg(out.ok ? `저장됨 (${out.count}명)` : `실패: ${out.error}`)
+    } catch (e) {
+      setSaveMsg(`실패: ${e.message} — dev 서버에서만 저장됩니다`)
+    }
+    setTimeout(() => setSaveMsg(null), 4000)
+  }
+
   if (screen === 'select')
     return (
       <MatchSelect
-        onPick={() => setScreen('board')}
+        matchId={matchId}
+        onPick={pickMatch}
         onBack={() => setScreen('intro')}
-        onTutorial={() => setScreen('tutorial')}
+        onTutorial={startTutorial}
       />
     )
-  if (screen === 'tutorial')
-    return <Tutorial onDone={() => setScreen('board')} onBack={() => setScreen('select')} />
 
   return (
     <div className="app">
@@ -455,7 +635,7 @@ function App() {
         <div className="mission-card">
           <div className="mission-title">{scenario.title}</div>
           <div className="mission-body">
-            <strong>{moment.minute}'</strong> · 스코어 {moment.score[0]} : {moment.score[1]} — {moment.situation}
+            <strong>{moment.minuteLabel ?? `${moment.minute}'`}</strong> · 스코어 {moment.score[0]} : {moment.score[1]} — {moment.situation}
           </div>
         </div>
       </header>
@@ -514,7 +694,7 @@ function App() {
               {isViewingPast
                 ? `시트 ${shownSheet + 1} 열람 중 — 확정된 시트는 수정할 수 없습니다.`
                 : sheetFull
-                  ? `이 시트의 공 액션을 그렸습니다. 오프볼 런을 더 넣거나, 확정해 다음 시트로 넘어가세요.`
+                  ? `이 시트에는 공 행동을 하나만 설정할 수 있습니다. 오프볼 런을 더 넣거나, 시트를 확정해 다음 시트로 넘어가주세요.`
                   : `시트 ${editIndex + 1}: 공 액션(드리블/패스/슛) 하나를 그리면 동심원(그 시간 안에 갈 수 있는 범위)이 나타납니다.`}
             </p>
           )}
@@ -526,6 +706,8 @@ function App() {
             <TacticsBoard
               players={basePlayers}
               opponents={opponents}
+              flipX={scenario.viewFlipX ?? false}
+              matchId={scenario.match_id}
               // 이전 시트를 열람 중이면 그 시점까지의 체인·좌표만 보여준다
               runLegs={isViewingPast ? runLegs.filter((r) => r.afterIndex <= shownSheet) : runLegs}
               chain={isViewingPast ? chain.slice(0, shownSheet + 1) : chain}
@@ -537,11 +719,14 @@ function App() {
               ballTrail={phase === 'plan' ? null : frame?.ballTrail}
               displayHome={phase === 'plan' ? null : frame?.home}
               displayOpp={phase === 'plan' ? null : frame?.opp}
-              interactive={phase === 'plan' && !isViewingPast}
+              interactive={phase === 'plan' && !isViewingPast && !editMode}
+              editMode={editMode}
+              onEditMove={moveForEdit}
               defRadius={DEF_RADIUS}
               offsideIds={offsideIds}
               offsideFx={phase !== 'plan' ? frame?.fx : null}
               selectedId={selectedId}
+              sheetLocked={sheetFull}
               onPlayerClick={(id) => setSelectedId((prev) => (prev === id ? null : id))}
               onRunSet={setRunTarget}
               onRunRemove={removeRun}
@@ -572,6 +757,41 @@ function App() {
               </>
             )}
           </div>
+
+          {/* 좌표 편집 (개발 전용) — 배포 번들에는 들어가지 않는다 */}
+          {EDITABLE && (
+            <div className="edit-row">
+              <button
+                className={`ctrl${editMode ? ' on' : ''}`}
+                onClick={() => {
+                  // 편집으로 들어갈 땐 재생 중이던 걸 끊고 계획 화면으로 되돌린다
+                  if (!editMode) backToPlan()
+                  setEditMode((v) => !v)
+                }}
+              >
+                {editMode ? '✓ 좌표 편집 중' : '✎ 좌표 편집'}
+              </button>
+              {editMode && (
+                <>
+                  <button className="ctrl" onClick={savePositions} disabled={!editPos}>
+                    저장
+                  </button>
+                  <button className="ctrl" onClick={() => setEditPos(null)} disabled={!editPos}>
+                    되돌리기
+                  </button>
+                  <span className="edit-hint">
+                    {saveMsg ?? (
+                      <>
+                        양 팀 아무나 끌어서 옮기세요. 저장하면{' '}
+                        <code>src/data/positions.json</code>에 기록됩니다.
+                        {editPos && ` · ${Object.keys(editPos).length}명 수정됨`}
+                      </>
+                    )}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="bottom-grid">
@@ -619,7 +839,7 @@ function App() {
                 {chain.map((leg, i) => (
                   <li key={`c${i}`} className="action-row">
                     <span>
-                      {i + 1}. {chainActs[leg.index]?.through ? '스루패스' : TYPE_LABEL[leg.type]} — {byId[leg.actorId].name}
+                      {i + 1}. {leg.type === 'pass' ? (PASS_KIND_LABEL[chainActs[leg.index]?.passKind ?? (chainActs[leg.index]?.through ? 'through' : 'ground')] ?? '패스') : TYPE_LABEL[leg.type]} — {byId[leg.actorId].name}
                       {leg.type === 'pass' ? ` → ${byId[leg.receiverId].name}` : leg.type === 'shot' ? ' → 골문' : ''}
                     </span>
                     {phase === 'plan' && (
@@ -643,39 +863,6 @@ function App() {
                   </li>
                 ))}
               </ul>
-            )}
-          </section>
-
-          <section className="panel">
-            <h2>플레이 설계 점수</h2>
-            {chain.length === 0 ? (
-              <p className="muted">전개를 설계하면 위협도(xT) 변화가 표시됩니다.</p>
-            ) : (
-              <div className="plan-score">
-                <div className="plan-head">
-                  <span className={`plan-grade g-${grade.label}`}>{grade.label}</span>
-                  <span className={`plan-total ${plan.total >= 0 ? 'up' : 'down'}`}>
-                    {plan.total >= 0 ? '+' : ''}
-                    {(plan.total * 100).toFixed(1)}
-                  </span>
-                </div>
-                <div className="plan-text">{grade.text}</div>
-                <ul className="plan-steps">
-                  {plan.steps.map((s) => (
-                    <li key={s.index}>
-                      <span>{s.index + 1}. {TYPE_LABEL[s.type]}</span>
-                      <span className={s.delta >= 0 ? 'up' : 'down'}>
-                        {s.delta >= 0 ? '+' : ''}
-                        {(s.delta * 100).toFixed(1)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="plan-note">
-                  각 스텝이 공을 얼마나 위협적인 지역으로 옮겼는지(xT 델타)의 합입니다.
-                  <b> 성공 확률과는 무관</b>합니다 — 판정은 실행해봐야 압니다.
-                </div>
-              </div>
             )}
           </section>
 
@@ -744,6 +931,20 @@ function App() {
             <button className="ctrl egg-close" onClick={() => setEggClosed(true)}>닫기 ✕</button>
           </div>
         </div>
+      )}
+
+      {/* 튜토리얼 코치 — 실제 보드 위에 얹혀 단계별로 기술을 안내한다.
+          완료 판정은 이 화면이 이미 들고 있는 상태(체인·런·페이즈)만 본다. */}
+      {tutStep != null && (
+        <TutorialCoach
+          step={tutStep}
+          reading={tutReading}
+          state={{ chainActs, runs, phase }}
+          onPractice={() => setTutReading(false)}
+          onNext={nextTutorial}
+          onSkip={nextTutorial}
+          onExit={exitTutorial}
+        />
       )}
     </div>
   )

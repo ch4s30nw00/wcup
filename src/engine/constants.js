@@ -29,17 +29,41 @@ export const K = {
   },
 
   // 이동/공 속도 (피치 단위 ≈ m/s) — 연출(playback)과 수비 재배치 시간 예산이 공유
-  SPEED: { run: 9, dribble: 6.5, pass: 22, shot: 30 },
+  // 로빙은 일반 패스보다 체공 시간이 있어 약간 느리다. 판정·수비 이동·재생이
+  // 같은 속도를 사용해야 화면과 확률이 어긋나지 않는다.
+  SPEED: {
+    run: 9,
+    dribble: 6.5,
+    pass: 22,
+    lob: 16.5,
+    shot: 30,
+  },
+
+  // Through passes are not a single fixed-speed kick. The engine chooses a
+  // speed from the runner/ball arrival time, but the minimum rises with pass
+  // distance: a far ball needs more force and cannot roll as slowly as a
+  // close one.
+  THROUGH: {
+    GROUND_MAX: 22,
+    GROUND_NEAR_MIN: 9,
+    GROUND_FAR_MIN: 16,
+    LOB_MAX: 16.5,
+    LOB_NEAR_MIN: 7.5,
+    LOB_FAR_MIN: 12.5,
+    FAR_DISTANCE: 55,
+    FALLBACK_GROUND: 13.5,
+    FALLBACK_LOB: 12,
+  },
 
   // 연출 전용 (playback.js) — 판정에 영향 없음.
   // PASS_OVERRUN: 아무도 안 건드린 패스 실패 = "빠진 패스". 목표 지점을 지나쳐
   //   이만큼 더 굴러간다 (사용자 요청 "공이 쭉 흐르는 애니메이션").
   PLAY: {
     PASS_OVERRUN: 16,
-    // Animation-only pass timing. It is deliberately slower than the outcome
-    // model so through balls remain readable and runners can arrive naturally.
-    PASS_SPEED: 15,
-    PASS_MIN_MS: 650,
+    ACTION_LINK_MS: 0,
+    ACTION_MIN_MS: 400,
+    // 0~1의 화면 전용 높이. 로빙 공은 포물선 꼭대기에서 더 작게 그린다.
+    LOB_HEIGHT: 1,
   },
 
   // 슈팅 — 로지스틱 xG. z = B0 + B_DIST·lsFactor·D + B_ANG·θ + B_SKILL·(S_eff−SEFF0) + Σ B_BLOCK·e^(−d/R_BLOCK)
@@ -58,20 +82,31 @@ export const K = {
     // GK와 단독으로 맞선 상황: 수비수가 슛길을 막지 않을 때만 적용한다.
     // 12yd 중앙 1대1은 평균적으로 약 0.55 xG가 되도록 캘리브레이션.
     ONE_ON_ONE_BONUS: 1.7,
-    // A keeper can be beaten by aiming away from them, so an open shot must not
-    // require the keeper to sit directly on the drawn shot line.
+    // 골키퍼는 슛 방향을 비껴 차면 뚫리므로, 열린 슛이 GK가 슛 라인 위에 정확히
+    // 서 있기를 요구해선 안 된다. 대신 GK가 골문 근처(깊이 GK_GOAL_DEPTH 안)에
+    // 있고 슛길에 필드 수비수가 없으면 단독 찬스로 본다.
     ONE_ON_ONE_MAX_DIST: 28,
-    ONE_ON_ONE_FULL_BONUS_DIST: 13,
+    ONE_ON_ONE_FULL_BONUS_DIST: 13, // 이 거리 안에선 BONUS 전액, 멀어질수록 FAR_BONUS로 감쇠
     ONE_ON_ONE_FAR_BONUS: 1.4,
-    ONE_ON_ONE_MIN_XG: 0.4,
+    ONE_ON_ONE_MIN_XG: 0.4, // 진짜 열린 1대1은 마무리 1이어도 최소 40%
     ONE_ON_ONE_GK_GOAL_DEPTH: 9,
     ONE_ON_ONE_BLOCK_CLEARANCE: 3,
+    // 슛의 기본 xG는 그대로 두고, 이미 빗나갈 슛만 선방과 나눈다.
+    SAVE_PATH_RADIUS: 2.4,
+    SAVE_OF_MISS: 0.5,
+    // 골문 코앞의 무방해 헤더는 일반 중거리 슛 식보다 높은 마무리 기회를 준다.
+    HEADER_CLOSE_DIST: 7,
+    HEADER_CLOSE_MIN_XG: 0.38,
     PENALTY_XG: 0.76, // D=11 페널티킥 특례 상수 (코어 fit 제외 — PK 상황 도입 시 사용)
     LS_RELIEF: 0.5, // 중거리 스탯의 거리 감쇠 완화 기울기: lsFactor = 1 − LS_RELIEF·(norm(중거리)−MID)
     LS_MIN: 0.7, // lsFactor 하한/상한 — 거리 감쇠 부호가 뒤집히지 않게
     LS_MAX: 1.2,
     B_AIR: 2.0, // 헤더 공중 듀얼 가중: z += B_AIR·(air_공격수 − air_수비수)
     HEAD_FIN: 0.3, // 헤더 스킬 = 골결 3 : 헤더 7 (데이터 요청 §3)
+    // 로빙을 바로 슛으로 연결한 경우도 헤더 판정이지만, 크로스 헤더보다
+    // 골결 비중을 높여 확률이 과도하게 떨어지지 않게 한다.
+    LOB_HEAD_WEIGHT: 0.35,
+    LOB_HEAD_AIR: 0.6,
   },
 
   // 패스 — 로그오즈, 리시버 근접 수비가 지배.
@@ -84,6 +119,12 @@ export const K = {
     R_RECV: 4.0,
     B_LANE: -1.0, // 경로 압박 (수비수당, 보조)
     R_LANE: 3.0,
+    // 짧은 패스는 실제 축구처럼 안정적이다. 수비 압박은 그대로 적용한다.
+    SHORT_DIST: 12,
+    SHORT_BONUS: 0.45,
+    // 로빙을 받은 선수가 곧바로 다시 패스하면 헤더가 일부 반영된다.
+    // 비중을 낮춰 일반 패스보다 성공률이 지나치게 낮아지지 않게 한다.
+    LOB_HEAD_WEIGHT: 0.25,
   },
 
   // 크로스 판정 기하: 측면(|y−40| ≥ WIDE_Y)에서 MIN_L 이상 날아와 박스 안(BOX_X, BOX_Y0~Y1)에 떨어지는 패스.
@@ -144,15 +185,6 @@ export const K = {
 
   // 시트(페이즈) 설계 UI — 가동범위 동심원 (sheets.js). 판정과 무관한 표시용.
   // 바깥 링 = 전력 100%, 안쪽 링 = 여유 70% (스프린트로 가긴 가는데 받을 준비는 안 되는 거리).
-  SHEET: {
-    EASY_FRAC: 0.7,
-    // Sheet runners start from rest. Pace controls eventual top speed and
-    // acceleration controls how quickly that speed is reached. Units: m/s, m/s².
-    RUN_SPEED_MIN: 5.8,
-    RUN_SPEED_MAX: 8.8,
-    ACCEL_MIN: 3.4,
-    ACCEL_MAX: 7.4,
-  },
 
   // xT (xt.js) — 플레이 설계 점수. **판정과 완전히 독립**이라 밸런싱해도 앵커에 영향 없다.
   XT: {
@@ -171,4 +203,16 @@ export const K = {
     // PlanScore 등급 경계 (xT 델타 합)
     GRADES: { S: 0.14, A: 0.07, B: 0.025, C: 0.0 },
   },
+}
+
+export const isLobPass = (action) =>
+  action?.type === 'pass' && (action.passKind === 'lob' || action.passKind === 'lobThrough')
+
+// 액션의 실제 진행 속도. 로빙은 type이 pass여도 체공 시간을 반영한다.
+export const actionSpeed = (action) => {
+  if (action?.type === 'pass' && Number.isFinite(action.passSpeed)) return action.passSpeed
+  if (action?.type === 'pass' && action.passKind === 'through') return K.THROUGH.FALLBACK_GROUND
+  if (action?.type === 'pass' && action.passKind === 'lobThrough') return K.THROUGH.FALLBACK_LOB
+  if (isLobPass(action)) return K.SPEED.lob
+  return K.SPEED[action?.type] ?? K.SPEED.pass
 }
