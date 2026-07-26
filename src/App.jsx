@@ -956,7 +956,7 @@ function App() {
         <TutorialCoach
           step={tutStep}
           reading={tutReading}
-          state={{ chainActs, runs, phase }}
+          state={{ chainActs, runs, phase, sheetMode }}
           onPractice={() => setTutReading(false)}
           onNext={nextTutorial}
           onSkip={nextTutorial}
