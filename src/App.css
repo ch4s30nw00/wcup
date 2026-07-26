@@ -1168,3 +1168,248 @@ header h1 .sub {
     display: none;
   }
 }
+
+/* --- 킥오프 오프닝 --- */
+/* 요소를 순서대로 들여보낸다: 대회명 → 유니폼 → VS → 스코어 → 목표 → 안내.
+   한꺼번에 뜨면 어디를 봐야 할지 모르고, 3초 안에 다 읽히지 않는다. */
+.kickoff-screen {
+  cursor: pointer;
+}
+.ko-content {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  text-align: center;
+}
+.ko-competition {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: #ffd23e;
+  animation: ko-rise 0.5s ease 0.05s both;
+}
+.ko-teams {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 4vw, 40px);
+  margin: clamp(18px, 4vh, 34px) 0;
+}
+.ko-team {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.ko-team-home {
+  animation: ko-in-left 0.55s cubic-bezier(0.2, 0.9, 0.3, 1) 0.25s both;
+}
+.ko-team-away {
+  animation: ko-in-right 0.55s cubic-bezier(0.2, 0.9, 0.3, 1) 0.25s both;
+}
+/* 폭과 높이 양쪽에 반응해야 한다. 가로 폰(812×375)은 폭은 남는데 높이가 없어서
+   vw만 보면 유니폼이 화면 밖으로 내용을 밀어낸다 — 둘 중 작은 쪽을 쓴다. */
+.ko-jersey {
+  width: clamp(60px, min(17vw, 16vh), 128px);
+  height: auto;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.45));
+}
+/* SVG 안 글자라 크기 단위가 뷰박스 기준(=유니폼 폭 100)이다 */
+.ko-jersey-code {
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+/* 줄바꿈을 막는다 — "대한민 / 국"으로 쪼개지면 팀 이름으로 안 읽힌다.
+   대신 좁은 화면에서는 글자를 줄여 넘치지 않게 한다(가장 긴 이름이 '아르헨티나'). */
+.ko-team-name {
+  font-size: clamp(16px, 4vw, 29px);
+  font-weight: 800;
+  margin-top: 10px;
+  white-space: nowrap;
+}
+.ko-team-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 7px;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: #6f7a8d;
+}
+.ko-gk-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.ko-mine {
+  display: inline-block;
+  margin-top: 11px;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: #ffd23e;
+  color: #10141c;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ko-mine-off {
+  visibility: hidden;
+}
+.ko-vs {
+  flex: 0 0 auto;
+  font-size: clamp(20px, 4.5vw, 32px);
+  font-weight: 800;
+  color: #6f7a8d;
+  letter-spacing: 0.06em;
+  animation: ko-pop 0.5s ease 0.75s both;
+}
+.ko-scoreline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 16px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  animation: ko-rise 0.5s ease 1.15s both;
+}
+.ko-minute {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffd23e;
+  letter-spacing: 0.05em;
+}
+.ko-score {
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.ko-score i {
+  font-style: normal;
+  color: #6f7a8d;
+  margin: 0 3px;
+}
+.ko-carrier {
+  font-size: 13px;
+  color: #9aa3b5;
+}
+.ko-carrier b {
+  color: #e8edf5;
+}
+.ko-objective {
+  margin-top: clamp(14px, 3vh, 22px);
+  font-size: clamp(15px, 2.6vw, 19px);
+  font-weight: 700;
+  color: #e8edf5;
+  animation: ko-rise 0.5s ease 1.5s both;
+}
+.ko-skip {
+  margin-top: clamp(18px, 4vh, 30px);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: #5d6678;
+  animation: ko-rise 0.5s ease 2.1s both, ko-blink 1.9s ease-in-out 2.6s infinite;
+}
+
+@keyframes ko-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes ko-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-44px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes ko-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(44px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes ko-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  60% {
+    transform: scale(1.14);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes ko-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* 애니메이션을 원치 않는 사용자에겐 전부 완성된 상태로 바로 보여준다.
+   오프닝은 정보 전달이 목적이라 움직임을 빼도 잃는 게 없다. */
+@media (prefers-reduced-motion: reduce) {
+  .ko-competition,
+  .ko-team-home,
+  .ko-team-away,
+  .ko-vs,
+  .ko-scoreline,
+  .ko-objective,
+  .ko-skip {
+    animation: none;
+  }
+}
+
+/* 낮은 화면(가로로 눕힌 폰) — 여백과 글자를 조여 오프닝 전체가 한 화면에 들어오게 한다.
+   .screen은 overflow:hidden이라 넘치면 스크롤이 아니라 그냥 잘려 나간다. */
+@media (max-height: 560px) {
+  .kickoff-screen {
+    padding: 12px;
+  }
+  .ko-teams {
+    margin: 10px 0;
+  }
+  .ko-team-name {
+    font-size: 17px;
+    margin-top: 6px;
+  }
+  .ko-team-meta {
+    margin-top: 4px;
+  }
+  .ko-mine {
+    margin-top: 7px;
+    padding: 2px 9px;
+  }
+  .ko-scoreline {
+    padding: 8px 0;
+  }
+  .ko-score {
+    font-size: 21px;
+  }
+  .ko-objective {
+    margin-top: 9px;
+    font-size: 14px;
+  }
+  .ko-skip {
+    margin-top: 11px;
+  }
+}

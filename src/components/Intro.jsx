@@ -7,7 +7,8 @@ const displayMinute = (m) => (m > 90 ? `90+${m - 90}′` : `${m}′`)
 const minuteText = (moment) => moment.minuteLabel ?? displayMinute(moment.minute)
 
 // 배경: 전술보드와 같은 규격(120x80)의 피치 라인을 은은하게 깔아 세계관을 통일
-function PitchBackdrop() {
+// (킥오프 오프닝도 같은 배경을 쓴다 — 인트로·선택·오프닝이 한 세트로 읽혀야 한다)
+export function PitchBackdrop() {
   return (
     <svg className="intro-pitch-bg" viewBox="0 0 120 80" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       <g fill="none" stroke="currentColor" strokeWidth="0.35">
