@@ -22,7 +22,8 @@
 //     shot    : s_x_y[_cx_cy]
 //     run     : 선수인덱스_x_y_afterIndex[_cx_cy]
 
-const V = '1'
+const V = '2'
+const LEGACY_V = '1'
 const enc = (n) => Math.round(n * 10) // 0.1m 단위 정수
 const dec = (s) => Number(s) / 10
 const isNum = (v) => Number.isFinite(v)
@@ -37,7 +38,9 @@ export function encodeShare({ seed, chainActs = [], runs = [], playerIds = [] })
       if (a.type === 'dribble') return `d_${enc(a.to.x)}_${enc(a.to.y)}${ctrlPart(a.ctrl)}`
       if (a.type === 'shot') return `s_${enc(a.to.x)}_${enc(a.to.y)}${ctrlPart(a.ctrl)}`
       const ri = idx.get(a.receiverId)
-      return ri == null ? null : `p_${ri}${ctrlPart(a.ctrl)}`
+      if (ri == null) return null
+      const code = { lob: 'l', through: 't', lobThrough: 'u' }[a.passKind ?? (a.through ? 'through' : 'ground')] ?? 'p'
+      return `${code}_${ri}${ctrlPart(a.ctrl)}`
     })
     .filter(Boolean)
   const rs = runs
@@ -52,7 +55,7 @@ export function encodeShare({ seed, chainActs = [], runs = [], playerIds = [] })
 export function decodeShare(str, { playerIds = [] } = {}) {
   if (typeof str !== 'string' || !str) return null
   const [v, seedStr, actStr = '', runStr = ''] = str.split('.')
-  if (v !== V) return null
+  if (v !== V && v !== LEGACY_V) return null
   const seed = Number(seedStr)
   if (!Number.isFinite(seed) || seed <= 0) return null
 
@@ -66,12 +69,13 @@ export function decodeShare(str, { playerIds = [] } = {}) {
       const to = { x: dec(n[0]), y: dec(n[1]) }
       // 슛은 receiverId가 'GOAL' — App의 addPass가 만드는 모양과 같아야 한다
       chainActs.push(kind === 'd' ? { type: 'dribble', to, ctrl } : { type: 'shot', receiverId: 'GOAL', to, ctrl })
-    } else if (kind === 'p') {
+    } else if (kind === 'p' || kind === 'l' || kind === 't' || kind === 'u') {
       const receiverId = playerIds[n[0]]
       if (!receiverId) return null
       const ctrl = isNum(n[1]) && isNum(n[2]) ? { x: dec(n[1]), y: dec(n[2]) } : null
       // 패스의 도착점은 수신자의 (체인 진행 후) 위치라 App이 유도한다 — to는 담지 않는다
-      chainActs.push({ type: 'pass', receiverId, to: null, ctrl })
+      const passKind = { p: 'ground', l: 'lob', t: 'through', u: 'lobThrough' }[kind]
+      chainActs.push({ type: 'pass', receiverId, to: null, ctrl, passKind, ...(passKind === 'through' || passKind === 'lobThrough' ? { through: true } : {}) })
     } else return null
   }
 
