@@ -188,6 +188,7 @@ export default function TacticsBoard({
       onRunSet(d.key, pt, !d.began)
       d.began = true
     } else if (d.kind === 'dribble') {
+      if (shotTaken) return // 슛으로 끝난 뒤에는 드래그 드리블도 막는다
       onDribbleSet(pt, !d.began)
       d.began = true
     } else if (d.kind === 'ball') setBallDrag(pt)
@@ -768,10 +769,13 @@ export default function TacticsBoard({
       {interactive && menuOpen && carrierPos && (
         <g>
           {(() => {
+            // 슛으로 전개가 끝나면 더 이상 액션을 붙일 수 없다 — 능력치 보기만 남긴다.
             const items = [
-              { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2' },
-              { key: 'pass-select', label: '패스', hint: '종류 선택', color: '#ffd23e' },
-              { key: 'shot', label: '슛', hint: '골문 조준', color: '#ff6b5e', disabled: shotTaken },
+              { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2', disabled: shotTaken },
+              { key: 'pass-select', label: '패스', hint: '종류 선택', color: '#ffd23e', disabled: shotTaken },
+              // 슛은 잠그지 않는다 — 새 액션이 붙는 게 아니라 이미 찬 슛의 목적지를
+              // 다시 겨누는 것이라, 막으면 한 번 찍은 코스를 영영 못 고친다.
+              { key: 'shot', label: '슛', hint: shotTaken ? '다시 조준' : '골문 조준', color: '#ff6b5e' },
               { key: 'stats', label: '능력치', hint: '카드 보기', color: '#9aa3b5' },
             ]
             const rows = Math.ceil(items.length / 2)
@@ -820,7 +824,7 @@ export default function TacticsBoard({
                         x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h - 1.7}
                         textAnchor="middle" fontSize="1.8" fill="#6b7385" pointerEvents="none"
                       >
-                        {it.disabled ? '슛 완료' : it.hint}
+                        {it.disabled ? '슛으로 종료' : it.hint}
                       </text>
                     </g>
                   )
