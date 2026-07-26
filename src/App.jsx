@@ -8,7 +8,7 @@ import { checkOffside } from './engine/offside'
 import { initDefense } from './engine/defense'
 import { playSequence } from './engine/playback'
 import { midpoint, ctrlFromHandle } from './engine/geometry'
-import { actionDuration, reachRadius, clampToReach, throughTarget } from './engine/sheets'
+import { actionDuration, reachRadius, clampToReach, throughPassSpeed, throughTarget } from './engine/sheets'
 import { isMuted, setMuted, resumeAudio, whistle, goalRoar, startMurmur, stopMurmur } from './engine/sound'
 import { decodeShare, shareUrl } from './engine/share'
 import { buildMatch, findMatch } from './data/matches'
@@ -34,10 +34,18 @@ const INITIAL_SEED = SHARED ? SHARED.seed : HAS_SEED_LINK ? SEED_PARAM : rollSee
 const EDITABLE = import.meta.env.DEV
 
 const TYPE_LABEL = { dribble: '드리블', pass: '패스', shot: '슛' }
+const PASS_KIND_LABEL = {
+  ground: '패스',
+  pass: '패스',
+  lob: '로빙패스',
+  through: '스루패스',
+  lobThrough: '로빙스루',
+}
 const OUTCOME_LABEL = {
   GOAL: '⚽ GOAL!',
   ADVANCE: '✅ 전개 성공',
   INTERCEPTED: '🛡️ 차단당함',
+  SAVED: '🧤 선방!',
   MISS: '❌ 무산...',
   OFFSIDE: '🚩 오프사이드',
 }
@@ -109,12 +117,24 @@ function App() {
     const posOf = (id) => pos[id] ?? basePos(id)
     const runLegMap = {}
     const len = chainActs.length
-    const applyRunsAt = (i) => {
+    const applyRunsAt = (i, { timeBudget = null, throughBallFrom = null, throughReceiverId = null, passKind = 'through' } = {}) => {
       runs.forEach((r, key) => {
         if (Math.min(r.afterIndex, len) === i && !runLegMap[key]) {
           const from = posOf(r.id)
-          runLegMap[key] = { key, id: r.id, from, to: r.to, ctrl: r.ctrl ?? midpoint(from, r.to), afterIndex: r.afterIndex }
-          pos[r.id] = r.to
+          // A run tied to a dribble must use the same time budget everywhere:
+          // radius display, planned receiver position, and playback.
+          const player = byId[r.id]
+          let to = timeBudget != null && player
+            ? clampToReach(from, r.to, reachRadius(player, timeBudget))
+            : r.to
+          // A through-pass receiver must be at the endpoint when the ball is
+          // there.  Recalculate older/shared targets too, not only newly drawn
+          // through passes, so planning and playback cannot diverge.
+          if (throughBallFrom && r.id === throughReceiverId && player) {
+            to = throughTarget({ runnerFrom: from, ballFrom: throughBallFrom, want: to, player, passKind })
+          }
+          runLegMap[key] = { key, id: r.id, from, to, ctrl: r.ctrl ?? midpoint(from, to), afterIndex: r.afterIndex }
+          pos[r.id] = to
         }
       })
     }
@@ -127,15 +147,38 @@ function App() {
     const chain = chainActs.map((act, index) => {
       snaps.push(snapshot())
       carrierAt.push(carrier)
-      applyRunsAt(index)
       const cur = posOf(carrier)
       if (act.type === 'dribble') {
+        // Clamp parallel off-ball runs again while deriving the actual chain.
+        // This also repairs older shared plans whose saved target predates the
+        // reach-radius rule, so the subsequent pass uses the same endpoint.
+        const timingLeg = { type: 'dribble', from: cur, to: act.to, ctrl: act.ctrl ?? midpoint(cur, act.to) }
+        applyRunsAt(index, { timeBudget: actionDuration(timingLeg) })
         const leg = { type: 'dribble', actorId: carrier, from: cur, to: act.to, ctrl: act.ctrl ?? midpoint(cur, act.to), index }
         pos[carrier] = act.to
         return leg
       }
+      const isThrough = act.through || act.passKind === 'through' || act.passKind === 'lobThrough'
+      const receiverFrom = act.receiverId === 'GOAL' ? null : posOf(act.receiverId)
+      applyRunsAt(index, isThrough
+        ? { throughBallFrom: cur, throughReceiverId: act.receiverId, passKind: act.passKind ?? 'through' }
+        : undefined)
       const to = act.receiverId === 'GOAL' ? act.to : posOf(act.receiverId)
-      const leg = { type: act.type, actorId: carrier, receiverId: act.receiverId, from: cur, to, ctrl: act.ctrl ?? midpoint(cur, to), index }
+      const passKind = act.passKind ?? (act.through ? 'through' : 'ground')
+      const passSpeed = isThrough && receiverFrom && byId[act.receiverId]
+        ? throughPassSpeed({ runnerFrom: receiverFrom, ballFrom: cur, to, player: byId[act.receiverId], passKind })
+        : undefined
+      const leg = {
+        type: act.type,
+        passKind,
+        passSpeed,
+        actorId: carrier,
+        receiverId: act.receiverId,
+        from: cur,
+        to,
+        ctrl: act.ctrl ?? midpoint(cur, to),
+        index,
+      }
       if (act.receiverId !== 'GOAL') {
         pos[act.receiverId] = to
         carrier = act.receiverId
@@ -148,7 +191,7 @@ function App() {
     const planPos = {}
     for (const p of basePlayers) planPos[p.id] = posOf(p.id)
     return { chain, runLegs: Object.values(runLegMap), planPos, carrierId: carrier, snaps, carrierAt }
-  }, [chainActs, runs, basePlayers, basePos, moment])
+  }, [chainActs, runs, basePlayers, basePos, byId, moment])
 
   const shotTaken = chainActs.some((a) => a.type === 'shot')
   const ballPlanPos = chain.length ? chain[chain.length - 1].to : basePos(moment.ball)
@@ -193,13 +236,22 @@ function App() {
 
   // 가동범위 동심원 — 이번 시트 시작 좌표를 중심으로, 전력(100%)·여유(70%) 두 겹.
   // 공 액션을 아직 안 그렸으면 시간 예산이 0이라 원도 없다 (그리면 그때 나타난다).
+  const oneShotDribbleIndex =
+    !sheetMode && chainActs.length > 0 && chainActs[chainActs.length - 1]?.type === 'dribble'
+      ? chainActs.length - 1
+      : null
+  // 원샷에서도 마지막 액션이 드리블이면 그 드리블 시간 동안의 오프볼 런을
+  // 같은 시트처럼 취급한다. 반경 표시·좌표 제한·재생 타이밍이 함께 맞춰진다.
+  const runWindowIndex = sheetMode ? editIndex : oneShotDribbleIndex
+  const runWindowLeg = runWindowIndex != null ? chain[runWindowIndex] : null
+  const runWindowDur = runWindowLeg ? actionDuration(runWindowLeg) : 0
   const reachCircles = useMemo(() => {
-    if (!sheetMode || isViewingPast || phase !== 'plan' || !(sheetDur > 0)) return null
-    const at = snaps[editIndex] ?? planPos
+    if (runWindowIndex == null || isViewingPast || phase !== 'plan' || !(runWindowDur > 0)) return null
+    const at = snaps[runWindowIndex] ?? planPos
     return basePlayers
-      .filter((p) => p.id !== carrierAt[editIndex]) // 공 소유자는 액션 본인이라 제외
-      .map((p) => ({ id: p.id, ...at[p.id], r: reachRadius(p, sheetDur) }))
-  }, [sheetMode, isViewingPast, phase, sheetDur, snaps, editIndex, planPos, carrierAt, basePlayers])
+      .filter((p) => p.id !== carrierAt[runWindowIndex]) // 공 소유자는 액션 본인이라 제외
+      .map((p) => ({ id: p.id, ...at[p.id], r: reachRadius(p, runWindowDur) }))
+  }, [runWindowIndex, isViewingPast, phase, runWindowDur, snaps, planPos, carrierAt, basePlayers])
 
   // 시트 확정 — 이번 시트에 공 액션이 있어야 넘어갈 수 있다
   const canConfirmSheet = sheetMode && phase === 'plan' && !isViewingPast && chain.length > sheetCount
@@ -262,6 +314,19 @@ function App() {
         return rs.map((r, i) => (i === mine ? { ...r, to, ctrl: null } : r))
       })
     }
+    // 원샷의 마지막 액션이 드리블이면, 오프볼 런도 그 드리블과 동시에
+    // 시작한다. 이전에는 드리블 뒤(afterIndex = chainActs.length)에 붙어
+    // 가동 반경이 없어지고 재생 타이밍도 어긋났다.
+    if (oneShotDribbleIndex != null && runWindowDur > 0) {
+      const from = (snaps[oneShotDribbleIndex] ?? planPos)[id]
+      const player = byId[id]
+      if (from && player) to = clampToReach(from, to, reachRadius(player, runWindowDur))
+      return setRuns((rs) => {
+        const mine = rs.findLastIndex((r) => r.id === id && r.afterIndex === oneShotDribbleIndex)
+        if (mine === -1) return [...rs, { id, to, ctrl: null, afterIndex: oneShotDribbleIndex }]
+        return rs.map((r, i) => (i === mine ? { ...r, to, ctrl: null } : r))
+      })
+    }
     setRuns((rs) => {
       const lastIdx = rs.findLastIndex((r) => r.id === id)
       if (isFirst) {
@@ -283,7 +348,28 @@ function App() {
   // --- 체인 편집 ---
   // 공 가진 선수 드래그 = 드리블. 드래그 시작(isFirst)에 새 레그 추가, 이후엔 목표만 갱신.
   // 직전 레그가 이미 드리블이면 그 레그를 다시 조정하는 것으로 취급.
-  const setDribble = (pt, isFirst) =>
+  const setDribble = (pt, isFirst) => {
+    // 원샷에서 런을 먼저 그리고 나중에 드리블을 그린 경우도 예외 없이
+    // 드리블 시간 안에서 갈 수 있는 거리로 다시 제한한다.
+    const lastAct = chainActs[chainActs.length - 1]
+    const dribbleIndex = lastAct?.type === 'dribble' ? chainActs.length - 1 : chainActs.length
+    const existingDribble = lastAct?.type === 'dribble' ? chain[chain.length - 1] : null
+    const dribbleFrom = existingDribble?.from ?? planPos[carrierId]
+    // 오프볼 런을 먼저 찍고 드리블을 나중에 그린 경우도 포함한다.
+    // 시트/원샷 어느 쪽이든 새 드리블 시간에 맞춰 목표를 즉시 반경 안으로 당긴다.
+    if (dribbleFrom) {
+      const dribble = { type: 'dribble', from: dribbleFrom, to: pt, ctrl: midpoint(dribbleFrom, pt) }
+      const maxMove = actionDuration(dribble)
+      setRuns((rs) =>
+        rs.map((r) => {
+          if (r.afterIndex !== dribbleIndex) return r
+          const from = (snaps[dribbleIndex] ?? planPos)[r.id]
+          const player = byId[r.id]
+          if (!from || !player) return r
+          return { ...r, to: clampToReach(from, r.to, reachRadius(player, maxMove)), ctrl: null }
+        }),
+      )
+    }
     setChainActs((cs) => {
       const last = cs[cs.length - 1]
       // 시트 모드: 이번 시트에 이미 드리블이 있으면 그걸 조정, 다른 액션이면 무시
@@ -294,6 +380,7 @@ function App() {
       if (isFirst && last?.type !== 'dribble') return [...cs, { type: 'dribble', to: pt, ctrl: null }]
       return cs.map((c, i) => (i === cs.length - 1 ? { ...c, to: pt, ctrl: isFirst ? null : c.ctrl } : c))
     })
+  }
   const dropDribble = (pt) => {
     const leg = chain[chain.length - 1]
     if (leg?.type === 'dribble' && Math.hypot(pt.x - leg.from.x, pt.y - leg.from.y) < 3.5) {
@@ -302,9 +389,18 @@ function App() {
   }
   // 시트 모드에서는 시트 1장에 공 액션 1개 — 이미 그렸으면 확정하고 넘어가야 한다
   const sheetFull = sheetMode && chain.length > sheetCount
-  const addPass = (receiverId, to) => {
+  const addPass = (receiverId, to, passKind = 'ground') => {
     if (sheetFull) return
-    setChainActs((cs) => [...cs, { type: receiverId === 'GOAL' ? 'shot' : 'pass', receiverId, to, ctrl: null }])
+    setChainActs((cs) => [
+      ...cs,
+      {
+        type: receiverId === 'GOAL' ? 'shot' : 'pass',
+        receiverId,
+        to,
+        ctrl: null,
+        ...(receiverId === 'GOAL' ? {} : { passKind }),
+      },
+    ])
   }
   // 스루패스 = "리시버의 침투 런" + "그 도착점으로 가는 패스".
   // 새 액션 타입을 만들지 않는다 — 런이 패스보다 먼저 적용되므로(applyRunsAt(i)가
@@ -314,26 +410,25 @@ function App() {
   //   · offside : 판정 기준은 패스 출발 순간의 리시버 좌표(런 반영 전)라 온사이드가 된다
   // 찍은 지점 → 실제로 성립하는 도착점. 조준 중 미리보기와 확정이 같은 계산을 쓰도록
   // 한 곳에 모아둔다 (미리보기와 결과가 다르면 그게 제일 나쁜 UX다).
-  const throughTargetOf = (receiverId, pt) => {
-    if (!sheetMode) return pt // 원샷 모드는 자유 — playback이 타이밍을 맞춰준다
-    // 이 시트의 sheetDur은 "이미 그려진 공 액션"의 시간이라, 지금 만들려는 패스에는
-    // 쓸 수 없다(아직 체인에 없어서 0이다). 대신 "공과 사람이 같이 도착"하는 조건을
-    // 직접 풀어 도착점을 잡는다 (engine/sheets.js throughTarget 주석 참고).
+  const throughTargetOf = (receiverId, pt, passKind = 'through') => {
+    // This applies in both one-shot and sheet mode.  Leaving one-shot targets
+    // unrestricted made the ball arrive before its receiver could move there.
+    // Solve the shared ball/runner arrival time before committing the action.
     const idx = chainActs.length
     const at = snaps[idx] ?? planPos
     const runnerFrom = at[receiverId]
     const ballFrom = at[carrierAt[idx] ?? carrierId] ?? ballPlanPos
     const player = byId[receiverId]
     if (!runnerFrom || !ballFrom || !player) return pt
-    return throughTarget({ runnerFrom, ballFrom, want: pt, player })
+    return throughTarget({ runnerFrom, ballFrom, want: pt, player, passKind })
   }
 
-  const addThroughPass = (receiverId, pt) => {
+  const addThroughPass = (receiverId, pt, passKind = 'through') => {
     if (sheetFull) return
     const idx = chainActs.length // 이 패스가 놓일 체인 인덱스 = 런의 앵커
-    const to = throughTargetOf(receiverId, pt)
+    const to = throughTargetOf(receiverId, pt, passKind)
     setRuns((rs) => [...rs, { id: receiverId, to, ctrl: null, afterIndex: idx }])
-    setChainActs((cs) => [...cs, { type: 'pass', receiverId, to: null, ctrl: null, through: true }])
+    setChainActs((cs) => [...cs, { type: 'pass', receiverId, to: null, ctrl: null, through: true, passKind }])
   }
 
   const setChainHandle = (i, h) => {
@@ -616,7 +711,7 @@ function App() {
               {isViewingPast
                 ? `시트 ${shownSheet + 1} 열람 중 — 확정된 시트는 수정할 수 없습니다.`
                 : sheetFull
-                  ? `이 시트의 공 액션을 그렸습니다. 오프볼 런을 더 넣거나, 확정해 다음 시트로 넘어가세요.`
+                  ? `이 시트에는 공 행동을 하나만 설정할 수 있습니다. 오프볼 런을 더 넣거나, 시트를 확정해 다음 시트로 넘어가주세요.`
                   : `시트 ${editIndex + 1}: 공 액션(드리블/패스/슛) 하나를 그리면 동심원(그 시간 안에 갈 수 있는 범위)이 나타납니다.`}
             </p>
           )}
@@ -648,6 +743,7 @@ function App() {
               offsideIds={offsideIds}
               offsideFx={phase !== 'plan' ? frame?.fx : null}
               selectedId={selectedId}
+              sheetLocked={sheetFull}
               onPlayerClick={(id) => setSelectedId((prev) => (prev === id ? null : id))}
               onRunSet={setRunTarget}
               onRunRemove={removeRun}
@@ -760,7 +856,7 @@ function App() {
                 {chain.map((leg, i) => (
                   <li key={`c${i}`} className="action-row">
                     <span>
-                      {i + 1}. {chainActs[leg.index]?.through ? '스루패스' : TYPE_LABEL[leg.type]} — {byId[leg.actorId].name}
+                      {i + 1}. {leg.type === 'pass' ? (PASS_KIND_LABEL[chainActs[leg.index]?.passKind ?? (chainActs[leg.index]?.through ? 'through' : 'ground')] ?? '패스') : TYPE_LABEL[leg.type]} — {byId[leg.actorId].name}
                       {leg.type === 'pass' ? ` → ${byId[leg.receiverId].name}` : leg.type === 'shot' ? ' → 골문' : ''}
                     </span>
                     {phase === 'plan' && (

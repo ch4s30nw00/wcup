@@ -32,7 +32,7 @@
 import { samplePath, pathLength, minDistToPath } from './geometry.js'
 import { initDefense, advanceDefense } from './defense.js'
 import { checkOffside, offsideWarnings } from './offside.js'
-import { K } from './constants.js'
+import { K, actionSpeed, isLobPass } from './constants.js'
 
 // 시드 PRNG (mulberry32) — 같은 시드 + 같은 전술 = 항상 같은 결과 (공유 링크 재현)
 export function mulberry32(seed) {
@@ -138,11 +138,16 @@ export function calcShot(action, opponents, prev = null) {
   const C = K.SHOT
   const st = action.actor.stats
   const from = action.from
-  const header = !!(prev && prev.type === 'pass' && isCrossGeometry(prev))
+  const cross = !!(prev && prev.type === 'pass' && isCrossGeometry(prev))
+  // 로빙을 받은 뒤 바로 패스·슛하면 공이 아직 떠 있어 헤더 동작으로 판정한다.
+  // 크로스보다 헤딩 비중과 공중 경합 보정을 낮춰, 짧은 로빙 연계가 지나치게 불리하지 않다.
+  const lobHeader = !!(prev && isLobPass(prev))
+  const header = cross || lobHeader
+  const headWeight = cross ? 1 - C.HEAD_FIN : C.LOB_HEAD_WEIGHT
 
   // 발: 골결 단독 (데이터 요청 §4 "발로 찰 땐 골결"). 헤더: 골결 3 : 헤더 7.
   const sEff = header
-    ? C.HEAD_FIN * norm(st.finishing) + (1 - C.HEAD_FIN) * norm(st.heading)
+    ? (1 - headWeight) * norm(st.finishing) + headWeight * norm(st.heading)
     : norm(st.finishing)
 
   const D = Math.hypot(K.GOAL.x - from.x, K.GOAL.y - from.y)
@@ -196,9 +201,27 @@ export function calcShot(action, opponents, prev = null) {
       const dd = Math.hypot(o.x - from.x, o.y - from.y)
       if (!nearest || dd < nearest.dd) nearest = { o, dd }
     }
-    if (nearest && nearest.dd < C.R_BLOCK * 2) z += C.B_AIR * (airOf(action.actor) - airOf(nearest.o))
+    if (nearest && nearest.dd < C.R_BLOCK * 2) {
+      z += (cross ? C.B_AIR : C.LOB_HEAD_AIR) * (airOf(action.actor) - airOf(nearest.o))
+    }
+    // 골문 코앞의 완전히 열린 헤더만 별도 바닥을 둔다. 실제 슛길에 수비
+    // 블로커가 있으면 이 보정을 적용하지 않아 막힌 헤더까지 과장하지 않는다.
+    if (D <= C.HEADER_CLOSE_DIST && !block.worst) {
+      z = Math.max(z, Math.log(C.HEADER_CLOSE_MIN_XG / (1 - C.HEADER_CLOSE_MIN_XG)))
+    }
   }
-  return { z, worst: block.worst, header, oneOnOne }
+  // 선방 연출은 슈팅 경로에 실제로 걸쳐 있는 골키퍼에게만 허용한다.
+  // 이 값은 xG 계산에 쓰지 않고, 이미 실패한 슛의 결과만 나누는 데 쓴다.
+  const gkHit = goalkeeper ? minDistToPath(pts, goalkeeper) : null
+  const save =
+    goalkeeper &&
+    gkHit &&
+    gkHit.d <= C.SAVE_PATH_RADIUS &&
+    gkHit.frac >= 0.08 &&
+    gkHit.frac <= 0.98
+      ? { id: goalkeeper.id, point: gkHit.point, frac: gkHit.frac }
+      : null
+  return { z, worst: block.worst, header, cross, oneOnOne, save }
 }
 
 // --- 패스: 로그오즈 (리시버 지배) -------------------------------------------
@@ -206,15 +229,18 @@ export function calcShot(action, opponents, prev = null) {
 // 지배 레버는 경로가 아니라 도착점 근처 수비 기하 (리서치 합의).
 // 곡선은 호 길이 L이 길어져 B_LEN으로 자연 페널티.
 // 크로스 기하면 패스 스킬 대신 크로스 스탯 + 예측력 보정 ("크로스 올릴 때", 데이터 요청 §7).
-export function calcPass(action, opponents) {
+export function calcPass(action, opponents, prev = null) {
   const C = K.PASS
   const st = action.actor.stats
   const pts = samplePath(action.from, action.ctrl, action.to)
   const L = pathLength(pts)
   const cross = isCrossGeometry(action)
-  const sPass = cross
-    ? norm(st.crossing) * (0.85 + 0.15 * norm(st.anticipation))
-    : norm(st.passing)
+  const header = !!(prev && isLobPass(prev))
+  const sPass = header
+    ? (1 - C.LOB_HEAD_WEIGHT) * norm(st.passing) + C.LOB_HEAD_WEIGHT * norm(st.heading)
+    : cross
+      ? norm(st.crossing) * (0.85 + 0.15 * norm(st.anticipation))
+      : norm(st.passing)
 
   // 리시버 압박: 도착점 최근접 수비수. 이 수비수는 경로(lane) 합산에서 제외 — 이중계상 방지
   // (보고서 검증표 0.34/0.47/0.70이 리시버 항 단독 기준).
@@ -227,13 +253,14 @@ export function calcPass(action, opponents) {
   const lane = pathPressure(pts, opponents, C.B_LANE, C.R_LANE, { excludeId: recv?.id, betaScale: laneScale })
   const recvPr = recv ? pressure(recv.d, C.R_RECV) : 0
   const recvZ = recv ? C.B_RECV * laneScale(recv.o) * recvPr : 0
-  const z = C.Z0 + C.B_LEN * L + C.B_PASS * (sPass - 0.7) + recvZ + lane.z
+  const shortBonus = C.SHORT_BONUS * Math.max(0, 1 - L / C.SHORT_DIST)
+  const z = C.Z0 + C.B_LEN * L + C.B_PASS * (sPass - 0.7) + shortBonus + recvZ + lane.z
   // 연출 귀속: 경로 압박자와 리시버 마크맨 중 압박이 큰 쪽
   let worst = lane.worst
   if (recv && recvPr >= ATTRIBUTION_MIN && (!worst || recvPr > worst.pr)) {
     worst = { pr: recvPr, id: recv.id, point: action.to, frac: 1 }
   }
-  return { z, worst, cross }
+  return { z, worst, cross, header }
 }
 
 // --- 드리블: 1v1 (기하 지배) ------------------------------------------------
@@ -257,7 +284,10 @@ export function calcDribble(action, opponents) {
   // press = 이 드리블에 걸린 수비 압박의 크기. 0이면 뺏을 사람이 없다는 뜻이라
   // 경합 게이트가 실패 확률을 0으로 만든다 (probOf 참고).
   // def.z는 최근접 1명의 B_DEF·defScale·e^(−d/R) 이므로 항상 ≤ 0 — 부호만 뒤집는다.
-  return { z, worst: def.worst, press: -def.z }
+  // A defender outside the actual 1v1 contest range cannot make a dribble
+  // fail.  `pathPressure` removes that defender from `worst`; use the same
+  // cutoff for the contest gate instead of leaving a tiny random failure.
+  return { z, worst: def.worst, press: def.worst ? -def.z : 0 }
 }
 
 const LABEL = { pass: '패스', dribble: '드리블', shot: '슛' }
@@ -270,7 +300,7 @@ const flowBonus = (k) => Math.min(K.SEQ.FLOW * k, K.SEQ.FLOW_MAX)
 function actionSeconds(action) {
   const pts = samplePath(action.from, action.ctrl, action.to)
   const L = pathLength(pts)
-  const v = K.SPEED[action.type] ?? K.SPEED.pass
+  const v = actionSpeed(action)
   return L / v + (action.type === 'dribble' ? 0 : K.DEF.REACT)
 }
 
@@ -322,7 +352,7 @@ export function resolveSequence(actions, ctx) {
       a.type === 'shot'
         ? calcShot(a, defs, prev)
         : a.type === 'pass'
-          ? calcPass(a, defs)
+          ? calcPass(a, defs, prev)
           : calcDribble(a, defs)
     // 오프사이드는 확률이 아니라 규칙 — 패스가 떠나는 순간의 좌표로 즉시 판정한다.
     // 리시버가 "그 순간 서 있던 자리"가 기준: 뒤에서 출발해 공을 향해 달려드는 침투 패스는
@@ -336,6 +366,7 @@ export function resolveSequence(actions, ctx) {
     return {
       p: probOf({ z: c.z + flowBonus(k), press: c.press ?? null }),
       worst: c.worst,
+      save: c.save,
       header: c.header,
       cross: c.cross,
       offside: off.offside,
@@ -352,7 +383,7 @@ export function resolveSequence(actions, ctx) {
   let failIndex = -1
   let offsideIndex = -1
   for (let i = 0; i < actions.length; i++) {
-    const { p, worst, header, cross, offside, offsideLineX, defPos } = calcs[i]
+    const { p, worst, save, header, cross, offside, offsideLineX, defPos } = calcs[i]
     const step = { type: actions[i].type, p, success: null, header, cross, offside, offsideLineX, defPos }
     if (failIndex === -1) {
       // 오프사이드는 주사위를 굴리기 전에 확정 실패 — 휘슬이 먼저 울린다.
@@ -364,8 +395,15 @@ export function resolveSequence(actions, ctx) {
         step.success = rng() < p
         if (!step.success) {
           failIndex = i
-          // 압박 기여가 가장 큰 수비수가 끊은 것으로 (연출 좌표)
-          if (worst) {
+          // 슛의 기본 실패 확률은 바꾸지 않는다. 원래 빗나갈 슛(필드 수비 블록이
+          // 없는 실패)만, 골키퍼가 실제 슛선에 있을 때 50:50으로 선방/빗나감 처리한다.
+          if (actions[i].type === 'shot' && !worst && save && rng() < K.SHOT.SAVE_OF_MISS) {
+            step.savedById = save.id
+            step.interceptorId = save.id
+            step.interceptPoint = save.point
+            step.interceptFrac = save.frac
+          // 압박 기여가 가장 큰 필드 수비수가 끊은 것으로 (연출 좌표)
+          } else if (worst) {
             step.interceptorId = worst.id
             step.interceptPoint = worst.point
             step.interceptFrac = worst.frac
@@ -395,7 +433,11 @@ export function resolveSequence(actions, ctx) {
   } else {
     const failed = steps[failIndex]
     const act = actions[failIndex]
-    if (failed.interceptorId) {
+    if (failed.savedById) {
+      const who = ctx.opponents.find((o) => o.id === failed.savedById)
+      outcome = 'SAVED'
+      reason = `${who?.name ?? '골키퍼'}의 선방입니다! ${act.actor.name}의 슛은 골문을 향했지만 골키퍼가 슛선에서 막아냈습니다. (성공 확률 ${(failed.p * 100).toFixed(0)}%)`
+    } else if (failed.interceptorId) {
       const who = ctx.opponents.find((o) => o.id === failed.interceptorId)
       outcome = 'INTERCEPTED'
       reason = `${failIndex + 1}번째 ${LABEL[act.type]} 실패 — ${who?.name ?? '수비수'}가 경로를 차단했습니다. (개별 확률 ${(failed.p * 100).toFixed(0)}%)`

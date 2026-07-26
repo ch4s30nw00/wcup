@@ -11,12 +11,13 @@
 import { mulberry32 } from './resolve.js'
 import { commentaryFor } from './commentary.js'
 import { midpoint, samplePath, pathLength, pointAtLength } from './geometry.js'
-import { K } from './constants.js'
+import { K, actionSpeed, isLobPass } from './constants.js'
+import { movementDuration, runSpeedOf } from './sheets.js'
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
 // 이동/공 속도 (피치 단위 ≈ m/s) — 판정의 수비 이동 예산(resolve.js)과 공유
-const SPEED = K.SPEED
-const durFor = (len, v) => clamp((len / v) * 1000, 400, 6000)
+// Long dribbles use their real movement time rather than a fixed duration cap.
+const durFor = (len, v) => movementDuration(len, v) * 1000
 const ease = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
 
 const ROW_K_HOME = { GK: 0.08, DF: 0.42, MF: 0.65, FW: 0.85 } // 공 전진량을 얼마나 따라 올라가나
@@ -65,9 +66,10 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       missFrac = origLen / (pathLength(pts) || 1)
     }
     const len = pathLength(pts)
-    const dur = durFor(len, SPEED[a.type] ?? SPEED.pass)
+    const dur = durFor(len, actionSpeed(a))
     const prev = legs[legs.length - 1]
-    legs.push({ ...a, step, pts, len, missFrac, start: prev ? prev.start + prev.dur + 200 : 300, dur })
+    // 연속 행동은 앞 행동이 끝나는 프레임에서 바로 이어 재생한다.
+    legs.push({ ...a, step, pts, len, missFrac, aerial: isLobPass(a), start: prev ? prev.start + prev.dur + K.PLAY.ACTION_LINK_MS : 300, dur })
   })
 
   const segs = [] // 선수 이동 세그먼트 (런 + 드리블)
@@ -82,15 +84,41 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     }
     return tm
   }
+  // Explicit off-ball instructions stay authoritative through the current
+  // action chain.  Auto tactical steering must never pull them away from a
+  // user-selected destination before the next action can use that position.
+  const actionEnd = legs.length ? legs[legs.length - 1].start + legs[legs.length - 1].dur : 300
   const runPlan = runLegs
     .filter((rl) => !(failIndex !== -1 && rl.afterIndex > failIndex))
     .map((rl) => {
-      const pts = samplePath(rl.from, rl.ctrl, rl.to)
+      // 오프볼 런도 선수별 가속도·주력을 반영한다. 고정 9m/s 대신
+      // 시트의 가동 반경 계산과 동일한 속도 함수를 사용한다.
+      const player = byId[rl.id]
+      const runSpeed = runSpeedOf(player)
+      const anchorLeg = legs.find((leg) => leg.index === rl.afterIndex)
+      // UI에서 이미 같은 runSpeed와 실제 재생 시간을 기준으로 목표를 제한한다.
+      // 여기에서 다시 줄이면 다음 행동의 계획 좌표와 달라져 멈춤·순간이동이 생긴다.
+      const parallelDribble = anchorLeg?.type === 'dribble'
+      const to = rl.to
+      const ctrl = parallelDribble ? midpoint(rl.from, to) : rl.ctrl
+      const pts = samplePath(rl.from, ctrl, to)
+      const len = pathLength(pts)
       // 런 도착 위치를 실제로 쓰는 첫 레그 = 마감시간의 주인 (없으면 장식 런)
       const consumer = legs.find(
         (leg) => leg.index >= rl.afterIndex && (leg.receiverId === rl.id || leg.actorId === rl.id),
       )
-      return { rl, pts, len: pathLength(pts), dur: durFor(pathLength(pts), SPEED.run), consumer }
+      return {
+        rl: { ...rl, to, ctrl },
+        pts,
+        len,
+        // 병행 런은 드리블과 정확히 같은 시간에 끝낸다. 선형 이동을 쓰므로
+        // 목표가 과거 공유 링크처럼 유효 반경 밖이어도, 다음 행동에서 멈추거나
+        // 순간이동하지 않고 실제 주력·가속도 속도로 목표까지 계속 움직인다.
+        dur: parallelDribble ? Math.min(durFor(len, runSpeed), anchorLeg.dur) : durFor(len, runSpeed),
+        consumer,
+        anchorLeg,
+        parallelDribble,
+      }
     })
     // 마감이 이른 런부터 처리 — 지연이 생기면 뒤 레그들의 마감에 순서대로 전파되도록
     .sort((a, b) => (a.consumer?.index ?? Infinity) - (b.consumer?.index ?? Infinity))
@@ -98,25 +126,58 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     const earliest = Math.max(200, freeAfter(rp.rl.id, rp.rl.afterIndex))
     let start
     let holdUntil = null
-    if (rp.consumer) {
+    if (rp.parallelDribble) {
+      start = Math.max(earliest, rp.anchorLeg.start)
+      const deadline = rp.consumer
+        ? rp.consumer.receiverId === rp.rl.id
+          ? rp.consumer.start + rp.consumer.dur
+          : rp.consumer.start
+        : rp.anchorLeg.start + rp.anchorLeg.dur
+      holdUntil = Math.max(start + rp.dur, deadline, actionEnd)
+    } else if (rp.consumer) {
       // 수신 런은 공 도착 시각, 그 자리에서 시작하는 액션(드리블 등)은 액션 시작 시각이 마감
       const deadline = rp.consumer.receiverId === rp.rl.id ? rp.consumer.start + rp.consumer.dur : rp.consumer.start
-      start = earliest
-      holdUntil = Math.max(start + rp.dur, deadline)
+      // The receiver starts when this pass is played; `throughTarget` uses the
+      // exact same ball-flight duration, so both arrive together.
+      start = Math.max(earliest, rp.consumer.start)
+      holdUntil = Math.max(start + rp.dur, deadline, actionEnd)
     } else {
       // 아무도 기다리지 않는 장식 런 — 앵커 액션 시작에 맞춰 출발
       const anchorLeg = legs.find((leg) => leg.index === rp.rl.afterIndex)
       const tail = legs[legs.length - 1]
-      start = Math.max(earliest, (anchorLeg ? anchorLeg.start : tail ? tail.start + tail.dur : 300) - 120)
+      // 보조 런은 해당 액션과 동시에 시작한다. 특히 원샷 드리블과 묶인
+      // 오프볼 런은 공 소유자가 드리블을 시작한 순간 곧바로 출발한다.
+      start = Math.max(earliest, anchorLeg ? anchorLeg.start : tail ? tail.start + tail.dur : 300)
+      holdUntil = Math.max(start + rp.dur, actionEnd)
     }
-    segs.push({ id: rp.rl.id, from: rp.rl.from, ctrl: rp.rl.ctrl, pts: rp.pts, len: rp.len, start, dur: rp.dur, holdUntil })
+    segs.push({
+      id: rp.rl.id,
+      from: rp.rl.from,
+      ctrl: rp.rl.ctrl,
+      pts: rp.pts,
+      len: rp.len,
+      start,
+      dur: rp.dur,
+      holdUntil,
+      motion: 'run',
+    })
   }
   const endLeg = legs[legs.length - 1]
   const chainEnd = endLeg ? endLeg.start + endLeg.dur + 200 : 500
   for (const leg of legs) {
     if (leg.type !== 'dribble') continue
     const capFrac = leg.step.success === false && leg.step.interceptFrac != null ? leg.step.interceptFrac : 1
-    segs.push({ id: leg.actorId, from: leg.from, ctrl: leg.ctrl, pts: leg.pts, len: leg.len, start: leg.start, dur: leg.dur, capFrac })
+    segs.push({
+      id: leg.actorId,
+      from: leg.from,
+      ctrl: leg.ctrl,
+      pts: leg.pts,
+      len: leg.len,
+      start: leg.start,
+      dur: leg.dur,
+      capFrac,
+      motion: 'dribble',
+    })
   }
   // 시작 시각 오름차순 정렬 → 나중에 시작한 세그먼트가 위치를 덮어써서
   // "런으로 이동 → 거기서 받아 드리블" 같은 연속 동작이 자연스럽게 이어진다.
@@ -213,7 +274,10 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     } else if (leg.step.success === false) {
       // 빠진 패스(missFrac)는 공이 원래 목표를 지나치는 순간에 자막이 뜬다
       const when = leg.start + leg.dur * (leg.step.interceptFrac ?? leg.missFrac ?? 1) + 100
-      captions.push({ t: when, text: commentaryFor(FAIL_EVENT[leg.type][names.d ? 'cut' : 'miss'], names, rngC) })
+      const failEvent = leg.step.savedById
+        ? 'shotSaved'
+        : FAIL_EVENT[leg.type][names.d ? 'cut' : 'miss']
+      captions.push({ t: when, text: commentaryFor(failEvent, names, rngC) })
     } else if (leg.type === 'shot' && i === legs.length - 1) {
       captions.push({ t: leg.start + leg.dur, text: commentaryFor('goal', names, rngC) })
     }
@@ -270,24 +334,20 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     // 1) 스크립트 구간: 지시 경로가 시뮬 상태를 덮어쓴다 (끝나면 시뮬이 이어받음)
     const scripted = new Set()
     for (const s of segs) {
-      if (el < s.start) continue
+      if (el < s.start) {
+        // 드리블과 묶인 런은 시작 직전까지 자동 전술 움직임에 끌려가지
+        // 않도록 원래 위치에서 대기한다. 출발 프레임에 경로가 다시 계산돼
+        // 순간이동하거나 과속하는 원인을 없앤다.
+        continue
+      }
       if (el <= s.start + s.dur) {
-        // 이 선수가 재생 전까지 자유 이동했다면, 계획을 세울 때의 from으로
-        // 되돌아가지 않고 현재 위치에서 같은 목적지로 경로를 다시 잡는다.
-        // 그렇지 않으면 지정 이동이 시작되는 첫 프레임에 순간이동한다.
-        if (!s.started) {
-          const start = { x: sim[s.id].x, y: sim[s.id].y }
-          const end = pointAtLength(s.pts, (s.capFrac ?? 1) * s.len)
-          const ctrl = {
-            x: start.x + (s.ctrl.x - s.from.x),
-            y: start.y + (s.ctrl.y - s.from.y),
-          }
-          s.pts = samplePath(start, ctrl, end)
-          s.len = pathLength(s.pts)
-          s.capFrac = 1
-          s.started = true
-        }
-        const k = Math.min(ease((el - s.start) / s.dur), s.capFrac ?? 1)
+        // The player was held at the planned start point while waiting.  Keep
+        // this original path and duration intact: rebuilding it from a
+        // steering-modified position is what caused blinking and late arrival.
+        // The carrier dribbles at a steady speed to the end.  Do not ease out
+        // near the target and appear to wait for an off-ball runner.
+        const progress = (el - s.start) / s.dur
+        const k = Math.min((s.motion === 'run' || s.motion === 'dribble') ? clamp(progress, 0, 1) : ease(progress), s.capFrac ?? 1)
         const pos = pointAtLength(s.pts, k * s.len)
         scripted.add(s.id)
         Object.assign(sim[s.id], { x: pos.x, y: pos.y, vx: 0, vy: 0 })
@@ -322,6 +382,22 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       }
     }
 
+    // A player with a future explicit segment must wait at that segment's
+    // planned start point.  This keeps auto tactical movement from changing
+    // the start of an off-ball run, which previously looked like a flicker and
+    // made the runner miss the next action's timing.
+    const waitingScript = new Map()
+    for (const s of segs) {
+      if (el < s.start && (!waitingScript.has(s.id) || s.start < waitingScript.get(s.id).start)) {
+        waitingScript.set(s.id, s)
+      }
+    }
+    for (const [id, s] of waitingScript) {
+      if (scripted.has(id)) continue
+      Object.assign(sim[id], { x: s.from.x, y: s.from.y, vx: 0, vy: 0 })
+      scripted.add(id)
+    }
+
     // 2) 공 위치 — 비행 중엔 궤적 위, 소유 중엔 소유자 발밑
     const ballAt = (getPos) => {
       let ball = null
@@ -335,7 +411,12 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           ownerId = leg.actorId
         } else if (!done) {
           ownerId = null
-          ball = pointAtLength(leg.pts, Math.min(k, capFrac) * leg.len)
+          ball = {
+            ...pointAtLength(leg.pts, Math.min(k, capFrac) * leg.len),
+            // 로빙은 비행 중 작아지는 공으로 높이를 표현한다. 시작·도착에서는 0이라
+            // 자연스럽게 발밑 공으로 돌아온다.
+            height: leg.aerial ? K.PLAY.LOB_HEIGHT * Math.sin(Math.PI * Math.min(k, capFrac)) : 0,
+          }
           // 성공할 패스는 리시버의 "실제" 위치로 유도한다.
           // 궤적은 계획 좌표로 그려지는데 선수는 조향·노이즈로 그 자리에서 밀려나 있을 수 있고,
           // 그대로 두면 공이 빈 잔디에 떨어졌다가 선수에게 튀어 "공이 혼자 움직이는" 것처럼 보인다.
@@ -351,8 +432,8 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           ball = pointAtLength(leg.pts, capFrac * leg.len)
         }
       }
-      if (ownerId) ball = { ...getPos(ownerId) }
-      if (interceptor && el > interceptor.end) ball = { ...getPos(interceptor.id) }
+      if (ownerId) ball = { ...getPos(ownerId), height: 0 }
+      if (interceptor && el > interceptor.end) ball = { ...getPos(interceptor.id), height: 0 }
       return ball
     }
     const ballSteer = ballAt((id) => sim[id])
@@ -584,7 +665,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     // 볼 트레일: 공이 빠르게 나는 동안(패스·슛)만 최근 궤적을 혜성 꼬리로 남긴다
     const lastT = trail[trail.length - 1]
     const ballV = lastT && dt > 0.001 ? Math.hypot(ball.x - lastT.x, ball.y - lastT.y) / dt : 0
-    if (!lastT || ballV > 13) trail.push({ x: ball.x, y: ball.y, t: el })
+    if (!lastT || ballV > 13) trail.push({ x: ball.x, y: ball.y, height: ball.height ?? 0, t: el })
     else if (ballV < 8) trail.length = 0 // 공이 느려지면 꼬리 소멸
     while (trail.length && el - trail[0].t > 380) trail.shift()
 
@@ -605,7 +686,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       offside: offsideTime != null && el >= offsideTime,
       offsideLineX,
     }
-    onFrame({ home, opp, ball, caption, fx, ballTrail: trail.length > 1 ? [...trail] : null })
+    onFrame({ home, opp, ball, caption, fx, ballTrail: trail.length > 1 ? [...trail] : null, elapsed: el })
     if (el < total) rafId = requestAnimationFrame(tick)
     else onDone()
   }

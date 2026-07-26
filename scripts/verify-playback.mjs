@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs'
 import { resolveSequence } from '../src/engine/resolve.js'
 import { playSequence } from '../src/engine/playback.js'
 import { midpoint, samplePath, minDistToPath } from '../src/engine/geometry.js'
+import { actionDuration, runSpeedOf, throughPassSpeed, throughTarget } from '../src/engine/sheets.js'
 
 const players = JSON.parse(readFileSync(new URL('../src/data/players.json', import.meta.url), 'utf-8'))
 const scenario = JSON.parse(readFileSync(new URL('../src/data/scenarios.json', import.meta.url), 'utf-8'))
@@ -76,6 +77,11 @@ const CASES = [
       { type: 'pass', actorId: 'kor_11', receiverId: 'kor_06' },
     ],
   },
+  {
+    name: '로빙패스 공 높이',
+    aerial: true,
+    acts: [{ type: 'pass', passKind: 'lob', actorId: 'kor_07', receiverId: 'kor_11' }],
+  },
 ]
 
 // 허용치: 공이 선수 발밑을 벗어난 채 소유권이 넘어가도 되는 최대 거리(m).
@@ -113,6 +119,11 @@ for (const c of CASES) {
     })
   })
 
+  if (c.aerial) {
+    const peak = Math.max(...frames.map((f) => f.ball.height ?? 0))
+    chk(`${c.name}: 비행 중 공 높이 ${peak.toFixed(2)} (> 0.8)`, peak > 0.8)
+  }
+
   // 소유권이 넘어가는 순간의 스냅: 공이 계획 도착점 부근에 있다가 갑자기 튀는 거리
   for (const a of actions) {
     if (a.type !== 'pass') continue
@@ -145,5 +156,139 @@ for (const c of CASES) {
 }
 console.log(`  최악 ${worst.toFixed(2)}m (${worstLabel}) / 허용 ${SNAP_LIMIT}m`)
 
+console.log('\n[드리블 병행 런] 가속도 반경 끝 목표까지 계속 달리는가')
+{
+  const carrier = byId.kor_07
+  const runner = byId.kor_11
+  const dribble = {
+    type: 'dribble',
+    actorId: carrier.id,
+    actor: carrier,
+    from: { x: carrier.x, y: carrier.y },
+    to: { x: 76, y: 23 },
+    ctrl: { x: 67.5, y: 23 },
+    index: 0,
+  }
+  const runSeconds = actionDuration(dribble)
+  const runTarget = {
+    x: runner.x + runSpeedOf(runner) * runSeconds,
+    y: runner.y,
+  }
+  const nextPass = {
+    type: 'pass',
+    actorId: carrier.id,
+    receiverId: runner.id,
+    actor: carrier,
+    from: dribble.to,
+    to: runTarget,
+    ctrl: midpoint(dribble.to, runTarget),
+    index: 1,
+  }
+  const actions = [dribble, nextPass]
+  let seed = null
+  for (let s = 1; s < 6000; s++) {
+    const trial = resolveSequence(actions, { opponents, players: home, seed: s })
+    if (trial.steps.every((step) => step.success !== false)) { seed = s; break }
+  }
+  if (!seed) {
+    chk('병행 런: 성공 시드 탐색', false)
+  } else {
+    const result = resolveSequence(actions, { opponents, players: home, seed })
+    const runnerFrames = []
+    const runnerTimeline = []
+    await new Promise((done) => {
+      playSequence({
+        actions,
+        result,
+        runLegs: [{ id: runner.id, from: { x: runner.x, y: runner.y }, to: runTarget, ctrl: midpoint(runner, runTarget), afterIndex: 0 }],
+        players: home,
+        opponents,
+        byId,
+        ballOwnerId: carrier.id,
+        seed,
+        onFrame: (frame) => {
+          runnerFrames.push({ ...frame.home[runner.id] })
+          runnerTimeline.push({ player: { ...frame.home[runner.id] }, ball: { ...frame.ball }, elapsed: frame.elapsed })
+        },
+        onDone: done,
+      })
+    })
+    const handoffAt = 300 + actionDuration(dribble) * 1000
+    const handoffFrames = runnerTimeline.filter((f) => f.elapsed >= handoffAt && f.elapsed <= handoffAt + 90)
+    const handoffGap = Math.min(...handoffFrames.map((f) => Math.hypot(f.player.x - runTarget.x, f.player.y - runTarget.y)))
+    chk(`second action starts with runner at target (${handoffGap.toFixed(2)}m)`, handoffGap <= 0.25)
+    const preRun = runnerTimeline.filter((f) => f.elapsed < 300)
+    const preRunDrift = Math.max(...preRun.map((f) => Math.hypot(f.player.x - runner.x, f.player.y - runner.y)))
+    chk(`runner does not drift before the explicit run (${preRunDrift.toFixed(2)}m)`, preRunDrift <= 0.01)
+    const maxFrameStep = Math.max(...runnerTimeline.slice(1).map((f, i) => Math.hypot(f.player.x - runnerTimeline[i].player.x, f.player.y - runnerTimeline[i].player.y)))
+    chk(`off-ball run has no frame jump (${maxFrameStep.toFixed(2)}m)`, maxFrameStep <= 0.35)
+    const passArrivalGap = Math.min(...runnerTimeline
+      .filter((f) => f.elapsed >= handoffAt)
+      .map((f) => Math.hypot(f.ball.x - runTarget.x, f.ball.y - runTarget.y)))
+    chk(`next pass completes at the run target (${passArrivalGap.toFixed(2)}m)`, passArrivalGap <= 0.25)
+    const nearest = Math.min(...runnerFrames.map((p) => Math.hypot(p.x - runTarget.x, p.y - runTarget.y)))
+    chk(`드리블 뒤에도 가속도 반경 끝 목표에 도착 (${nearest.toFixed(2)}m)`, nearest <= 0.25)
+  }
+}
+
 console.log(fails === 0 ? '\n재생 검증 통과 ✅' : `\n${fails}건 실패 ❌`)
+console.log('\n[through-pass receiver] receiver runs to the same point as the ball')
+{
+  const carrier = byId.kor_07
+  const runner = byId.kor_11
+  const target = throughTarget({
+    runnerFrom: { x: runner.x, y: runner.y },
+    ballFrom: { x: carrier.x, y: carrier.y },
+    want: { x: 96, y: 24 },
+    player: runner,
+    passKind: 'through',
+  })
+  const pass = {
+    type: 'pass',
+    passKind: 'through',
+    actorId: carrier.id,
+    receiverId: runner.id,
+    actor: carrier,
+    from: { x: carrier.x, y: carrier.y },
+    to: target,
+    ctrl: midpoint(carrier, target),
+    passSpeed: throughPassSpeed({
+      runnerFrom: { x: runner.x, y: runner.y },
+      ballFrom: { x: carrier.x, y: carrier.y },
+      to: target,
+      player: runner,
+      passKind: 'through',
+    }),
+    index: 0,
+  }
+  let seed = null
+  for (let s = 1; s < 6000; s++) {
+    const trial = resolveSequence([pass], { opponents, players: home, seed: s })
+    if (trial.steps[0].success) { seed = s; break }
+  }
+  if (!seed) {
+    chk('through-pass success seed found', false)
+  } else {
+    const result = resolveSequence([pass], { opponents, players: home, seed })
+    const frames = []
+    await new Promise((done) => {
+      playSequence({
+        actions: [pass], result,
+        runLegs: [{ id: runner.id, from: { x: runner.x, y: runner.y }, to: target, ctrl: midpoint(runner, target), afterIndex: 0 }],
+        players: home, opponents, byId, ballOwnerId: carrier.id, seed,
+        onFrame: (frame) => frames.push({ elapsed: frame.elapsed, ball: { ...frame.ball }, runner: { ...frame.home[runner.id] } }),
+        onDone: done,
+      })
+    })
+    const ballAtTarget = frames.reduce((best, frame) => {
+      const gap = Math.hypot(frame.ball.x - target.x, frame.ball.y - target.y)
+      return gap < best.gap ? { frame, gap } : best
+    }, { frame: null, gap: Infinity })
+    const receiverGap = Math.hypot(ballAtTarget.frame.runner.x - target.x, ballAtTarget.frame.runner.y - target.y)
+    const runDistance = Math.max(...frames.map((frame) => Math.hypot(frame.runner.x - runner.x, frame.runner.y - runner.y)))
+    chk(`through receiver moves (${runDistance.toFixed(2)}m)`, runDistance > 0.1)
+    chk(`through receiver is at the ball endpoint (${receiverGap.toFixed(2)}m)`, receiverGap <= 0.25)
+  }
+}
+
 process.exit(fails === 0 ? 0 : 1)
