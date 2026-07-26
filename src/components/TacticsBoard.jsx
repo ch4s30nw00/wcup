@@ -1,15 +1,13 @@
 import { useRef, useState } from 'react'
 import { quadPoint, handleFromCtrl } from '../engine/geometry'
-import { K } from '../engine/constants'
 import { josaGa, josaEun } from '../engine/commentary'
-
-const REACH_EASY = K.SHEET.EASY_FRAC // 안쪽 동심원(여유) 비율
 
 // StatsBomb 좌표계와 동일한 120x80 피치. x: 0(우리 골대) → 120(상대 골대)
 const PITCH_W = 120
 const PITCH_H = 80
 const DOT_R = 1.4
 const LEG_COLOR = { dribble: '#dbe4f2', pass: '#ffd23e', shot: '#ff6b5e' }
+const LOB_COLOR = '#8de7ff'
 
 // 팀 킷. 기본값은 조작하는 팀(홈) 빨강 / 상대 남색이고, 실제 유니폼이 그와 어긋나
 // 두 팀을 구분하기 어려운 경기만 덮어쓴다.
@@ -64,6 +62,9 @@ function qPath(from, ctrl, to) {
   return `M ${from.x} ${from.y} Q ${ctrl.x} ${ctrl.y} ${to.x} ${to.y}`
 }
 
+const isLobKind = (passKind) => passKind === 'lob' || passKind === 'lobThrough'
+const legColor = (leg) => (leg.type === 'pass' && isLobKind(leg.passKind) ? LOB_COLOR : LEG_COLOR[leg.type])
+
 export default function TacticsBoard({
   players,
   opponents,
@@ -82,6 +83,7 @@ export default function TacticsBoard({
   offsideIds, // 계획 단계 오프사이드 경고 대상 receiverId Set — 빨간 점멸
   offsideFx, // 재생 중 오프사이드 깃발 효과
   selectedId,
+  sheetLocked, // 시트에 공 행동이 이미 있어 새 공 행동은 막고 오프볼 런만 허용
   onPlayerClick,
   onRunSet,
   onRunRemove,
@@ -123,6 +125,15 @@ export default function TacticsBoard({
     setThroughHover(null)
   }
 
+  // 액션을 고른 뒤에는 기존 버튼 창을 닫는다. 메뉴가 목표 영역을 덮어
+  // 슛·패스 입력을 먹어 버리던 문제를 막고, 선택한 모드만 유지한다.
+  const selectActionMode = (nextMode) => {
+    setMenuOpen(false)
+    setMode(nextMode)
+    setThroughId(null)
+    setThroughHover(null)
+  }
+
   const baseOf = Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }]))
   const homePos = (p) => (displayHome ? (displayHome[p.id] ?? baseOf[p.id]) : planPos[p.id])
   const oppPos = (o) => (displayOpp ? (displayOpp[o.id] ?? { x: o.x, y: o.y }) : { x: o.x, y: o.y })
@@ -150,6 +161,10 @@ export default function TacticsBoard({
   function startDrag(e, kind, key) {
     // 편집 모드는 interactive를 끈 채로 돌아간다 — 'edit'만 통과시킨다
     if (kind === 'edit' ? !editMode : !interactive) return
+    // 시트에 공 행동을 하나 설정한 뒤에는 새 드리블·패스·슛을 만들 수 없다.
+    // 단, 이미 그린 드리블의 도착점 조정과 오프볼 런 편집은 계속 허용한다.
+    const editingCurrentDribble = kind === 'dribble' && chain[chain.length - 1]?.type === 'dribble'
+    if (sheetLocked && (kind === 'ball' || kind === 'aim' || (kind === 'dribble' && !editingCurrentDribble))) return
     e.stopPropagation()
     e.target.setPointerCapture(e.pointerId)
     dragRef.current = { kind, key, startX: e.clientX, startY: e.clientY, moved: false }
@@ -158,7 +173,7 @@ export default function TacticsBoard({
   function handleMove(e) {
     // 스루패스 ②단계는 누르지 않고 움직이는 중에도 미리보기를 갱신해야 한다
     // (드래그가 아니라 탭으로 확정되므로 dragRef가 비어 있다)
-    if (interactive && mode === 'through' && throughId) setThroughHover(toPitch(e))
+    if (interactive && (mode === 'through' || mode === 'lobThrough') && throughId) setThroughHover(toPitch(e))
     const d = dragRef.current
     if (!d) return
     // 살짝 흔들린 클릭은 드래그로 치지 않는다
@@ -192,12 +207,12 @@ export default function TacticsBoard({
     }
     if (d.kind === 'run') {
       // 패스 조준 중이면 동료 탭이 곧 패스 대상 선택
-      if (!d.moved && mode === 'pass') {
+      if (!d.moved && (mode === 'pass' || mode === 'lob')) {
         closeMenu()
-        return onPassCommit(d.key, null)
+        return onPassCommit(d.key, null, mode === 'lob' ? 'lob' : 'ground')
       }
       // 스루패스 ①단계: 받을 동료 선택 (②단계는 빈 공간 탭 — boardDown)
-      if (!d.moved && mode === 'through' && !throughId) {
+      if (!d.moved && (mode === 'through' || mode === 'lobThrough') && !throughId) {
         setThroughId(d.key)
         return
       }
@@ -209,6 +224,7 @@ export default function TacticsBoard({
     } else if (d.kind === 'dribble') {
       // 공 소유자 탭(드래그 아님) = 액션 메뉴. 드래그는 기존대로 즉시 드리블.
       if (!d.moved) {
+        if (sheetLocked) return
         setMenuOpen((v) => !v)
         setMode(null)
         return
@@ -234,14 +250,18 @@ export default function TacticsBoard({
   // 빈 잔디 탭 — 드리블 조준 중이면 그 지점이 도착점, 아니면 메뉴를 닫는다
   function boardDown(e) {
     if (!interactive) return
+    if (sheetLocked && mode && mode !== 'stats') {
+      closeMenu()
+      return
+    }
     if (mode === 'dribble') {
       onDribbleSet(toPitch(e), true)
       closeMenu()
       return
     }
     // 스루패스 ②단계: 동료가 뛰어들 공간을 찍는다
-    if (mode === 'through' && throughId) {
-      onThroughCommit(throughId, toPitch(e))
+    if ((mode === 'through' || mode === 'lobThrough') && throughId) {
+      onThroughCommit(throughId, toPitch(e), mode)
       closeMenu()
       return
     }
@@ -259,6 +279,7 @@ export default function TacticsBoard({
   }
 
   function aimDown(e) {
+    if (sheetLocked) return
     e.stopPropagation()
     e.target.setPointerCapture(e.pointerId)
     dragRef.current = { kind: 'aim', startX: e.clientX, startY: e.clientY, moved: true }
@@ -276,6 +297,10 @@ export default function TacticsBoard({
   // 메뉴·조준 UI의 기준점 = 체인 끝에서 공을 갖게 될 선수의 계획상 위치
   const carrierPos = carrierId ? planPos[carrierId] : null
   const byIdName = (id) => players.find((p) => p.id === id)?.name ?? '동료'
+  // 로빙 중인 공은 작게 표시해 평면 보드에서도 높이를 읽을 수 있게 한다.
+  const ballHeight = clamp(ballPos?.height ?? 0, 0, 1)
+  // 높이 떠 있는 로빙 공은 카메라 쪽으로 가까워진 것처럼 더 크게 보인다.
+  const ballRadius = 0.95 * (1 + ballHeight * 0.6)
 
   return (
     <svg
@@ -362,10 +387,6 @@ export default function TacticsBoard({
             fill="rgba(120, 200, 255, 0.05)" stroke="rgba(120, 200, 255, 0.45)"
             strokeWidth="0.22" strokeDasharray="1.2 1"
           />
-          <circle
-            cx={c.x} cy={c.y} r={c.r * REACH_EASY}
-            fill="none" stroke="rgba(120, 200, 255, 0.3)" strokeWidth="0.18" strokeDasharray="0.7 0.9"
-          />
         </g>
       ))}
 
@@ -398,19 +419,20 @@ export default function TacticsBoard({
       {/* 공 전개 체인 (드리블/패스/슛) */}
       {chain.map((leg, i) => {
         const badge = quadPoint(leg.from, leg.ctrl, leg.to, 0.3)
+        const color = legColor(leg)
         return (
           <g key={`leg-${i}`} pointerEvents="none" opacity={interactive ? 1 : 0.3}>
             <path
               d={qPath(leg.from, leg.ctrl, leg.to)}
               fill="none"
-              stroke={LEG_COLOR[leg.type]}
+              stroke={color}
               strokeWidth="0.6"
-              strokeDasharray="1.8 1.1"
+              strokeDasharray={isLobKind(leg.passKind) ? '0.8 0.8' : '1.8 1.1'}
               markerEnd={LEG_MARKER[leg.type]}
             />
-            <circle cx={badge.x} cy={badge.y} r="1.1" fill="#10141c" stroke={LEG_COLOR[leg.type]} strokeWidth="0.25" />
-            <text x={badge.x} y={badge.y + 0.6} textAnchor="middle" fontSize="1.7" fontWeight="700" fill={LEG_COLOR[leg.type]}>
-              {i + 1}
+            <circle cx={badge.x} cy={badge.y} r="1.1" fill="#10141c" stroke={color} strokeWidth="0.25" />
+            <text x={badge.x} y={badge.y + 0.6} textAnchor="middle" fontSize="1.7" fontWeight="700" fill={color}>
+              {isLobKind(leg.passKind) ? `↟${i + 1}` : i + 1}
             </text>
           </g>
         )
@@ -559,7 +581,7 @@ export default function TacticsBoard({
               key={i}
               cx={p.x}
               cy={p.y}
-              r={0.25 + (0.55 * (i + 1)) / ballTrail.length}
+              r={(0.25 + (0.55 * (i + 1)) / ballTrail.length) * (1 + (p.height ?? 0) * 0.35)}
               fill="#fff"
               opacity={(0.4 * (i + 1)) / ballTrail.length}
             />
@@ -575,8 +597,8 @@ export default function TacticsBoard({
           onPointerDown={(e) => !shotTaken && startDrag(e, 'ball')}
         >
           <circle r={HIT.ball} fill="transparent" />
-          <circle r="0.95" fill="#fff" stroke="#10141c" strokeWidth="0.25" />
-          <circle r="0.38" fill="#10141c" />
+          <circle r={ballRadius} fill="#fff" stroke="#10141c" strokeWidth="0.25" />
+          <circle r={ballRadius * 0.4} fill="#10141c" />
         </g>
       )}
 
@@ -628,11 +650,12 @@ export default function TacticsBoard({
       )}
 
       {/* 스루패스 조준 — ①받을 동료 고르기 / ②뛰어들 공간 찍기 */}
-      {interactive && mode === 'through' && (() => {
+      {interactive && (mode === 'through' || mode === 'lobThrough') && (() => {
         const recvOffside = throughId && offsidePosIds?.has(throughId)
+        const passKind = mode === 'lobThrough' ? 'lobThrough' : 'through'
         // 커서 지점과 "실제로 확정될 지점"이 다르면(= 당겨지면) 그 차이를 보여준다
         const want = throughHover
-        const real = want && throughId && throughTargetOf ? throughTargetOf(throughId, want) : null
+        const real = want && throughId && throughTargetOf ? throughTargetOf(throughId, want, passKind) : null
         const pulled = real && want && Math.hypot(real.x - want.x, real.y - want.y) > 0.4
         return (
           <g pointerEvents="none">
@@ -700,13 +723,54 @@ export default function TacticsBoard({
       })()}
 
       {/* ── 액션 메뉴 — 공 소유자를 탭하면 열린다 ────────────────────── */}
+      {interactive && mode === 'pass-select' && carrierPos && (
+        <g>
+          {(() => {
+            const items = [
+              { key: 'pass', label: '패스', hint: '낮게 동료에게', color: '#ffd23e' },
+              { key: 'lob', label: '로빙패스', hint: '높게 동료에게', color: LOB_COLOR },
+              { key: 'through', label: '스루패스', hint: '동료 → 공간', color: '#7ee0a8' },
+              { key: 'lobThrough', label: '로빙스루', hint: '높게 → 공간', color: LOB_COLOR },
+            ]
+            const mx = clamp(carrierPos.x - MENU.w, 2, PITCH_W - MENU.w * 2 - 2)
+            const my = clamp(carrierPos.y - MENU.h - 2, 2, PITCH_H - MENU.h * 2 - 2)
+            return (
+              <>
+                <line x1={carrierPos.x} y1={carrierPos.y} x2={mx + MENU.w} y2={my + MENU.h}
+                  stroke="#3d4a63" strokeWidth="0.3" pointerEvents="none" />
+                {items.map((it, i) => {
+                  const bx = mx + (i % 2) * MENU.w
+                  const by = my + Math.floor(i / 2) * MENU.h
+                  return (
+                    <g key={it.key} className="menu-item" onPointerDown={(e) => {
+                      e.stopPropagation()
+                      selectActionMode(it.key)
+                    }}>
+                      <rect x={bx} y={by} width={MENU.w - 0.6} height={MENU.h - 0.6} rx="1.2"
+                        fill="rgba(16,20,28,0.92)" stroke="#3d4a63" strokeWidth="0.3" />
+                      <text x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h / 2 - 0.3}
+                        textAnchor="middle" fontSize="2.35" fontWeight="700" fill={it.color} pointerEvents="none">
+                        {it.label}
+                      </text>
+                      <text x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h - 1.7}
+                        textAnchor="middle" fontSize="1.55" fill="#6b7385" pointerEvents="none">
+                        {it.hint}
+                      </text>
+                    </g>
+                  )
+                })}
+              </>
+            )
+          })()}
+        </g>
+      )}
+
       {interactive && menuOpen && carrierPos && (
         <g>
           {(() => {
             const items = [
               { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2' },
-              { key: 'pass', label: '패스', hint: '동료 탭', color: '#ffd23e' },
-              { key: 'through', label: '스루패스', hint: '동료→공간', color: '#7ee0a8' },
+              { key: 'pass-select', label: '패스', hint: '종류 선택', color: '#ffd23e' },
               { key: 'shot', label: '슛', hint: '골문 조준', color: '#ff6b5e', disabled: shotTaken },
               { key: 'stats', label: '능력치', hint: '카드 보기', color: '#9aa3b5' },
             ]
@@ -735,7 +799,7 @@ export default function TacticsBoard({
                           closeMenu()
                           onPlayerClick(carrierId)
                         } else {
-                          setMode(it.key)
+                          selectActionMode(it.key)
                         }
                       }}
                     >
