@@ -773,7 +773,9 @@ export default function TacticsBoard({
             const items = [
               { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2', disabled: shotTaken },
               { key: 'pass-select', label: '패스', hint: '종류 선택', color: '#ffd23e', disabled: shotTaken },
-              { key: 'shot', label: '슛', hint: '골문 조준', color: '#ff6b5e', disabled: shotTaken },
+              // 슛은 잠그지 않는다 — 새 액션이 붙는 게 아니라 이미 찬 슛의 목적지를
+              // 다시 겨누는 것이라, 막으면 한 번 찍은 코스를 영영 못 고친다.
+              { key: 'shot', label: '슛', hint: shotTaken ? '다시 조준' : '골문 조준', color: '#ff6b5e' },
               { key: 'stats', label: '능력치', hint: '카드 보기', color: '#9aa3b5' },
             ]
             const rows = Math.ceil(items.length / 2)

@@ -33,6 +33,11 @@ const INITIAL_SEED = SHARED ? SHARED.seed : HAS_SEED_LINK ? SEED_PARAM : rollSee
 // false로 접혀서, 관련 UI와 저장 코드는 배포 번들에 아예 들어가지 않는다.
 const EDITABLE = import.meta.env.DEV
 
+// 가동범위 동심원은 시트 모드의 대표 시각 요소다. 원샷 모드에서도 드리블 뒤에는
+// 같은 원이 뜨는데(아래 oneShotDribbleIndex), 튜토리얼에서 시트 모드를 설명하기 전에
+// 먼저 나타나면 "모드가 저절로 바뀐 건가?"로 읽힌다. 그래서 시트 단계 전까지는 감춘다.
+const SHEET_STEP_INDEX = TUTORIAL_STEPS.findIndex((s) => s.id === 'sheet')
+
 const TYPE_LABEL = { dribble: '드리블', pass: '패스', shot: '슛' }
 const PASS_KIND_LABEL = {
   ground: '패스',
@@ -245,13 +250,17 @@ function App() {
   const runWindowIndex = sheetMode ? editIndex : oneShotDribbleIndex
   const runWindowLeg = runWindowIndex != null ? chain[runWindowIndex] : null
   const runWindowDur = runWindowLeg ? actionDuration(runWindowLeg) : 0
+  // 튜토리얼이 시트 단계에 닿기 전에는 동심원을 숨긴다 (SHEET_STEP_INDEX 주석 참고).
+  // 시트 모드를 직접 켠 상태라면 그건 사용자가 의도한 것이므로 그대로 보여준다.
+  const tutHidesReach = tutStep != null && tutStep < SHEET_STEP_INDEX && !sheetMode
   const reachCircles = useMemo(() => {
+    if (tutHidesReach) return null
     if (runWindowIndex == null || isViewingPast || phase !== 'plan' || !(runWindowDur > 0)) return null
     const at = snaps[runWindowIndex] ?? planPos
     return basePlayers
       .filter((p) => p.id !== carrierAt[runWindowIndex]) // 공 소유자는 액션 본인이라 제외
       .map((p) => ({ id: p.id, ...at[p.id], r: reachRadius(p, runWindowDur) }))
-  }, [runWindowIndex, isViewingPast, phase, runWindowDur, snaps, planPos, carrierAt, basePlayers])
+  }, [tutHidesReach, runWindowIndex, isViewingPast, phase, runWindowDur, snaps, planPos, carrierAt, basePlayers])
 
   // 시트 확정 — 이번 시트에 공 액션이 있어야 넘어갈 수 있다
   const canConfirmSheet = sheetMode && phase === 'plan' && !isViewingPast && chain.length > sheetCount
@@ -390,6 +399,15 @@ function App() {
   // 시트 모드에서는 시트 1장에 공 액션 1개 — 이미 그렸으면 확정하고 넘어가야 한다
   const sheetFull = sheetMode && chain.length > sheetCount
   const addPass = (receiverId, to, passKind = 'ground') => {
+    // 슛 재조준 — 이미 슛으로 끝나 있으면 새 액션을 붙이지 않고 목적지만 갈아끼운다.
+    // 슛은 전개의 끝이라 항상 마지막 액션이므로 마지막 하나만 보면 된다.
+    // (액션이 늘지 않으므로 sheetFull이어도 허용한다 — 시트가 넘치는 게 아니다)
+    // ctrl은 비운다: 곡률 핸들은 옛 도착점 기준이라 목적지가 바뀌면 뜻이 달라진다.
+    const last = chainActs[chainActs.length - 1]
+    if (receiverId === 'GOAL' && last?.type === 'shot') {
+      setChainActs((cs) => cs.map((c, i) => (i === cs.length - 1 ? { ...c, to, ctrl: null } : c)))
+      return
+    }
     if (sheetFull) return
     setChainActs((cs) => [
       ...cs,
