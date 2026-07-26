@@ -173,6 +173,7 @@ export default function TacticsBoard({
       onRunSet(d.key, pt, !d.began)
       d.began = true
     } else if (d.kind === 'dribble') {
+      if (shotTaken) return // 슛으로 끝난 뒤에는 드래그 드리블도 막는다
       onDribbleSet(pt, !d.began)
       d.began = true
     } else if (d.kind === 'ball') setBallDrag(pt)
@@ -703,10 +704,11 @@ export default function TacticsBoard({
       {interactive && menuOpen && carrierPos && (
         <g>
           {(() => {
+            // 슛으로 전개가 끝나면 더 이상 액션을 붙일 수 없다 — 능력치 보기만 남긴다.
             const items = [
-              { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2' },
-              { key: 'pass', label: '패스', hint: '동료 탭', color: '#ffd23e' },
-              { key: 'through', label: '스루패스', hint: '동료→공간', color: '#7ee0a8' },
+              { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2', disabled: shotTaken },
+              { key: 'pass', label: '패스', hint: '동료 탭', color: '#ffd23e', disabled: shotTaken },
+              { key: 'through', label: '스루패스', hint: '동료→공간', color: '#7ee0a8', disabled: shotTaken },
               { key: 'shot', label: '슛', hint: '골문 조준', color: '#ff6b5e', disabled: shotTaken },
               { key: 'stats', label: '능력치', hint: '카드 보기', color: '#9aa3b5' },
             ]
@@ -756,7 +758,7 @@ export default function TacticsBoard({
                         x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h - 1.7}
                         textAnchor="middle" fontSize="1.8" fill="#6b7385" pointerEvents="none"
                       >
-                        {it.disabled ? '슛 완료' : it.hint}
+                        {it.disabled ? '슛으로 종료' : it.hint}
                       </text>
                     </g>
                   )

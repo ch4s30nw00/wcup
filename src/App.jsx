@@ -25,7 +25,9 @@ const INITIAL_MATCH = findMatch(QS.get('m'))
 const SHARED = decodeShare(QS.get('p'), { playerIds: buildMatch(INITIAL_MATCH).playerIds })
 const SEED_PARAM = Number(QS.get('seed'))
 const HAS_SEED_LINK = !!SHARED || (Number.isFinite(SEED_PARAM) && SEED_PARAM > 0)
-const SEED = SHARED ? SHARED.seed : HAS_SEED_LINK ? SEED_PARAM : Math.floor(Math.random() * 1e9)
+const rollSeed = () => Math.floor(Math.random() * 1e9)
+// 공유 링크로 들어왔으면 그 시드로 시작(결과 재현), 아니면 새로 굴린다.
+const INITIAL_SEED = SHARED ? SHARED.seed : HAS_SEED_LINK ? SEED_PARAM : rollSeed()
 
 // 좌표 편집은 장면을 만드는 사람이 쓰는 개발 도구다. import.meta.env.DEV는 빌드 때
 // false로 접혀서, 관련 UI와 저장 코드는 배포 번들에 아예 들어가지 않는다.
@@ -90,6 +92,10 @@ function App() {
   const playbackRef = useRef(null) // playSequence가 돌려주는 { cancel }
   const [mutedUI, setMutedUI] = useState(isMuted())
   const [copied, setCopied] = useState(null) // 공유 버튼 피드백: null | 'ok' | 'fail'
+  // 시드 — "다음 실행에 쓸 값". 확정할 때마다 이 값으로 판을 돌리고 곧바로 새로 굴려 두므로,
+  // "다시 조정" 없이 실행만 다시 눌러도 매번 다른 결과가 나온다(A안). 공유 링크에는 실행된
+  // 결과의 시드(result.seed)가 박혀서, 받은 사람은 같은 첫 판을 그대로 재현한다.
+  const [seed, setSeed] = useState(INITIAL_SEED)
   const goalSoundRef = useRef(false) // 재생 1회당 골 함성 1번만
 
   // 경기가 바뀌면 byId가 통째로 갈리므로 basePos도 같이 새로 만들어져야 한다
@@ -348,9 +354,9 @@ function App() {
   // --- 공유 링크 ---
   // 시드 + 전술을 통째로 담은 URL. 주소창도 같이 갱신해 두면 버튼을 못 쓰는 환경
   // (클립보드 권한 거부 등)에서도 주소창 복사가 곧 공유가 된다.
-  const currentShareUrl = () =>
+  const shareUrlForSeed = (seedVal) =>
     shareUrl({
-      seed: SEED,
+      seed: seedVal,
       chainActs,
       runs,
       playerIds: PLAYER_IDS,
@@ -358,6 +364,10 @@ function App() {
       origin: window.location.origin,
       pathname: window.location.pathname,
     })
+  // 버튼·주소창 표시용: 이미 실행한 결과가 있으면 그 결과의 시드를, 아직 안 돌렸으면
+  // 다음에 쓸 시드를 담는다. 확정 때마다 시드를 새로 굴리므로 "다음 시드"와 "방금 결과의
+  // 시드"가 다를 수 있어, 공유는 반드시 화면에 보인 결과(result.seed)를 따라가야 한다.
+  const currentShareUrl = () => shareUrlForSeed(result?.seed ?? seed)
   async function copyShareLink() {
     const url = currentShareUrl()
     try {
@@ -373,11 +383,12 @@ function App() {
   // 판정은 resolveSequence(스냅샷 1회), 연출은 playSequence(engine/playback.js)가 전담
   function handleConfirm() {
     if (!chain.length || phase === 'playing') return
+    const playSeed = seed // 이번 판에 쓸 시드 (공유 링크에 박히는 값)
     // 실행하는 순간의 전술을 주소창에 반영 — 새로고침·주소창 복사로도 같은 장면이 재현된다
-    window.history.replaceState(null, '', currentShareUrl())
+    window.history.replaceState(null, '', shareUrlForSeed(playSeed))
     const actions = chain.map((leg) => ({ ...leg, actor: byId[leg.actorId] }))
     // players: 수비 재배치의 마킹 대상 (계획 시작 좌표 기준 — 런 반영은 액션 진행 중 근사)
-    const res = resolveSequence(actions, { opponents, players: basePlayers, seed: SEED })
+    const res = resolveSequence(actions, { opponents, players: basePlayers, seed: playSeed })
     setResult(res)
     setEggClosed(false)
     setPhase('playing')
@@ -395,10 +406,13 @@ function App() {
       opponents,
       byId,
       ballOwnerId: moment.ball,
-      seed: SEED,
+      seed: playSeed,
       onFrame: setFrame,
       onDone: () => setPhase('done'),
     })
+    // 다음 실행을 위해 새 시드를 굴려 둔다 — "다시 조정" 없이 확정을 또 눌러도 결과가 바뀐다.
+    // 방금 판은 playSeed로 이미 돌았고, 공유는 result.seed(=playSeed)를 따라가므로 안전하다.
+    setSeed(rollSeed())
   }
 
   // 골 순간(플래시가 뜨는 프레임)에 함성 — playback이 이미 그 타이밍을 알고 있으므로
@@ -422,6 +436,7 @@ function App() {
     setPhase('plan')
     setFrame(null)
     setResult(null)
+    // 시드 재굴림은 handleConfirm이 실행 때마다 하므로 여기서는 따로 굴리지 않는다.
   }
   function clearAll() {
     backToPlan()
@@ -436,6 +451,7 @@ function App() {
   // 보드에서 경기 선택으로 — 재생 중이면 끊고 결과를 정리 (전술 설계는 유지)
   function goToSelect() {
     backToPlan()
+    setTutStep(null) // 튜토리얼 도중 뒤로 나가면 코치 창도 닫는다
     setScreen('select')
   }
 
@@ -443,6 +459,7 @@ function App() {
   // 경기 선택 → 보드. 다른 경기를 고르면 전술을 비운다 — 체인·런은 그 경기의 선수와
   // 좌표를 가리키고 있어서 그대로 두면 다른 명단 위에 얹힌 엉뚱한 전개가 된다.
   function pickMatch(id) {
+    setTutStep(null) // 튜토리얼 코치가 떠 있었다면 경기 진입 시 닫는다
     if (id !== matchId) {
       clearAll()
       setSelectedId(null)
