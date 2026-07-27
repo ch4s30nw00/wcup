@@ -8,7 +8,7 @@ import { resolveSequence, planOffside, defenseTimeline, DEF_RADIUS } from './eng
 import { checkOffside } from './engine/offside'
 import { initDefense } from './engine/defense'
 import { playSequence } from './engine/playback'
-import { midpoint, ctrlFromHandle } from './engine/geometry'
+import { midpoint, ctrlFromHandle, clampHandle, clampCtrl } from './engine/geometry'
 import { actionDuration, reachRadius, clampToReach, throughPassSpeed, throughTarget } from './engine/sheets'
 import { isMuted, setMuted, resumeAudio, whistle, goalRoar, startMurmur, stopMurmur } from './engine/sound'
 import { decodeShare, shareUrl } from './engine/share'
@@ -148,7 +148,7 @@ function App() {
           if (throughBallFrom && r.id === throughReceiverId && player) {
             to = throughTarget({ runnerFrom: from, ballFrom: throughBallFrom, want: to, player, passKind })
           }
-          runLegMap[key] = { key, id: r.id, from, to, ctrl: r.ctrl ?? midpoint(from, to), afterIndex: r.afterIndex }
+          runLegMap[key] = { key, id: r.id, from, to, ctrl: clampCtrl(from, to, r.ctrl, 'run'), afterIndex: r.afterIndex }
           pos[r.id] = to
         }
       })
@@ -167,9 +167,12 @@ function App() {
         // Clamp parallel off-ball runs again while deriving the actual chain.
         // This also repairs older shared plans whose saved target predates the
         // reach-radius rule, so the subsequent pass uses the same endpoint.
-        const timingLeg = { type: 'dribble', from: cur, to: act.to, ctrl: act.ctrl ?? midpoint(cur, act.to) }
+        // 곡률은 여기서 한 번 더 상한을 통과시킨다 — 공유 링크·옛 저장분처럼
+        // 드래그를 거치지 않고 들어온 ctrl도 판정·연출이 같은 궤적을 보게 된다.
+        const ctrl = clampCtrl(cur, act.to, act.ctrl, 'dribble')
+        const timingLeg = { type: 'dribble', from: cur, to: act.to, ctrl }
         applyRunsAt(index, { timeBudget: actionDuration(timingLeg) })
-        const leg = { type: 'dribble', actorId: carrier, from: cur, to: act.to, ctrl: act.ctrl ?? midpoint(cur, act.to), index }
+        const leg = { type: 'dribble', actorId: carrier, from: cur, to: act.to, ctrl, index }
         pos[carrier] = act.to
         return leg
       }
@@ -191,7 +194,7 @@ function App() {
         receiverId: act.receiverId,
         from: cur,
         to,
-        ctrl: act.ctrl ?? midpoint(cur, to),
+        ctrl: clampCtrl(cur, to, act.ctrl, act.type),
         index,
       }
       if (act.receiverId !== 'GOAL') {
@@ -372,7 +375,9 @@ function App() {
   const setRunHandle = (key, h) => {
     const leg = runLegs.find((r) => r.key === key)
     if (!leg) return
-    setRuns((rs) => rs.map((r, i) => (i === key ? { ...r, ctrl: ctrlFromHandle(leg.from, leg.to, h) } : r)))
+    // 상한을 넘겨 끌면 핸들이 허용 범위 경계에서 멈춘다 (state에도 잘린 값만 남긴다)
+    const c = ctrlFromHandle(leg.from, leg.to, clampHandle(leg.from, leg.to, h, 'run'))
+    setRuns((rs) => rs.map((r, i) => (i === key ? { ...r, ctrl: c } : r)))
   }
 
   // --- 체인 편집 ---
@@ -473,7 +478,8 @@ function App() {
   const setChainHandle = (i, h) => {
     const leg = chain[i]
     if (!leg) return
-    setChainActs((cs) => cs.map((c, idx) => (idx === i ? { ...c, ctrl: ctrlFromHandle(leg.from, leg.to, h) } : c)))
+    const ctrl = ctrlFromHandle(leg.from, leg.to, clampHandle(leg.from, leg.to, h, leg.type))
+    setChainActs((cs) => cs.map((c, idx) => (idx === i ? { ...c, ctrl } : c)))
   }
   // 체인이므로 그 뒤도 함께 삭제. 시트 모드면 확정 시트 수도 되돌린다.
   const removeChainFrom = (i) => {
