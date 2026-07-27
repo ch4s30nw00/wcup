@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import TacticsBoard from './components/TacticsBoard'
 import { TitleScreen, MatchSelect } from './components/Intro'
+import Kickoff from './components/Kickoff'
 import { TutorialCoach } from './components/Tutorial'
 import { TUTORIAL_STEPS } from './components/tutorialSteps'
 import { resolveSequence, planOffside, defenseTimeline, DEF_RADIUS } from './engine/resolve'
@@ -56,7 +57,9 @@ const OUTCOME_LABEL = {
 }
 
 function App() {
-  // 화면 흐름: intro → select → board. seed 공유 링크는 재현이 목적이므로 인트로를 건너뛴다.
+  // 화면 흐름: intro → select → kickoff → board.
+  // seed 공유 링크는 재현이 목적이므로 인트로도 오프닝도 건너뛰고 바로 보드로 간다 —
+  // 링크를 받은 사람이 보러 온 건 "그 사람이 짠 전술"이지 경기 소개가 아니다.
   const [screen, setScreen] = useState(HAS_SEED_LINK ? 'board' : 'intro')
   // 선택된 경기. 여기서 온필드 명단·시작 좌표가 전부 유도되므로, 경기가 바뀌면
   // 아래 파생값이 통째로 새로 계산된다(그래서 전술도 같이 비워야 한다 — pickMatch 참고).
@@ -583,7 +586,13 @@ function App() {
       setEditMode(false)
       setSaveMsg(null)
     }
-    setScreen('board')
+    // 보드로 바로 가지 않고 킥오프 오프닝을 한 번 거친다.
+    // 여기서 소리를 깨워 둔다 — 이 클릭이 사용자 제스처라 AudioContext를 만들 수 있는
+    // 유일한 타이밍이고, 보드에 들어가서야 소리를 켜면 첫 실행 효과음이 묵음으로 샌다.
+    resumeAudio()
+    whistle({ duration: 0.42, freq: 2450 })
+    startMurmur()
+    setScreen('kickoff')
   }
 
   // ── 튜토리얼 ───────────────────────────────────────────────────────
@@ -638,6 +647,20 @@ function App() {
         onPick={pickMatch}
         onBack={() => setScreen('intro')}
         onTutorial={startTutorial}
+      />
+    )
+
+  // 킥오프 오프닝 — 경기 소개를 3초쯤 보여주고 보드로 넘긴다.
+  // 튜토리얼(startTutorial)은 여기를 거치지 않는다: 배우러 온 사람에게 경기 소개는 군더더기고,
+  // 튜토리얼 보드는 특정 경기의 그 장면이 아니라 조작을 익히는 자리다.
+  if (screen === 'kickoff')
+    return (
+      <Kickoff
+        matchId={matchId}
+        scenario={scenario}
+        moment={moment}
+        carrier={byId[moment.ball]}
+        onDone={() => setScreen('board')}
       />
     )
 

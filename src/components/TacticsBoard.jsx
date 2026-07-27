@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { quadPoint, handleFromCtrl } from '../engine/geometry'
 import { josaGa, josaEun } from '../engine/commentary'
+// 킷은 오프닝 화면과 공유한다 (data/kits.js) — 유니폼 색은 한 곳에서만 정한다.
+import { kitsFor } from '../data/kits'
 
 // StatsBomb 좌표계와 동일한 120x80 피치. x: 0(우리 골대) → 120(상대 골대)
 const PITCH_W = 120
@@ -9,35 +11,6 @@ const DOT_R = 1.4
 const LEG_COLOR = { dribble: '#dbe4f2', pass: '#ffd23e', shot: '#ff6b5e' }
 const LOB_COLOR = '#8de7ff'
 
-// 팀 킷. 기본값은 조작하는 팀(홈) 빨강 / 상대 남색이고, 실제 유니폼이 그와 어긋나
-// 두 팀을 구분하기 어려운 경기만 덮어쓴다.
-//
-// 팀이 아니라 경기로 거는 이유: 같은 팀도 상대에 따라 홈/원정 킷이 갈린다.
-// 스페인은 포르투갈(빨강)을 만나면 흰색, 결승에서 아르헨티나를 만나면 빨간색이다.
-//
-// num을 따로 두는 이유: 흰 킷에서 등번호를 흰색으로 쓰면 보이지 않는다.
-// ring은 테두리이자 공 소유자를 감싸는 점선 색이라, 밝은 킷에서는 어두워야 한다.
-const KIT = {
-  RED: { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' },
-  RED_GKGREEN: { body: '#c8102e', gk: '#2f9e44', ring: '#fff', num: '#fff' }, // 결승 스페인 — GK만 녹색
-  WHITE: { body: '#f2f5fa', gk: '#f0a500', ring: '#1a2330', num: '#10141c' },
-  SKY: { body: '#75aadb', gk: '#3b2f6f', ring: '#10314f', num: '#0d2438' },
-  SKY_GKLIME: { body: '#75aadb', gk: '#a5d64c', ring: '#10314f', num: '#0d2438' }, // 결승 아르헨티나 — GK만 연두색
-  NAVY: { body: '#1e3a6e', gk: '#3f6f2f', ring: '#cdd6e8', num: '#fff' },
-  NAVY_GKTEAL: { body: '#1e3a6e', gk: '#17a2b8', ring: '#cdd6e8', num: '#fff' }, // 4강 아르헨티나 — GK 청록
-  WHITE_GKYELLOW: { body: '#f2f5fa', gk: '#ffd23e', ring: '#c8102e', num: '#c8102e' }, // 4강 잉글랜드 — 흰 킷·빨간 테두리/번호, GK 노랑
-  RED_GKTEAL: { body: '#c8102e', gk: '#17a2b8', ring: '#fff', num: '#fff' }, // 2022 한국 — 빨강 킷, GK 청록
-  WHITE_GKGOLD: { body: '#f4f6fa', gk: '#ffd23e', ring: '#10141c', num: '#10141c' }, // 2022 포르투갈 — 흰 킷·검은 테두리/번호, GK 노랑
-  BRAZIL: { body: '#ffcb05', gk: '#7b2cbf', ring: '#009c3b', num: '#009c3b' }, // 브라질 — 노랑 킷·초록 테두리/번호, GK 보라
-}
-// match_id → [홈 킷, 원정 킷]
-const MATCH_KIT = {
-  kor_por_2022: [KIT.RED_GKTEAL, KIT.WHITE_GKGOLD], // 홈=한국 빨강(GK 청록) / 원정=포르투갈 흰색(GK 노랑)
-  por_esp_2026_r16: [KIT.WHITE, KIT.RED], // 홈=ESP 흰색 / 원정=포르투갈 빨강
-  bra_nor_2026_r16: [KIT.RED_GKGREEN, KIT.BRAZIL], // 홈=노르웨이 빨강(GK 녹색) / 원정=브라질 노랑(GK 보라)
-  eng_arg_2026_sf: [KIT.NAVY_GKTEAL, KIT.WHITE_GKYELLOW], // 홈=아르헨티나 남색(GK 청록) / 원정=잉글랜드 흰색(GK 노랑)
-  arg_esp_2026_final: [KIT.RED_GKGREEN, KIT.SKY_GKLIME], // 홈=ESP 빨강(GK 녹색) / 원정=아르헨티나 하늘색(GK 연두)
-}
 const LEG_MARKER = { dribble: 'url(#ah-move)', pass: 'url(#ah-pass)', shot: 'url(#ah-shot)' }
 
 // 터치 화면은 손가락 기준 — 보이지 않는 히트 영역과 클릭/드래그 판정 거리를 키운다.
@@ -96,13 +69,13 @@ export default function TacticsBoard({
   throughTargetOf, // (receiverId, pt) → 실제로 성립하는 도착점 (조준 미리보기용, 확정과 같은 계산)
   offsidePosIds, // 지금 오프사이드 위치에 서 있는 아군 id Set
   flipX, // 보기만 좌우 반전 — 그날 중계에서 홈팀이 왼쪽으로 공격한 경기 (좌표는 그대로)
-  matchId, // 킷 색을 고르는 데만 쓴다 (MATCH_KIT 참고)
+  matchId, // 킷 색을 고르는 데만 쓴다 (data/kits.js 참고)
   // 좌표 편집 모드(개발 전용). 켜면 전술 조작 대신 양 팀 아무나 끌어서 자리를 옮긴다.
   // 장면 좌표를 중계 화면 보고 맞추는 용도라, 실제 게임 조작과는 완전히 분리한다.
   editMode,
   onEditMove, // (playerId, {x, y})
 }) {
-  const [homeKit, awayKit] = MATCH_KIT[matchId] ?? [KIT.RED, KIT.NAVY]
+  const [homeKit, awayKit] = kitsFor(matchId)
   const svgRef = useRef(null)
   const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
   const [ballDrag, setBallDrag] = useState(null)
