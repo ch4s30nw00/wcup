@@ -131,7 +131,8 @@ const airOf = (p) => 0.5 * norm(p.stats.jumping) + 0.3 * normH(p.heightCm) + 0.2
 const bodyOf = (p) => 0.5 * norm(p.stats.strength) + 0.5 * norm(p.stats.balance)
 
 // --- 슈팅: 로지스틱 xG ------------------------------------------------------
-// z = B0 + B_DIST·lsFactor·D + B_ANG·θ + B_SKILL·(S_eff − SEFF0) + Σ B_BLOCK·defScale·e^(−d/R_BLOCK)
+// z = B0 + B_DIST·lsFactor·(D + bend) + B_ANG·θ + B_SKILL·(S_eff − SEFF0) + Σ B_BLOCK·defScale·e^(−d/R_BLOCK)
+//   bend = 호 길이 − 현 길이 (휘어 찬 만큼 실제 비행 거리가 늘어난다. 직선 슛이면 0)
 // GK 제외 = 이중계상 방지 (로지스틱 xG는 이미 "평균 키퍼 모집단"에서 캘리브레이션된 값)
 // prev(직전 액션)가 크로스면 헤더 슛: 골결:헤더 = 3:7 + 공중 듀얼 (데이터 요청 §2·3)
 export function calcShot(action, opponents, prev = null) {
@@ -163,11 +164,16 @@ export function calcShot(action, opponents, prev = null) {
   if (theta > Math.PI) theta = 2 * Math.PI - theta
 
   const pts = samplePath(from, action.ctrl, action.to)
+  // 휘어 찬 슛은 공이 실제로 더 멀리 난다. 거리 감쇠를 직선 D로만 매기면
+  // "크게 휘려 그려서 블로커만 피하고 xG는 직선 슛 그대로"가 성립해버린다.
+  // 호 길이가 현보다 길어진 만큼을 거리에 더해 그 공짜를 없앤다.
+  // (곡률 자체는 geometry.clampCtrl이 이미 상한을 씌운 상태 — 여기선 남은 휨의 값을 매긴다)
+  const bendExtra = Math.max(0, pathLength(pts) - Math.hypot(action.to.x - from.x, action.to.y - from.y))
   const block = pathPressure(pts, opponents, C.B_BLOCK, C.R_BLOCK, {
     excludeGK: true,
     betaScale: (o) => defScale(o, DEF_PRIMARY.shot(o)),
   })
-  let z = C.B0 + C.B_DIST * lsFactor * D + C.B_ANG * theta + C.B_SKILL * (sEff - C.SEFF0) + block.z
+  let z = C.B0 + C.B_DIST * lsFactor * (D + bendExtra) + C.B_ANG * theta + C.B_SKILL * (sEff - C.SEFF0) + block.z
 
   // 일반 xG는 평균 골키퍼를 이미 포함한다. 다만 슈터와 GK만 남은 1대1은
   // 공간·각도 우위가 크므로 별도 보너스를 준다. 슛길 중간에 필드 수비수가 있으면

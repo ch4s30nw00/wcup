@@ -11,7 +11,7 @@ import { matchScore } from '../src/engine/match.js'
 import { throughTarget, throughBallDuration, throughSpeedLimits, actionDuration, runSpeedOf } from '../src/engine/sheets.js'
 import { encodeShare, decodeShare } from '../src/engine/share.js'
 import { XT_GRID, xtAt, planScore, planGrade } from '../src/engine/xt.js'
-import { midpoint } from '../src/engine/geometry.js'
+import { midpoint, handleFromCtrl, clampCtrl, maxBend } from '../src/engine/geometry.js'
 import { K } from '../src/engine/constants.js'
 import { readFileSync } from 'node:fs'
 
@@ -186,6 +186,67 @@ console.log('[경합 게이트] 패스·슛에는 적용하지 않는다 (빠질
   checkDir(`무압박 패스 8m → ${(pass(8) * 100).toFixed(0)}% (< 100%)`, pass(8) < 1)
   const shot = probOf(calcShot(act('shot', { x: 108, y: 40 }, { x: 119, y: 40 }), []))
   checkDir(`무수비 슛 12m → ${(shot * 100).toFixed(0)}% (< 100%, 골결정력으로 빗나갈 수 있다)`, shot < 1)
+}
+
+// ── 2b-2. 곡률 상한 — "말도 안 되게 휘면 확률이 후해지는" 구멍 막기 ───
+console.log('\n[곡률 상한] 궤적을 무한히 휘어 수비를 우회할 수 없는가')
+{
+  const sag = (a, b, c) => {
+    const h = handleFromCtrl(a, c, b)
+    const m = midpoint(a, b)
+    return Math.hypot(h.x - m.x, h.y - m.y)
+  }
+  // 곡률 핸들(곡선 중점)을 hx,hy로 끌었을 때의 제어점
+  const ctrlAt = (a, b, hx, hy) => ({ x: 2 * hx - (a.x + b.x) / 2, y: 2 * hy - (a.y + b.y) / 2 })
+
+  const a = { x: 40, y: 40 }
+  const b = { x: 60, y: 40 } // 20m
+  const wild = ctrlAt(a, b, 50, 28) // 12m 휘게 끌기
+  for (const kind of ['pass', 'shot', 'dribble']) {
+    const got = sag(a, b, clampCtrl(a, b, wild, kind))
+    check(`20m ${kind} 최대 휨`, got, maxBend(20, kind), 0.02)
+  }
+  checkDir('휨 방향은 유지된다 (끈 쪽으로 휜다)', handleFromCtrl(a, clampCtrl(a, b, wild, 'pass'), b).y < 40)
+  checkDir('ctrl 없으면 직선(중점)', Math.abs(clampCtrl(a, b, null).y - 40) < 1e-9)
+  checkDir(
+    `가까우면 적게, 멀수록 크게 (6m→${maxBend(6, 'pass').toFixed(1)}m · 20m→${maxBend(20, 'pass').toFixed(1)}m · 45m→${maxBend(45, 'pass').toFixed(1)}m)`,
+    maxBend(6, 'pass') < maxBend(20, 'pass') && maxBend(20, 'pass') < maxBend(45, 'pass'),
+  )
+  checkDir('절대 상한이 없어 롱패스도 계속 커진다', maxBend(80, 'pass') > maxBend(45, 'pass'))
+  checkDir('최대로 휘어도 반원(50%)까지는 안 간다', maxBend(30, 'pass') < 0.5 * 30)
+
+  // 공의 조절점은 가운데 고정 — 좌우(휨)로만 움직이고 앞뒤로는 못 끈다 (사용자 요청 2026-07-27)
+  for (const kind of ['pass', 'shot']) {
+    const fwd = ctrlAt(a, b, 58, 36) // 앞으로 8m + 옆으로 4m 끌기
+    const h = handleFromCtrl(a, clampCtrl(a, b, fwd, kind), b)
+    checkDir(`${kind} 조절점은 앞뒤로 안 밀린다 (x ${h.x.toFixed(2)} = 중점 50)`, Math.abs(h.x - 50) < 1e-6)
+    checkDir(`${kind} 좌우(휨)는 그대로 먹는다 (y ${h.y.toFixed(2)})`, Math.abs(h.y - 36) < 1e-6)
+  }
+  {
+    // 드리블·런은 사람이 달리는 경로라 앞뒤 치우침을 조금 허용한다
+    const h = handleFromCtrl(a, clampCtrl(a, b, ctrlAt(a, b, 58, 36), 'dribble'), b)
+    checkDir(`드리블은 앞뒤 치우침 허용 (x ${h.x.toFixed(2)} ≠ 50)`, h.x > 50)
+  }
+
+  // 핵심 회귀: 예전엔 슛이 휘어도 거리 감쇠가 직선 D 그대로여서, 크게 휘어
+  // 블로커만 피하면 "수비 없는 직선 슛"과 같은 xG가 나왔다.
+  const from = { x: 100, y: 40 }
+  const to = { x: 119, y: 40 }
+  const def = defAt(109.5, 40) // 슛길 한가운데
+  const shotAt = (ctrl) => ({ type: 'shot', from, to, ctrl, actor: neutral() })
+  const xg = (ctrl, opp) => sigmoid(calcShot(shotAt(ctrl), opp).z)
+  const open = xg(midpoint(from, to), [])
+  const blocked = xg(midpoint(from, to), [def])
+  const bent = xg(clampCtrl(from, to, ctrlAt(from, to, 109.5, 30), 'shot'), [def])
+  checkDir(`막힌 직선 슛 ${(blocked * 100).toFixed(1)}% < 열린 직선 슛 ${(open * 100).toFixed(1)}%`, blocked < open)
+  checkDir(
+    `휘어서 우회해도 열린 슛만큼은 안 된다 (${(bent * 100).toFixed(1)}% < ${(open * 100).toFixed(1)}%)`,
+    bent < open,
+  )
+  checkDir(`그래도 우회는 이득이다 (${(bent * 100).toFixed(1)}% > 막힘 ${(blocked * 100).toFixed(1)}%)`, bent > blocked)
+  // 휜 만큼 비행 거리가 늘어 xG가 깎인다 (같은 궤적, 수비 없음)
+  const bentOpen = xg(clampCtrl(from, to, ctrlAt(from, to, 109.5, 30), 'shot'), [])
+  checkDir(`휘어 차면 거리값을 문다 (${(bentOpen * 100).toFixed(1)}% < 직선 ${(open * 100).toFixed(1)}%)`, bentOpen < open)
 }
 
 // ── 2c. 스루패스 도착점 — "공과 사람이 같이 도착" ────────────────────
