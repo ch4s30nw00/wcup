@@ -47,6 +47,9 @@ export default function TacticsBoard({
   carrierId, // 체인 끝에서 공을 갖게 될 선수 — 이 선수를 드래그하면 드리블
   shotTaken,
   reachCircles, // 시트 모드 가동범위: [{ id, x, y, r }] — 이번 시트 시간 안에 갈 수 있는 거리
+  tutFocus, // 튜토리얼 지목: { playerId?, ball?, action? } — 그 단계가 가리키는 대상을 점멸시킨다
+  shotZone, // 재현 판정 구역: { x, y, rx, ry, label } — 그날 슛이 나온 지점과 타원 허용 반경
+  onEggShotMove, // (pt) — 구역 중심 끌어 옮기기. 있으면 마커가 잡힌다 (개발 전용)
   ballPos,
   ballTrail, // 재생 중 공 트레일 [{x,y}] — 빠른 패스·슛의 혜성 꼬리 (평시 null)
   displayHome, // 재생 중 애니메이션 위치 (id → {x,y,a}), 평시 null
@@ -76,6 +79,10 @@ export default function TacticsBoard({
   onEditMove, // (playerId, {x, y})
 }) {
   const [homeKit, awayKit] = kitsFor(matchId)
+  // 튜토리얼이 가리키는 메뉴 항목. 패스 계열은 두 창에 걸쳐 있다 —
+  // 메인 메뉴에서는 [패스](종류 선택)를, 열린 종류 창에서는 그 종류 자체를 깜빡인다.
+  const MAIN_MENU_OF = { dribble: 'dribble', shot: 'shot', pass: 'pass-select', lob: 'pass-select', through: 'pass-select' }
+  const tutMainMenuKey = tutFocus?.action ? MAIN_MENU_OF[tutFocus.action] : null
   const svgRef = useRef(null)
   const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
   const [ballDrag, setBallDrag] = useState(null)
@@ -132,6 +139,14 @@ export default function TacticsBoard({
   }
 
   function startDrag(e, kind, key) {
+    // 재현 구역 마커는 계획/재생과 무관한 개발용 오버레이라 어느 상태에서든 잡힌다
+    // (마커가 보이는 것 자체가 이미 개발 모드 + 표시 켬을 뜻한다).
+    if (kind === 'eggshot') {
+      e.stopPropagation()
+      e.target.setPointerCapture(e.pointerId)
+      dragRef.current = { kind, key, startX: e.clientX, startY: e.clientY, moved: false }
+      return
+    }
     // 편집 모드는 interactive를 끈 채로 돌아간다 — 'edit'만 통과시킨다
     if (kind === 'edit' ? !editMode : !interactive) return
     // 시트에 공 행동을 하나 설정한 뒤에는 새 드리블·패스·슛을 만들 수 없다.
@@ -156,7 +171,8 @@ export default function TacticsBoard({
       setDragging(true)
     }
     const pt = toPitch(e)
-    if (d.kind === 'edit') onEditMove(d.key, pt)
+    if (d.kind === 'eggshot') onEggShotMove(pt)
+    else if (d.kind === 'edit') onEditMove(d.key, pt)
     else if (d.kind === 'run') {
       onRunSet(d.key, pt, !d.began)
       d.began = true
@@ -307,6 +323,15 @@ export default function TacticsBoard({
         <filter id="ghostBlur" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="0.3" />
         </filter>
+        {/* 재현 구역 그라디언트 — 가장자리를 흐리게 뺀다.
+            테두리가 선명하면 "이 선만 넘으면 된다"로 읽히는데, 우리가 아는 건
+            "이 언저리"까지다. 판정은 원 안팎으로 딱 갈리지만 그건 근사이고,
+            화면은 근사인 걸 근사로 보여야 한다. */}
+        <radialGradient id="eggZone">
+          <stop offset="0%" stopColor="#ffd23e" stopOpacity="0.30" />
+          <stop offset="55%" stopColor="#ffd23e" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#ffd23e" stopOpacity="0" />
+        </radialGradient>
       </defs>
 
       {/* 잔디 */}
@@ -332,6 +357,52 @@ export default function TacticsBoard({
 
       {/* 상대 골문 */}
       <rect x={118.6} y={36.34} width={1.4} height={7.32} fill="#10141c" stroke="#e6f2e6" strokeWidth="0.35" />
+
+      {/* 재현 구역 — 그날 슛이 나온 지점과 판정 허용 반경.
+          잔디 바로 위, 선수 아래에 깔아 조작을 가리지 않는다. */}
+      {shotZone && (
+        <g>
+          {/* 거리축(rx)과 좌우축(ry)이 다른 타원 — 중거리는 앞뒤로 길고 좌우로는 좁다 */}
+          <ellipse
+            cx={shotZone.x}
+            cy={shotZone.y}
+            rx={shotZone.rx}
+            ry={shotZone.ry}
+            fill="url(#eggZone)"
+            pointerEvents="none"
+          />
+          {/* 실제 슛 지점 — 구역의 중심이자 영상으로 대조할 기준점.
+              onEggShotMove가 있으면 끌어서 옮길 수 있다 (개발 모드). */}
+          <g pointerEvents="none" stroke="#ffd23e" strokeWidth="0.3" opacity="0.95">
+            <line x1={shotZone.x - 1.8} y1={shotZone.y} x2={shotZone.x + 1.8} y2={shotZone.y} />
+            <line x1={shotZone.x} y1={shotZone.y - 1.8} x2={shotZone.x} y2={shotZone.y + 1.8} />
+          </g>
+          <circle cx={shotZone.x} cy={shotZone.y} r="0.55" fill="#ffd23e" pointerEvents="none" />
+          {shotZone.label && (
+            <text
+              x={shotZone.x}
+              y={shotZone.y - 2.8}
+              textAnchor="middle"
+              fontSize="2.2"
+              fontWeight="700"
+              fill="#ffd23e"
+              pointerEvents="none"
+            >
+              {shotZone.label}
+            </text>
+          )}
+          {onEggShotMove && (
+            <circle
+              className="egg-anchor"
+              cx={shotZone.x}
+              cy={shotZone.y}
+              r={HIT.handle}
+              fill="transparent"
+              onPointerDown={(e) => startDrag(e, 'eggshot')}
+            />
+          )}
+        </g>
+      )}
 
       {/* 수비 반경 오라 — 궤적 입력 중에만 흐리게 표시 */}
       {showAuras &&
@@ -477,6 +548,13 @@ export default function TacticsBoard({
             }
           >
             <circle r={HIT.player} fill="transparent" />
+            {/* 튜토리얼 지목 — "화면 어디를 보라"는 말로는 사람마다 배치가 달라 안 통한다.
+                점멸은 링에만 건다. 선수 g 전체에 걸면 선수가 같이 깜빡여 사라진다. */}
+            {tutFocus?.playerId === p.id && (
+              <g className="tut-focus" pointerEvents="none">
+                <circle r={DOT_R + 2.2} fill="none" stroke="#ffd23e" strokeWidth="0.5" />
+              </g>
+            )}
             {/* 오프사이드 경고 — 설계를 막지는 않고, 이대로 실행하면 깃발이 오른다는 신호 */}
             {interactive && offsideIds?.has(p.id) && (
               <g className="offside-warn" pointerEvents="none">
@@ -571,6 +649,11 @@ export default function TacticsBoard({
           onPointerDown={(e) => !shotTaken && startDrag(e, 'ball')}
         >
           <circle r={HIT.ball} fill="transparent" />
+          {tutFocus?.ball && (
+            <g className="tut-focus" pointerEvents="none">
+              <circle r={ballRadius + 1.6} fill="none" stroke="#ffd23e" strokeWidth="0.45" />
+            </g>
+          )}
           <circle r={ballRadius} fill="#fff" stroke="#10141c" strokeWidth="0.25" />
           <circle r={ballRadius * 0.4} fill="#10141c" />
         </g>
@@ -722,6 +805,10 @@ export default function TacticsBoard({
                     }}>
                       <rect x={bx} y={by} width={MENU.w - 0.6} height={MENU.h - 0.6} rx="1.2"
                         fill="rgba(16,20,28,0.92)" stroke="#3d4a63" strokeWidth="0.3" />
+                      {tutFocus?.action === it.key && (
+                        <rect className="tut-focus" x={bx} y={by} width={MENU.w - 0.6} height={MENU.h - 0.6}
+                          rx="1.2" fill="none" stroke="#ffd23e" strokeWidth="0.6" pointerEvents="none" />
+                      )}
                       <text x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h / 2 - 0.3}
                         textAnchor="middle" fontSize="2.35" fontWeight="700" fill={it.color} pointerEvents="none">
                         {it.label}
@@ -786,6 +873,10 @@ export default function TacticsBoard({
                         stroke={active ? '#ffd23e' : '#3d4a63'}
                         strokeWidth={active ? 0.45 : 0.3}
                       />
+                      {tutMainMenuKey === it.key && !it.disabled && (
+                        <rect className="tut-focus" x={bx} y={by} width={MENU.w - 0.6} height={MENU.h - 0.6}
+                          rx="1.2" fill="none" stroke="#ffd23e" strokeWidth="0.6" pointerEvents="none" />
+                      )}
                       <text
                         x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h / 2 - 0.3}
                         textAnchor="middle" fontSize="2.7" fontWeight="700" fill={it.color}

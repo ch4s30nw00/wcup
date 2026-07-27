@@ -10,6 +10,7 @@ import { initDefense, advanceDefense } from '../src/engine/defense.js'
 import { matchScore } from '../src/engine/match.js'
 import { throughTarget, throughBallDuration, throughSpeedLimits, actionDuration, runSpeedOf } from '../src/engine/sheets.js'
 import { encodeShare, decodeShare } from '../src/engine/share.js'
+import { isReplayMatch, inShotZone, touchOrder, eggRadii } from '../src/engine/replay.js'
 import { XT_GRID, xtAt, planScore, planGrade } from '../src/engine/xt.js'
 import { midpoint } from '../src/engine/geometry.js'
 import { K } from '../src/engine/constants.js'
@@ -473,6 +474,53 @@ console.log('\n[공유 링크] 전술 → URL → 전술 왕복')
   checkDir('다른 버전 → null', decodeShare('9.123.d_1_2.', { playerIds: ids }) === null)
   checkDir('범위 밖 선수 인덱스 → null', decodeShare('1.123.p_99.', { playerIds: ids }) === null)
   checkDir('빈 전술도 유효 (시드만 공유)', decodeShare('1.777..', { playerIds: ids })?.seed === 777)
+}
+
+
+// ── 재현(이스터에그) 판정 ────────────────────────────────────────────
+console.log('\n[재현 판정] 순서 + 타원 구역 (engine/replay.js)')
+{
+  const egg = { sequence: ['a', 'b'], shot: { x: 106, y: 44, rx: 18, ry: 8 } }
+  const leg = (type, actorId, from) => ({ type, actorId, from })
+  const chainOf = (shotFrom) => [leg('dribble', 'a', { x: 60, y: 40 }), leg('pass', 'a', { x: 80, y: 40 }), leg('shot', 'b', shotFrom)]
+  const hit = (from, outcome = 'GOAL') => isReplayMatch({ egg, chain: chainOf(from), outcome })
+
+  checkDir('정확한 순서 + 중심에서 슛 → 성공', hit({ x: 106, y: 44 }))
+  checkDir('골이 아니면 실패', !hit({ x: 106, y: 44 }, 'MISS'))
+  checkDir('같은 선수 연속 액션은 한 번으로', touchOrder(chainOf({ x: 106, y: 44 })).join() === 'a,b')
+  checkDir('순서가 다르면 실패',
+    !isReplayMatch({ egg, chain: [leg('dribble', 'b', { x: 60, y: 40 }), leg('shot', 'a', { x: 106, y: 44 })], outcome: 'GOAL' }))
+  checkDir('거쳐간 선수가 하나 더 많으면 실패',
+    !isReplayMatch({ egg, chain: [leg('dribble', 'a', { x: 60, y: 40 }), leg('pass', 'c', { x: 80, y: 40 }), leg('shot', 'b', { x: 106, y: 44 })], outcome: 'GOAL' }))
+
+  // 타원으로 바꾼 이유 — 원이었다면 통과했을 지점이 좌우로는 걸러져야 한다
+  checkDir('거리축 17m 뒤 → 성공 (중거리는 거리가 자유)', hit({ x: 89, y: 44 }))
+  checkDir('좌우 11m 옆 → 실패 (반경 18 원이었다면 통과했다)', !hit({ x: 106, y: 55 }))
+  checkDir('거리축 19m 뒤 → 실패', !hit({ x: 87, y: 44 }))
+  checkDir('좌우 7.5m 옆 → 성공', hit({ x: 106, y: 51.5 }))
+  checkDir('타원 경계 위 → 성공', inShotZone({ x: 124, y: 44 }, egg.shot))
+  checkDir('두 축이 섞인 대각선은 원보다 좁다', !inShotZone({ x: 93, y: 50 }, egg.shot))
+
+  // 구 데이터 폴백
+  checkDir('tol만 있으면 원 (rx=ry=tol)', eggRadii({ tol: 9 }).rx === 9 && eggRadii({ tol: 9 }).ry === 9)
+  checkDir('구역 데이터가 없으면 순서만으로 인정',
+    isReplayMatch({ egg: { sequence: ['a', 'b'] }, chain: chainOf({ x: 5, y: 5 }), outcome: 'GOAL' }))
+}
+
+console.log('[재현 판정] 실제 데이터 — egg-shots.json이 원본인가')
+{
+  const load = (f) => JSON.parse(readFileSync(new URL(f, import.meta.url), 'utf-8'))
+  const scns = [load('../src/data/scenarios.json'), load('../src/data/kor_ita_2002.json'), ...load('../src/data/scenes-2026.json').matches]
+  const store = load('../src/data/egg-shots.json').shots
+  for (const scn of scns) {
+    const shot = scn.moments[0].easterEgg?.shot
+    if (!shot) continue
+    const src = store[scn.match_id]
+    checkDir(`${scn.match_id}: rx·ry 보유, 좌우축 ≤ 거리축`,
+      Number.isFinite(shot.rx) && Number.isFinite(shot.ry) && shot.ry <= shot.rx)
+    checkDir(`${scn.match_id}: 원본(egg-shots.json)과 일치`,
+      !!src && src.x === shot.x && src.y === shot.y && src.rx === shot.rx && src.ry === shot.ry)
+  }
 }
 
 console.log(fails === 0 ? '\n모든 검증 통과 ✅' : `\n${fails}건 실패 ❌`)

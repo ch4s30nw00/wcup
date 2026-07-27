@@ -12,7 +12,8 @@ import { midpoint, ctrlFromHandle } from './engine/geometry'
 import { actionDuration, reachRadius, clampToReach, throughPassSpeed, throughTarget } from './engine/sheets'
 import { isMuted, setMuted, resumeAudio, whistle, goalRoar, startMurmur, stopMurmur } from './engine/sound'
 import { decodeShare, shareUrl } from './engine/share'
-import { buildMatch, findMatch } from './data/matches'
+import { isReplayMatch, eggRadii } from './engine/replay'
+import { buildMatch, findMatch, DEFAULT_MATCH_ID } from './data/matches'
 import './App.css'
 
 // --- 공유 링크 해석 ---
@@ -34,11 +35,6 @@ const INITIAL_SEED = SHARED ? SHARED.seed : HAS_SEED_LINK ? SEED_PARAM : rollSee
 // false로 접혀서, 관련 UI와 저장 코드는 배포 번들에 아예 들어가지 않는다.
 const EDITABLE = import.meta.env.DEV
 
-// 가동범위 동심원은 시트 모드의 대표 시각 요소다. 원샷 모드에서도 드리블 뒤에는
-// 같은 원이 뜨는데(아래 oneShotDribbleIndex), 튜토리얼에서 시트 모드를 설명하기 전에
-// 먼저 나타나면 "모드가 저절로 바뀐 건가?"로 읽힌다. 그래서 시트 단계 전까지는 감춘다.
-const SHEET_STEP_INDEX = TUTORIAL_STEPS.findIndex((s) => s.id === 'sheet')
-
 const TYPE_LABEL = { dribble: '드리블', pass: '패스', shot: '슛' }
 const PASS_KIND_LABEL = {
   ground: '패스',
@@ -47,6 +43,15 @@ const PASS_KIND_LABEL = {
   through: '스루패스',
   lobThrough: '로빙스루',
 }
+// 보드 좌표를 축구 용어로 옮긴다 — 경기 영상과 대조할 때 (105, 45)보다
+// "페널티박스 안"이 훨씬 빠르게 읽힌다. 보드에 그려진 라인과 같은 수치를 쓴다.
+function pitchZoneOf({ x, y }) {
+  if (x >= 113.5 && y >= 30 && y <= 50) return '골에어리어 안'
+  if (x >= 102 && y >= 18 && y <= 62) return '페널티박스 안'
+  if (x >= 102) return '박스 옆 (골라인 근처)'
+  return `박스 밖 ${(102 - x).toFixed(1)}m`
+}
+
 const OUTCOME_LABEL = {
   GOAL: '⚽ GOAL!',
   ADVANCE: '✅ 전개 성공',
@@ -73,6 +78,8 @@ function App() {
   const [editMode, setEditMode] = useState(false)
   const [editPos, setEditPos] = useState(null)
   const [saveMsg, setSaveMsg] = useState(null)
+  // 재현 구역 검증 표시 (개발 전용) — 경기 영상과 좌표를 대조하는 용도
+  const [showEggZone, setShowEggZone] = useState(false)
   const { scenario, moment, basePlayers, opponents, byId, playerIds: PLAYER_IDS } = useMemo(() => {
     const m = buildMatch(findMatch(matchId))
     if (!editPos) return m
@@ -242,6 +249,27 @@ function App() {
   const shownSheet = viewSheet ?? editIndex
   const isViewingPast = viewSheet != null && viewSheet < editIndex
 
+  // 튜토리얼이 지목하는 대상을 지금 화면의 실제 값으로 푼다.
+  // 'carrier'는 매번 다시 푼다 — 체인이 자라면 공 주인이 바뀌므로 점멸도 따라가야 한다.
+  // 확정 버튼은 누를 수 있을 때만 깜빡인다: 비활성 버튼이 깜빡이면 누르라는 건지
+  // 못 누른다는 건지 알 수 없다.
+  const tutFocus = useMemo(() => {
+    const f = tutStep != null ? TUTORIAL_STEPS[tutStep]?.focus : null
+    if (!f) return null
+    const target = f.board === 'carrier' ? carrierId : typeof f.board === 'object' ? f.board.id : null
+    return {
+      ball: f.board === 'ball',
+      playerId: target && byId[target] ? target : null,
+      action: f.action ?? null,
+      confirm: f.ui === 'confirm' && phase === 'plan' && chain.length > 0,
+    }
+  }, [tutStep, carrierId, byId, phase, chain.length])
+
+  // 시트 모드 노출 여부는 경기가 정한다. 첫 경기(2022 포르투갈전)는 한 번에 그려도
+  // 풀리는 판이라 꺼 두고, 두 번째 경기부터 열린다 — 필드가 없으면 열린 것이 기본값이라
+  // 새 경기를 추가할 때 아무것도 안 해도 된다 (scenarios.json의 sheetModeAvailable).
+  const sheetModeAvailable = scenario.sheetModeAvailable !== false
+
   // 가동범위 동심원 — 이번 시트 시작 좌표를 중심으로, 전력(100%)·여유(70%) 두 겹.
   // 공 액션을 아직 안 그렸으면 시간 예산이 0이라 원도 없다 (그리면 그때 나타난다).
   const oneShotDribbleIndex =
@@ -253,17 +281,16 @@ function App() {
   const runWindowIndex = sheetMode ? editIndex : oneShotDribbleIndex
   const runWindowLeg = runWindowIndex != null ? chain[runWindowIndex] : null
   const runWindowDur = runWindowLeg ? actionDuration(runWindowLeg) : 0
-  // 튜토리얼이 시트 단계에 닿기 전에는 동심원을 숨긴다 (SHEET_STEP_INDEX 주석 참고).
-  // 시트 모드를 직접 켠 상태라면 그건 사용자가 의도한 것이므로 그대로 보여준다.
-  const tutHidesReach = tutStep != null && tutStep < SHEET_STEP_INDEX && !sheetMode
+  // 튜토리얼 중에도 그대로 보여준다. 한때는 시트 모드를 설명하기 전까지 숨겼는데,
+  // 동심원은 원샷 모드에서도 "드리블하는 동안 남들은 이만큼 움직인다"를 알려주는
+  // 핵심 장치라 감추면 오프볼 런 단계가 통째로 이해되지 않는다.
   const reachCircles = useMemo(() => {
-    if (tutHidesReach) return null
     if (runWindowIndex == null || isViewingPast || phase !== 'plan' || !(runWindowDur > 0)) return null
     const at = snaps[runWindowIndex] ?? planPos
     return basePlayers
       .filter((p) => p.id !== carrierAt[runWindowIndex]) // 공 소유자는 액션 본인이라 제외
       .map((p) => ({ id: p.id, ...at[p.id], r: reachRadius(p, runWindowDur) }))
-  }, [tutHidesReach, runWindowIndex, isViewingPast, phase, runWindowDur, snaps, planPos, carrierAt, basePlayers])
+  }, [runWindowIndex, isViewingPast, phase, runWindowDur, snaps, planPos, carrierAt, basePlayers])
 
   // 시트 확정 — 이번 시트에 공 액션이 있어야 넘어갈 수 있다
   const canConfirmSheet = sheetMode && phase === 'plan' && !isViewingPast && chain.length > sheetCount
@@ -282,32 +309,23 @@ function App() {
 
   // 이스터에그 — 실제 경기 재현 감지.
   // 새 방식(egg.sequence 있으면): 골로 끝났고, "공을 주고받은 선수 순서"가 시나리오와
-  //   똑같고, 마지막 슛을 친 위치가 실제 슛 지점(egg.shot) 근처(tol 반경)면 성공.
+  //   똑같고, 마지막 슛을 친 위치가 실제 슛 지점(egg.shot)의 타원 구역 안이면 성공.
   //   드리블·패스를 정확히 어디서 했는지는 보지 않는다 — 순서와 마무리 지점만.
   // 구 방식(폴백): 골 + 마지막 슛을 득점자가 + 마지막 패스가 passer→scorer.
   const egg = moment.easterEgg
   const [eggClosed, setEggClosed] = useState(false)
-  const eggMatched = useMemo(() => {
-    if (!egg || result?.outcome !== 'GOAL') return false
-    const shot = chain[chain.length - 1]
-    if (shot?.type !== 'shot') return false
-    if (egg.sequence) {
-      // 공을 잡은 선수 순서 (같은 선수의 연속 드리블은 한 번으로)
-      const touchers = []
-      for (const leg of chain) if (touchers[touchers.length - 1] !== leg.actorId) touchers.push(leg.actorId)
-      const seqOk =
-        touchers.length === egg.sequence.length && touchers.every((id, i) => id === egg.sequence[i])
-      if (!seqOk) return false
-      if (egg.shot) {
-        const tol = egg.shot.tol ?? 15
-        if (Math.hypot(shot.from.x - egg.shot.x, shot.from.y - egg.shot.y) > tol) return false
-      }
-      return true
-    }
-    if (shot.actorId !== egg.scorerId) return false
-    const lastPass = chain.findLast((l) => l.type === 'pass')
-    return lastPass?.actorId === egg.passerId && lastPass?.receiverId === egg.scorerId
-  }, [egg, result, chain])
+  // 개발 모드에서 마커를 끌어 옮기는 중인 좌표 (id → {x,y,rx,ry}). null이면 데이터 원본 그대로.
+  const [eggShotEdit, setEggShotEdit] = useState(null)
+  // 판정과 화면이 같은 값을 봐야 한다 — 끌어 옮기는 즉시 판정 구역도 따라 움직인다.
+  // 메모하지 않으면 매 렌더 새 객체가 되어 아래 eggMatched가 계속 다시 계산된다.
+  const shot0 = useMemo(
+    () => (egg?.shot ? { ...egg.shot, ...(eggShotEdit ?? {}) } : null),
+    [egg, eggShotEdit],
+  )
+  const eggMatched = useMemo(
+    () => isReplayMatch({ egg, chain, outcome: result?.outcome, shot: shot0 }),
+    [egg, result, chain, shot0],
+  )
 
   // --- 오프볼 런 지시 ---
   // 드래그 시작(isFirst) 때 한 번만 판단: 이 선수의 마지막 런이 아직 체인에 "소비"되지
@@ -597,10 +615,21 @@ function App() {
 
   // ── 튜토리얼 ───────────────────────────────────────────────────────
   // 빈 보드에서 시작한다 — 앞서 그려둔 전개가 남아 있으면 미션 완료가 이미 충족돼 버린다.
+  //
+  // 경기도 기본 경기로 되돌린다. 단계 문구가 손흥민·황희찬을 이름으로 지목하고
+  // 킷 색까지 확정해 말하기 때문에, 다른 경기를 골라둔 채 튜토리얼을 켜면
+  // 화면과 설명이 통째로 어긋난다.
   function startTutorial() {
     clearAll()
     setSelectedId(null)
     setSheetMode(false)
+    if (matchId !== DEFAULT_MATCH_ID) {
+      setMatchId(DEFAULT_MATCH_ID)
+      // 편집 중이던 좌표는 그 경기 것이다 — 경기가 바뀌면 같이 버린다 (pickMatch와 같은 이유)
+      setEditPos(null)
+      setEditMode(false)
+      setSaveMsg(null)
+    }
     setTutStep(0)
     setTutReading(true)
     setScreen('board')
@@ -618,6 +647,36 @@ function App() {
   function moveForEdit(id, pt) {
     const snap = (v) => Math.round(v * 2) / 2
     setEditPos((prev) => ({ ...(prev ?? {}), [id]: { x: snap(pt.x), y: snap(pt.y) } }))
+  }
+
+  // ── 재현 구역 조정 (개발 전용) ─────────────────────────────────────
+  // 경기 영상을 보며 마커를 끌어 슛 지점을 맞춘다. 0.5m 단위로 맞추는 건 선수 좌표와
+  // 같은 이유 — 중계 화면 보고 찍는 값에 소수점 두 자리는 의미가 없다.
+  function moveEggShot(pt) {
+    const snap = (v) => Math.round(v * 2) / 2
+    setEggShotEdit((prev) => ({ ...(prev ?? {}), x: snap(pt.x), y: snap(pt.y) }))
+  }
+  const setEggRadius = (axis, v) => {
+    const n = Number(v)
+    if (!Number.isFinite(n)) return
+    setEggShotEdit((prev) => ({ ...(prev ?? {}), [axis]: Math.min(40, Math.max(2, n)) }))
+  }
+
+  async function saveEggShot() {
+    try {
+      const res = await fetch('/__eggshot', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ matchId, shot: { x: shot0.x, y: shot0.y, ...eggRadii(shot0) } }),
+      })
+      const out = await res.json()
+      // editPos와 같은 이유로 eggShotEdit은 지우지 않는다 — 지우면 HMR이 돌아오기 전
+      // 한 프레임 동안 옛 좌표가 보인다.
+      setSaveMsg(out.ok ? `재현 구역 저장됨 (${out.matchId})` : `실패: ${out.error}`)
+    } catch (e) {
+      setSaveMsg(`실패: ${e.message} — dev 서버에서만 저장됩니다`)
+    }
+    setTimeout(() => setSaveMsg(null), 4000)
   }
 
   async function savePositions() {
@@ -700,7 +759,11 @@ function App() {
 
       <main>
         <div className="board-col">
-          {/* 설계 모드 전환 + 시트 탭 — 기존 원샷 모드를 대체하지 않는 병행 프로토타입 */}
+          {/* 설계 모드 전환 + 시트 탭 — 기존 원샷 모드를 대체하지 않는 병행 프로토타입.
+              경기가 sheetModeAvailable: false면 줄 전체를 그리지 않는다. 첫 경기는
+              시트 모드까지 갈 정교함이 필요 없는 판이라, 배우기 전에 버튼부터 보이면
+              "이건 또 뭐지"가 된다. 빈 div를 남기면 여백만 뜨므로 통째로 뺀다. */}
+          {sheetModeAvailable && (
           <div className="sheet-bar">
             <button
               className={`mode-toggle${sheetMode ? ' on' : ''}`}
@@ -747,7 +810,8 @@ function App() {
               </>
             )}
           </div>
-          {sheetMode && phase === 'plan' && (
+          )}
+          {sheetModeAvailable && sheetMode && phase === 'plan' && (
             <p className="sheet-hint">
               {isViewingPast
                 ? `시트 ${shownSheet + 1} 열람 중 — 확정된 시트는 수정할 수 없습니다.`
@@ -773,6 +837,18 @@ function App() {
               carrierId={isViewingPast ? (carrierAt[shownSheet + 1] ?? carrierId) : carrierId}
               shotTaken={shotTaken}
               reachCircles={reachCircles}
+              tutFocus={tutFocus}
+              shotZone={
+                EDITABLE && showEggZone && shot0
+                  ? {
+                      x: shot0.x,
+                      y: shot0.y,
+                      ...eggRadii(shot0),
+                      label: `${eggRadii(shot0).rx}×${eggRadii(shot0).ry}m`,
+                    }
+                  : null
+              }
+              onEggShotMove={EDITABLE && showEggZone && shot0 ? moveEggShot : null}
               ballPos={phase === 'plan' ? ballPlanPos : frame?.ball}
               ballTrail={phase === 'plan' ? null : frame?.ballTrail}
               displayHome={phase === 'plan' ? null : frame?.home}
@@ -805,7 +881,11 @@ function App() {
                 {phase === 'plan' || !frame?.caption ? `🎯 ${moment.objective}` : `📢 ${frame.caption}`}
               </span>
             </div>
-            <button className="kickoff" onClick={handleConfirm} disabled={!chain.length || phase === 'playing'}>
+            <button
+              className={`kickoff${tutFocus?.confirm ? ' tut-pulse' : ''}`}
+              onClick={handleConfirm}
+              disabled={!chain.length || phase === 'playing'}
+            >
               {phase === 'playing' ? '재생 중…' : '전술 확정 — 실행 ▶'}
             </button>
             {phase !== 'plan' && (
@@ -848,6 +928,70 @@ function App() {
                   </span>
                 </>
               )}
+              {/* 재현 구역 검증 — 그날의 슛 지점과 판정 반경을 보드에 띄운다.
+                  경기 영상과 대조해 좌표·반경을 맞추는 용도라 개발 모드에서만 나온다
+                  (본편에서 늘 보이면 정답을 알려주는 셈이라 이스터에그가 죽는다). */}
+              <button
+                className={`ctrl${showEggZone ? ' on' : ''}`}
+                onClick={() => setShowEggZone((v) => !v)}
+                disabled={!egg?.shot}
+              >
+                {showEggZone ? '✓ 재현 구역 표시 중' : '🎯 재현 구역'}
+              </button>
+            </div>
+          )}
+          {EDITABLE && showEggZone && shot0 && (
+            <div className="egg-probe">
+              <b>그날의 슛 지점 — 보드의 금색 십자를 끌어 옮기세요</b>
+              <span>
+                보드 좌표 <code>({shot0.x}, {shot0.y})</code> · 골라인에서{' '}
+                <b>{(120 - shot0.x).toFixed(1)}m</b> 앞 · 골문 중앙까지{' '}
+                <b>{Math.hypot(120 - shot0.x, 40 - shot0.y).toFixed(1)}m</b> · 중앙선에서{' '}
+                <b>
+                  {Math.abs(shot0.y - 40).toFixed(1)}m{' '}
+                  {shot0.y > 40 ? '아래' : shot0.y < 40 ? '위' : ''}
+                </b>
+              </span>
+              <span>
+                구역: <b>{pitchZoneOf(shot0)}</b> · 통과 범위는 골라인{' '}
+                {(120 - shot0.x - eggRadii(shot0).rx).toFixed(1)}~
+                {(120 - shot0.x + eggRadii(shot0).rx).toFixed(1)}m 앞, 좌우 ±
+                {eggRadii(shot0).ry}m
+              </span>
+              <span className="egg-radii">
+                반경
+                <label>
+                  거리축 rx
+                  <input
+                    type="number"
+                    min="2"
+                    max="40"
+                    step="0.5"
+                    value={eggRadii(shot0).rx}
+                    onChange={(e) => setEggRadius('rx', e.target.value)}
+                  />
+                </label>
+                <label>
+                  좌우축 ry
+                  <input
+                    type="number"
+                    min="2"
+                    max="40"
+                    step="0.5"
+                    value={eggRadii(shot0).ry}
+                    onChange={(e) => setEggRadius('ry', e.target.value)}
+                  />
+                </label>
+                <button className="ctrl" onClick={saveEggShot} disabled={!eggShotEdit}>
+                  저장
+                </button>
+                <button className="ctrl" onClick={() => setEggShotEdit(null)} disabled={!eggShotEdit}>
+                  되돌리기
+                </button>
+              </span>
+              <span>
+                재현 순서: <b>{egg.sequence?.map((id) => byId[id]?.name ?? id).join(' → ')}</b>
+              </span>
             </div>
           )}
         </div>
@@ -997,7 +1141,7 @@ function App() {
         <TutorialCoach
           step={tutStep}
           reading={tutReading}
-          state={{ chainActs, runs, phase, sheetMode }}
+          state={{ chainActs, runs, phase }}
           onPractice={() => setTutReading(false)}
           onNext={nextTutorial}
           onSkip={nextTutorial}

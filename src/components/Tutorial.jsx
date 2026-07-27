@@ -6,6 +6,27 @@
 
 import { TUTORIAL_STEPS } from './tutorialSteps'
 
+// 보드에 실제로 그려지는 공을 그대로 축소한 아이콘.
+// ⚪ 이모지를 쓰다가 "글에 있는 공이랑 보드에 있는 공이 다르다"는 말을 들었다 —
+// 실제 공은 흰 원 가운데 검은 점이 박혀 있고, 폰트마다 ⚪ 모양도 제각각이다.
+// 비율(중앙 점 = 반지름의 0.4배, 테두리 0.25)은 TacticsBoard의 공 렌더와 같은 값이다.
+function BallIcon() {
+  return (
+    <svg className="coach-ball" viewBox="-1.25 -1.25 2.5 2.5" aria-label="공" role="img">
+      <circle r="0.95" fill="#fff" stroke="#10141c" strokeWidth="0.25" />
+      <circle r="0.38" fill="#10141c" />
+    </svg>
+  )
+}
+
+// 본문의 [ball] 토큰을 공 아이콘으로 바꾼다. 단계 정의(tutorialSteps.js)를 문자열
+// 데이터로 유지하기 위한 최소 장치 — 거기에 JSX를 넣으면 fast-refresh가 깨진다.
+function withIcons(text) {
+  return String(text)
+    .split('[ball]')
+    .flatMap((part, i) => (i === 0 ? [part] : [<BallIcon key={`b${i}`} />, part]))
+}
+
 export function TutorialCoach({ step, reading, state, onPractice, onNext, onSkip, onExit }) {
   const s = TUTORIAL_STEPS[step]
   if (!s) return null
@@ -26,7 +47,7 @@ export function TutorialCoach({ step, reading, state, onPractice, onNext, onSkip
       {reading ? (
         <>
           <h3>{s.title}</h3>
-          <p className="coach-body">{s.body}</p>
+          <p className="coach-body">{withIcons(s.body)}</p>
           {s.tip && <p className="coach-tip">💡 {s.tip}</p>}
           <div className="coach-actions">
             {s.mission ? (

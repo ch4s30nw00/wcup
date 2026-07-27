@@ -491,20 +491,18 @@ const existing = JSON.parse(readFileSync(new URL('players.json', root), 'utf-8')
 const keep = existing.filter((p) => !teams.has(p.team))
 // 이스터에그 판정용 필드 (App.jsx eggMatched 참고):
 //   sequence — 공을 주고받은 선수 순서. ball==passer면 [ball, scorer], 아니면 [ball, passer, scorer].
-//   shot     — 마지막 슛 위치 기준점 + 허용 반경(tol). 아래 값은 임시 추정 — 정밀 좌표는 수기 조정한다.
-const EGG_SHOT = {
-  kor_cze_2026_g1: { x: 110, y: 44, tol: 15 },
-  por_esp_2026_r16: { x: 106, y: 40, tol: 15 },
-  bra_nor_2026_r16: { x: 108, y: 45, tol: 15 },
-  eng_arg_2026_sf: { x: 106, y: 44, tol: 15 },
-  arg_esp_2026_final: { x: 108, y: 42, tol: 15 },
-}
+//   shot     — 마지막 슛 위치 기준점 + 타원 허용 반경(rx·ry).
+//              값은 egg-shots.json이 원본이다 (positions.json과 같은 자리) — 여기 박아두면
+//              개발 모드에서 마커를 끌어 고친 값이 재생성 때 되돌아간다.
+const EGG_SHOT = JSON.parse(readFileSync(new URL('../src/data/egg-shots.json', import.meta.url), 'utf-8')).shots
 for (const s of scenes.matches) {
   const m = s.moments[0]
   const e = m.easterEgg
   if (!e) continue
   e.sequence = m.ball === e.passerId ? [m.ball, e.scorerId] : [m.ball, e.passerId, e.scorerId]
-  e.shot = EGG_SHOT[s.match_id] ?? { x: 108, y: 42, tol: 15 }
+  // note는 사람이 읽는 메모라 화면 데이터로 내보내지 않는다
+  const { note: _note, ...shot } = EGG_SHOT[s.match_id] ?? { x: 108, y: 42, rx: 12, ry: 8 }
+  e.shot = shot
 }
 
 writeFileSync(new URL('players.json', root), JSON.stringify([...keep, ...players], null, 2) + '\n')
