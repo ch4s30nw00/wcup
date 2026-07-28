@@ -16,6 +16,7 @@ import { resolveSequence } from '../src/engine/resolve.js'
 import { playSequence } from '../src/engine/playback.js'
 import { midpoint, samplePath, minDistToPath } from '../src/engine/geometry.js'
 import { actionDuration, runSpeedOf, throughPassSpeed, throughTarget } from '../src/engine/sheets.js'
+import { K } from '../src/engine/constants.js'
 
 const players = JSON.parse(readFileSync(new URL('../src/data/players.json', import.meta.url), 'utf-8'))
 const scenario = JSON.parse(readFileSync(new URL('../src/data/scenarios.json', import.meta.url), 'utf-8'))
@@ -217,9 +218,15 @@ console.log('\n[드리블 병행 런] 가속도 반경 끝 목표까지 계속 �
     const handoffFrames = runnerTimeline.filter((f) => f.elapsed >= handoffAt && f.elapsed <= handoffAt + 90)
     const handoffGap = Math.min(...handoffFrames.map((f) => Math.hypot(f.player.x - runTarget.x, f.player.y - runTarget.y)))
     chk(`second action starts with runner at target (${handoffGap.toFixed(2)}m)`, handoffGap <= 0.25)
+    // 출발 전 대기: 예전에는 좌표를 못 박아 완전히 굳어 있었다(베타테스트 "석상" 지적).
+    // 이제는 목줄(K.PLAY.LEASH_WAIT) 안에서 잔 움직임을 허용한다 — 다만 목줄을 넘으면
+    // 런 출발점이 달라져 다음 액션의 계획 좌표와 어긋나므로 그 상한은 지켜야 한다.
     const preRun = runnerTimeline.filter((f) => f.elapsed < 300)
     const preRunDrift = Math.max(...preRun.map((f) => Math.hypot(f.player.x - runner.x, f.player.y - runner.y)))
-    chk(`runner does not drift before the explicit run (${preRunDrift.toFixed(2)}m)`, preRunDrift <= 0.01)
+    chk(
+      `runner stays within its leash before the explicit run (${preRunDrift.toFixed(2)}m / ${K.PLAY.LEASH_WAIT}m)`,
+      preRunDrift <= K.PLAY.LEASH_WAIT,
+    )
     const maxFrameStep = Math.max(...runnerTimeline.slice(1).map((f, i) => Math.hypot(f.player.x - runnerTimeline[i].player.x, f.player.y - runnerTimeline[i].player.y)))
     chk(`off-ball run has no frame jump (${maxFrameStep.toFixed(2)}m)`, maxFrameStep <= 0.35)
     const passArrivalGap = Math.min(...runnerTimeline

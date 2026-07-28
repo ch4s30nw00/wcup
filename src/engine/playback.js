@@ -126,9 +126,12 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     const earliest = Math.max(200, freeAfter(rp.rl.id, rp.rl.afterIndex))
     let start
     let holdUntil = null
+    // 이 런의 도착 위치를 실제로 쓰는 시각. 그 전까지는 목줄을 느슨하게 풀어
+    // 선수가 숨 쉬게 하고, 임박하면 조여서 계획 좌표에 정확히 세운다.
+    let deadline = null
     if (rp.parallelDribble) {
       start = Math.max(earliest, rp.anchorLeg.start)
-      const deadline = rp.consumer
+      deadline = rp.consumer
         ? rp.consumer.receiverId === rp.rl.id
           ? rp.consumer.start + rp.consumer.dur
           : rp.consumer.start
@@ -136,7 +139,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       holdUntil = Math.max(start + rp.dur, deadline, actionEnd)
     } else if (rp.consumer) {
       // 수신 런은 공 도착 시각, 그 자리에서 시작하는 액션(드리블 등)은 액션 시작 시각이 마감
-      const deadline = rp.consumer.receiverId === rp.rl.id ? rp.consumer.start + rp.consumer.dur : rp.consumer.start
+      deadline = rp.consumer.receiverId === rp.rl.id ? rp.consumer.start + rp.consumer.dur : rp.consumer.start
       // The receiver starts when this pass is played; `throughTarget` uses the
       // exact same ball-flight duration, so both arrive together.
       start = Math.max(earliest, rp.consumer.start)
@@ -159,6 +162,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       start,
       dur: rp.dur,
       holdUntil,
+      deadline,
       motion: 'run',
     })
   }
@@ -182,6 +186,11 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
   // 시작 시각 오름차순 정렬 → 나중에 시작한 세그먼트가 위치를 덮어써서
   // "런으로 이동 → 거기서 받아 드리블" 같은 연속 동작이 자연스럽게 이어진다.
   segs.sort((a, b) => a.start - b.start)
+  // 선수별 세그먼트 — 매 프레임 "지금 이 선수의 위치를 누가 결정하는가"를 하나로 정하려면
+  // 그 선수 것만 모아 봐야 한다. 예전에는 전체 목록을 훑으며 여러 세그먼트가 각자
+  // 위치를 대입했고, 끝난 런이 나중 드리블을 덮어써 선수를 23m 되돌리는 일이 있었다.
+  const segsOf = {}
+  for (const s of segs) (segsOf[s.id] ??= []).push(s)
 
   // 재생 총 시간은 공 체인이 아니라 "모든 선수 이동이 끝나는 시점" 기준 —
   // 늦게 출발하는 런도 끝까지 뛰고 나서 재생이 멈춘다
@@ -193,6 +202,19 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
   // 노이즈는 시드 고정이라 리플레이 감각도 유지된다.
   const sim = {}
   for (const p of [...players, ...opponents]) sim[p.id] = { x: p.x, y: p.y, vx: 0, vy: 0 }
+  // 선수별 최고 속도 — 앰비언트 이동도 이 값을 넘지 못한다. 지시받은 오프볼 런과
+  // 같은 공식(runSpeedOf)을 써야 "지시하면 느려지고 안 하면 빨라지는" 역전이 안 생긴다.
+  const capOf = {}
+  // 드리블 속도가 느린 선수의 주력보다 빠를 수 있어, 순간이동 안전망 하한을 함께 잡는다.
+  const jumpCapOf = {}
+  for (const p of [...players, ...opponents]) {
+    capOf[p.id] = runSpeedOf(p)
+    jumpCapOf[p.id] = Math.max(capOf[p.id], K.SPEED.dribble) * K.PLAY.JUMP_CAP
+  }
+  // 템포에 따른 급함 배율 — tick 안에서 갱신된다 (아래 tempo 참고)
+  const urgencyRef = { v: 1 }
+  // 의도(INTENT)에 따른 앰비언트 속도. 어떤 경우에도 자기 주력을 넘지 않는다.
+  const paceOf = (id, intent) => Math.min(capOf[id], capOf[id] * intent * urgencyRef.v)
 
   // 선수별 "약속" 이벤트: t 시점까지 point 근처에 있어야 한다 — 스크립트 출발점,
   // 스크립트 종점, 패스 받을 지점. 마지막 약속이 지나면 자유(팀 셰이프) 상태.
@@ -314,6 +336,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     return cur
   }
 
+  const lastRender = {} // 직전 프레임에 실제로 그린 좌표 — 순간이동 안전망의 기준
   let rafId = null
   const t0 = performance.now()
   let lastNow = t0
@@ -331,34 +354,52 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     const dt = realDt * (slowmo ? 0.35 : 1)
     const sec = el / 1000
 
-    // 1) 스크립트 구간: 지시 경로가 시뮬 상태를 덮어쓴다 (끝나면 시뮬이 이어받음)
+    // 1) 위치 권한 — 프레임마다 선수당 **단 하나**의 결정권자를 고른다.
+    //
+    //    진행 중인 세그먼트  >  마지막으로 시작한 세그먼트의 잔여 앵커  >  다음 세그먼트 대기
+    //
+    //    핵심은 "마지막으로 시작한" 것만 앵커를 주장할 수 있다는 규칙이다. 예전에는 끝난
+    //    런의 holdUntil이 체인 끝까지 살아 있어서, 같은 선수가 나중에 드리블·슛을 마치는
+    //    순간 그 좀비 세그먼트가 선수를 런 종점으로 잡아챘다(측정 23.7m 순간이동).
+    //
+    //    앵커는 이제 "못 박기"가 아니라 "목표 + 목줄"이다. 위치를 대입하지 않고
+    //    아래 조향(integrate)에 넘겨 물리적으로 이어지는 움직임으로 만든다.
     const scripted = new Set()
-    for (const s of segs) {
-      if (el < s.start) {
-        // 드리블과 묶인 런은 시작 직전까지 자동 전술 움직임에 끌려가지
-        // 않도록 원래 위치에서 대기한다. 출발 프레임에 경로가 다시 계산돼
-        // 순간이동하거나 과속하는 원인을 없앤다.
+    const anchors = {} // id → { point, leash, lock } — 조향이 참고할 제약
+    for (const id in segsOf) {
+      let active = null
+      let lastStarted = null
+      let next = null
+      for (const s of segsOf[id]) {
+        if (s.start <= el) {
+          lastStarted = s // 정렬돼 있으므로 마지막에 남는 것이 가장 늦게 시작한 것
+          if (el <= s.start + s.dur) active = s
+        } else if (!next) next = s
+      }
+      if (active) {
+        // 진행 중인 지시는 그대로 경로를 따른다 — 도착 시각·지점이 정확해야
+        // 공이 발밑에 떨어진다. 여기만 위치를 직접 대입한다.
+        const progress = (el - active.start) / active.dur
+        const k = Math.min(clamp(progress, 0, 1), active.capFrac ?? 1)
+        const pos = pointAtLength(active.pts, k * active.len)
+        scripted.add(id)
+        Object.assign(sim[id], { x: pos.x, y: pos.y, vx: 0, vy: 0 })
         continue
       }
-      if (el <= s.start + s.dur) {
-        // The player was held at the planned start point while waiting.  Keep
-        // this original path and duration intact: rebuilding it from a
-        // steering-modified position is what caused blinking and late arrival.
-        // The carrier dribbles at a steady speed to the end.  Do not ease out
-        // near the target and appear to wait for an off-ball runner.
-        const progress = (el - s.start) / s.dur
-        const k = Math.min((s.motion === 'run' || s.motion === 'dribble') ? clamp(progress, 0, 1) : ease(progress), s.capFrac ?? 1)
-        const pos = pointAtLength(s.pts, k * s.len)
-        scripted.add(s.id)
-        Object.assign(sim[s.id], { x: pos.x, y: pos.y, vx: 0, vy: 0 })
-      } else if (s.holdUntil != null && el <= s.holdUntil) {
-        scripted.add(s.id)
-        const pos = pointAtLength(s.pts, (s.capFrac ?? 1) * s.len)
-        Object.assign(sim[s.id], { x: pos.x, y: pos.y, vx: 0, vy: 0 })
-      } else if (!s.done) {
-        s.done = true
-        const pos = pointAtLength(s.pts, (s.capFrac ?? 1) * s.len)
-        Object.assign(sim[s.id], { x: pos.x, y: pos.y, vx: 0, vy: 0 })
+      if (lastStarted && lastStarted.holdUntil != null && el <= lastStarted.holdUntil) {
+        // 런을 마치고 다음 액션을 기다리는 중. 소비 액션이 다가올수록 목줄을 조인다.
+        const point = pointAtLength(lastStarted.pts, (lastStarted.capFrac ?? 1) * lastStarted.len)
+        const slack = lastStarted.deadline == null ? Infinity : lastStarted.deadline - el
+        const leash = K.PLAY.LEASH_HOLD * clamp((slack - K.PLAY.LEASH_LOCK_MS) / K.PLAY.LEASH_LOCK_MS, 0, 1)
+        anchors[id] = { point, leash, lock: leash < 0.2 }
+        continue
+      }
+      if (next) {
+        // 아직 시작하지 않은 지시가 있다 — 그 출발점 근처를 지킨다.
+        // 예전에는 여기서 좌표를 대입해 3.8초씩 완전히 굳어 있었다.
+        // 출발이 임박하면 목줄을 0으로 조여, 시작 프레임에 스냅이 남지 않게 한다.
+        const leash = K.PLAY.LEASH_WAIT * clamp((next.start - el - K.PLAY.WAIT_LOCK_MS) / K.PLAY.WAIT_LOCK_MS, 0, 1)
+        anchors[id] = { point: next.from, leash, lock: leash < 0.2 }
       }
     }
     if (interceptor) {
@@ -382,21 +423,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       }
     }
 
-    // A player with a future explicit segment must wait at that segment's
-    // planned start point.  This keeps auto tactical movement from changing
-    // the start of an off-ball run, which previously looked like a flicker and
-    // made the runner miss the next action's timing.
-    const waitingScript = new Map()
-    for (const s of segs) {
-      if (el < s.start && (!waitingScript.has(s.id) || s.start < waitingScript.get(s.id).start)) {
-        waitingScript.set(s.id, s)
-      }
-    }
-    for (const [id, s] of waitingScript) {
-      if (scripted.has(id)) continue
-      Object.assign(sim[id], { x: s.from.x, y: s.from.y, vx: 0, vy: 0 })
-      scripted.add(id)
-    }
+    // (예전의 waitingScript 블록은 위 1)의 anchors로 흡수됐다 — 대기는 스냅이 아니라 목줄이다)
 
     // 2) 공 위치 — 비행 중엔 궤적 위, 소유 중엔 소유자 발밑
     const ballAt = (getPos) => {
@@ -458,6 +485,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     prevBall = ballSteer
     tempo += (clamp(ballSpd / 14, 0, 1) - tempo) * Math.min(1, dt * 3)
     const urgency = 1 + 0.9 * tempo // 오프볼 속도 배율 1.0 ~ 1.9
+    urgencyRef.v = urgency
 
     // 판정 엔진(resolve.js)이 액션마다 계산해둔 수비 좌표 — 진행 중인 레그의 목표 좌표.
     // 100% 강제가 아니라 조향 목표로만 쓴다(압박·노이즈가 위에 얹힘) — 보는 경험 우선.
@@ -512,11 +540,26 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     // 조향 적분: 목표를 향해 가속하되 가속 한계·도착 감속으로 무게감을 준다.
     // noiseScale: 약속 장소로 갈 때는 잔 움직임을 죽인다 — 공 받을 자리에서 흔들리면
     // 패스가 발밑에 안 떨어진 것처럼 보인다.
+    //
+    // 앵커(anchors)가 있으면 목표를 그 반경 안으로 끌어당긴다. 스크립트를 기다리거나
+    // 마친 선수가 "그 자리를 지키되 굳어 있지는 않게" 하는 장치다.
     const integrate = (id, rawTarget, maxSpeed, noiseScale = 1) => {
       const s = sim[id]
+      const a = anchors[id]
+      let aim = rawTarget
+      if (a) {
+        if (a.leash <= 0.01) aim = a.point
+        else {
+          const dx = aim.x - a.point.x
+          const dy = aim.y - a.point.y
+          const d = Math.hypot(dx, dy)
+          if (d > a.leash) aim = { x: a.point.x + (dx / d) * a.leash, y: a.point.y + (dy / d) * a.leash }
+        }
+        noiseScale = Math.min(noiseScale, a.lock ? 0.05 : 0.35)
+      }
       const nz = noise(id, sec)
-      const tx = clamp(rawTarget.x + nz.x * noiseScale, 1.5, 118.5)
-      const ty = clamp(rawTarget.y + nz.y * noiseScale, 1.5, 78.5)
+      const tx = clamp(aim.x + nz.x * noiseScale, 1.5, 118.5)
+      const ty = clamp(aim.y + nz.y * noiseScale, 1.5, 78.5)
       const speed = freeze ? maxSpeed * 0.12 : maxSpeed
       const dx = tx - s.x
       const dy = ty - s.y
@@ -542,18 +585,18 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       if (scripted.has(p.id)) continue
       const pending = nextPending(p.id)
       let target = null
-      let spd = 4.5
+      let spd = paceOf(p.id, K.PLAY.INTENT.SHAPE)
       let nz = 1 // 노이즈 배율 — 약속 장소로 향할 때 낮춘다
       if (pending) {
         const s = sim[p.id]
-        const need = (Math.hypot(pending.point.x - s.x, pending.point.y - s.y) / 5.5) * 1000
+        const need = (Math.hypot(pending.point.x - s.x, pending.point.y - s.y) / capOf[p.id]) * 1000
         // 패스를 받을 선수는 공이 그 자리로 날아오므로 일찍 자리를 잡고 지킨다.
         // (공을 리시버 쪽으로 휘게 하는 대신 여기서 어긋남을 없앤다 — 궤적은 그린 대로 간다)
         // 나머지 약속은 늦어도 티가 안 나므로 임박할 때까지 일반 무빙을 계속한다.
         const hold = pending.kind === 'recv' ? RECV_HOLD_MS : 0
         if (pending.t - el <= need + 500 + hold) {
           target = pending.point
-          spd = 6.5
+          spd = paceOf(p.id, K.PLAY.INTENT.MEET)
           // 도착이 임박할수록 잔 움직임을 줄여, 받는 순간엔 그 자리에 정확히 선다
           nz = pending.kind === 'recv' ? clamp((pending.t - el) / 1400, 0.05, 1) : clamp((pending.t - el) / 900, 0.15, 1)
         }
@@ -562,20 +605,20 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         if (mode === 'goal') {
           const sc = sim[scorerId]
           target = p.id === scorerId ? { x: sim[p.id].x, y: sim[p.id].y } : { x: sc.x + ringOf[p.id].x, y: sc.y + ringOf[p.id].y }
-          spd = 6
+          spd = paceOf(p.id, K.PLAY.INTENT.CELEBRATE)
         } else if (mode === 'turnover' || mode === 'reset') {
           target = { x: p.x, y: p.y } // 대형 복귀
-          spd = 3.2
+          spd = paceOf(p.id, K.PLAY.INTENT.RESET)
         } else if (supporters.has(p.id)) {
           // 지원 런: 공의 앞(골 쪽), 자기 쪽 사이드로 벌려 침투 — 패스 받을 공간 만들기
           const side = sim[p.id].y >= ballSteer.y ? 1 : -1
           target = { x: Math.min(ballSteer.x + 10, 113), y: clamp(ballSteer.y + side * 10, 4, 76) }
-          spd = 7.5 * urgency
+          spd = paceOf(p.id, K.PLAY.INTENT.SUPPORT)
         } else {
           const anchor = lastPast(p.id) ?? { x: p.x, y: p.y }
           const k = ROW_K_HOME[p.position] ?? 0.5
           target = { x: anchor.x + k * advHome, y: anchor.y + 0.25 * (ballSteer.y - anchor.y) }
-          spd = 5.5 * urgency // 템포가 오르면 라인 전체가 급해진다
+          spd = paceOf(p.id, K.PLAY.INTENT.SHAPE) // 라인 조정은 조깅이지 스프린트가 아니다
         }
       }
       integrate(p.id, target, spd, nz)
@@ -584,34 +627,35 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     for (const o of opponents) {
       if (scripted.has(o.id)) continue
       let target
-      let spd = 4.2
+      let spd = paceOf(o.id, K.PLAY.INTENT.SHAPE)
       if (mode === 'goal') {
         target = { x: o.x + 2, y: o.y } // 낙담 — 느릿하게 제자리 쪽
-        spd = 1.6
+        spd = paceOf(o.id, K.PLAY.INTENT.DEJECT)
       } else if (mode === 'turnover') {
         const s = sim[o.id]
         target = { x: s.x + (ballSteer.x - s.x) * 0.35, y: s.y + (ballSteer.y - s.y) * 0.35 } // 공수 전환: 볼 지원
-        spd = 3.8
+        spd = paceOf(o.id, K.PLAY.INTENT.RESET)
       } else if (mode === 'reset') {
         target = { x: o.x, y: o.y }
-        spd = 2.5
+        spd = paceOf(o.id, K.PLAY.INTENT.RESET)
       } else if (shotLeg && o.position === 'GK' && el >= shotLeg.start && el <= shotLeg.start + shotLeg.dur + 450) {
-        // GK 다이브: 슛 궤적이 골라인에 닿을 지점으로 몸을 던진다 (순수 연출 — 판정 무관)
+        // GK 다이브: 슛 궤적이 골라인에 닿을 지점으로 몸을 던진다 (순수 연출 — 판정 무관).
+        // 달리기가 아니라 몸을 던지는 동작이라 주력 상한을 넘어도 어색하지 않다.
         target = { x: 117.6, y: clamp(shotLeg.to.y, 35, 45) }
-        spd = 11
+        spd = capOf[o.id] * K.PLAY.INTENT.GK_DIVE
       } else if (pressers.has(o.id)) {
         const gx = 120 - ballSteer.x
         const gy = 40 - ballSteer.y
         const gl = Math.hypot(gx, gy) || 1
         target = { x: ballSteer.x + (gx / gl) * 2.2, y: ballSteer.y + (gy / gl) * 2.2 } // 공-골문 사이 압박 지점
-        spd = 7 * (1 + 0.3 * tempo)
+        spd = paceOf(o.id, K.PLAY.INTENT.PRESS)
       } else if (defWaypoint?.[o.id]) {
         const wp = defWaypoint[o.id]
         const dwp = Math.hypot(sim[o.id].x - wp.x, sim[o.id].y - wp.y)
         if (dwp > 1.6) {
           // 판정과 같은 수비 이동: 엔진이 계산한 좌표로 급히 복귀 (템포 반영)
           target = wp
-          spd = 6.5 * (1 + 0.4 * tempo)
+          spd = paceOf(o.id, K.PLAY.INTENT.RECOVER)
         } else {
           // 도착 후 셰도잉: 근처 아군 공격수를 골사이드로 따라다니는 잔움직임.
           // 판정 좌표에서 ≤2.5m — 화면과 판정이 어긋나 보이지 않는 안전 반경.
@@ -631,12 +675,12 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
             }
             target = { x: wp.x + vx, y: wp.y + vy }
           } else target = wp
-          spd = 5.5 * urgency
+          spd = paceOf(o.id, K.PLAY.INTENT.SHADOW)
         }
       } else {
         const k = ROW_K_OPP[o.position] ?? 0.4
         target = { x: o.x + k * Math.max(0, adv), y: o.y + 0.3 * (ballSteer.y - 40) }
-        spd = 5 * urgency
+        spd = paceOf(o.id, K.PLAY.INTENT.SHAPE)
         if (o.position === 'DF') {
           // 소프트 마킹: 근처 아군 선수 쪽으로 살짝 끌린다
           let best = null
@@ -651,7 +695,29 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       integrate(o.id, target, spd)
     }
 
-    // 5) 렌더 좌표(+바라보는 방향) + 공 + 자막
+    // 5) 최후 안전망 — 한 프레임 이동량을 물리 한계로 자른다.
+    //
+    // 위 어느 경로(스크립트 대입·조향·앵커)로 위치가 바뀌었든 여기를 통과해야 한다.
+    // "순간이동을 만들지 않도록 조심한다"가 아니라 **구조적으로 불가능하게** 만드는 장치다.
+    // 잘라낸 값을 sim에 되쓰기 때문에 다음 프레임은 잘린 위치에서 이어진다 —
+    // 목표가 멀면 순간이동 대신 전력 질주로 보인다.
+    for (const id in sim) {
+      const s = sim[id]
+      const q = lastRender[id]
+      if (q) {
+        const dx = s.x - q.x
+        const dy = s.y - q.y
+        const d = Math.hypot(dx, dy)
+        const cap = jumpCapOf[id] * dt
+        if (d > cap && d > 0) {
+          s.x = q.x + (dx / d) * cap
+          s.y = q.y + (dy / d) * cap
+        }
+      }
+      lastRender[id] = { x: s.x, y: s.y }
+    }
+
+    // 6) 렌더 좌표(+바라보는 방향) + 공 + 자막
     const home = {}
     const opp = {}
     for (const p of players) home[p.id] = { x: sim[p.id].x, y: sim[p.id].y }
