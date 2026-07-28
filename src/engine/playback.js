@@ -571,12 +571,20 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       return !!e && e.t - el <= RESERVED_MS
     }
 
-    // 압박: 공과 가까운 자유 상태 상대 2명이 공을 향해 다가간다
+    // 압박: 공과 가까운 자유 상태 상대 2명이 공을 향해 다가간다.
+    //
+    // 공보다 **골문 쪽**에 있는 수비수를 크게 우대한다. 공 뒤에 처진 선수는 압박이
+    // 아니라 복귀 중이고, 그 선수가 압박조 자리를 차지하면 정작 맞설 수 있는
+    // 수비수가 판정 좌표(액션 도착점)로 미리 달려가 서 있게 된다 —
+    // 달로트가 손흥민을 견제하지 않고 드리블 도착점에 먼저 가 기다리던 문제.
     const pressers = new Set()
     if (mode === 'live') {
       const cands = opponents
         .filter((o) => o.position !== 'GK' && !scripted.has(o.id))
-        .map((o) => ({ id: o.id, d: Math.hypot(sim[o.id].x - ballSteer.x, sim[o.id].y - ballSteer.y) }))
+        .map((o) => {
+          const d = Math.hypot(sim[o.id].x - ballSteer.x, sim[o.id].y - ballSteer.y)
+          return { id: o.id, d: sim[o.id].x >= ballSteer.x ? d : d + K.PLAY.PRESS_BEHIND_PENALTY }
+        })
         .sort((a, b) => a.d - b.d)
       for (const c of cands.slice(0, 2)) if (c.d < 30) pressers.add(c.id)
     }
