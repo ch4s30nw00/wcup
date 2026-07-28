@@ -730,6 +730,17 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         const gl = Math.hypot(gx, gy) || 1
         target = { x: ballSteer.x + (gx / gl) * 2.2, y: ballSteer.y + (gy / gl) * 2.2 } // 공-골문 사이 압박 지점
         spd = paceOf(o.id, K.PLAY.INTENT.PRESS)
+      } else if (o.position !== 'GK' && o.x < ballAim.x - K.PLAY.RECOVER_BEHIND) {
+        // 공보다 한참 뒤에 처진 선수 — 자기 골문 쪽으로 전력 복귀한다.
+        // 코너킥 뒤 역습이면 수비진 전원이 여기 걸린다. 라인 추종 계수로는
+        // "공이 전진한 만큼"밖에 못 돌아와 서 있는 것처럼 보였고(실측 0.9~4.4m),
+        // 판정 좌표는 70m 떨어진 상대를 마킹하느라 제자리였다.
+        // 목표까지 못 따라잡아도 방향과 속도가 맞으면 화면은 "쫓아가는 복귀"가 된다.
+        target = {
+          x: Math.min(118.5, ballAim.x + K.PLAY.RECOVER_AHEAD),
+          y: clamp(40 + (o.y - 40) * 0.6, 4, 76),
+        }
+        spd = paceTo(o.id, target, K.PLAY.INTENT.RECOVER)
       } else if (defWaypoint?.[o.id]) {
         const wp = defWaypoint[o.id]
         const dwp = Math.hypot(sim[o.id].x - wp.x, sim[o.id].y - wp.y)
