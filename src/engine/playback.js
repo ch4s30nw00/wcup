@@ -163,6 +163,9 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       dur: rp.dur,
       holdUntil,
       deadline,
+      // 이 런의 도착을 실제로 쓰는 액션이 있는가. 없으면 "장식 런"이라
+      // 재생 길이를 끌어당기지 않는다 (아래 total 참고).
+      consumed: !!rp.consumer,
       motion: 'run',
     })
   }
@@ -194,7 +197,15 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
 
   // 재생 총 시간은 공 체인이 아니라 "모든 선수 이동이 끝나는 시점" 기준 —
   // 늦게 출발하는 런도 끝까지 뛰고 나서 재생이 멈춘다
-  let total = Math.max(chainEnd + 700, ...segs.map((s) => Math.max(s.start + s.dur, s.holdUntil ?? 0) + 500))
+  // 재생은 "공 전개가 끝나고 꼬리만큼" 돈다. 아무도 안 기다리는 장식 런은 여기에
+  // 끼워주지 않는다 — 예전에는 그 런 하나가 2액션 전개를 14.2초까지 늘렸고,
+  // 그동안 전원이 목적 없이 떠다녔다. 장식 런은 화면이 끝날 때 같이 끊긴다
+  // (실제로도 공격이 끝나면 그 침투는 의미를 잃는다).
+  const timedSegs = segs.filter((s) => s.motion !== 'run' || s.consumed)
+  let total = Math.max(
+    chainEnd + K.PLAY.TAIL_MS,
+    ...timedSegs.map((s) => Math.max(s.start + s.dur, s.holdUntil ?? 0) + 500),
+  )
 
   // ── 살아있는 움직임: 매 프레임 볼-추종 스티어링 시뮬레이션 ──
   // 지시(스크립트)가 없는 순간의 모든 선수는 "공 위치에 반응하는 목표점"을 향해
@@ -312,23 +323,36 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
   let prevBall = null // 공 속도 계산용 직전 프레임 공 위치
   let tempo = 0 // 공 속도 EMA 0~1 — 역습·긴 패스 국면일수록 1에 가깝다
   let supPrev = new Set() // 직전 프레임 지원 런 담당 (히스테리시스용)
+  const supUntil = {} // 지원 런 역할 최소 유지 시각 — 매 프레임 후보가 뒤바뀌는 깜빡임 방지
+  let frozenAdv = null // 체인 종료 시점의 전진량 (공↔셰이프 되먹임 차단)
+  const aimPrev = {} // 직전 목표 — 역할이 바뀌어 목표가 크게 튈 때 부드럽게 옮긴다
 
-  // 바라보는 방향 (라디안) — 움직이면 진행 방향, 서 있으면 공 방향. 급회전 방지용 각도 lerp.
+  // 바라보는 방향 (라디안). 움직이면 진행 방향, 서 있으면 **역할이 정한 곳**을 본다.
+  //
+  // 예전에는 서 있는 선수가 전부 공만 노려봤다 — 22명이 한 점을 향해 고개를 고정하고
+  // 있으니 실감이 떨어진다는 평을 받았다(베타테스트). 실제로는 공을 안 보는 순간이 더 많다:
+  // 앞서 뛰는 공격수는 골문과 뒷공간을 보고, 수비수는 자기가 맡은 상대를 본다.
+  // 여기에 느린 좌우 스캔을 얹어 "서 있어도 살아 있는" 느낌을 만든다.
   const facePrev = {}
   const faceAng = {}
-  const updateFace = (id, x, y, ball, dt) => {
+  const updateFace = (id, x, y, ball, dt, sec, gaze) => {
     const prev = facePrev[id]
     facePrev[id] = { x, y }
+    const moving = prev && Math.hypot(x - prev.x, y - prev.y) > 0.03
     let target
-    if (prev && Math.hypot(x - prev.x, y - prev.y) > 0.03) {
+    let scan = 0
+    if (moving) {
       target = Math.atan2(y - prev.y, x - prev.x)
-    } else if (ball) {
-      target = Math.atan2(ball.y - y, ball.x - x)
     } else {
-      return faceAng[id] ?? 0
+      const look = gaze ?? ball
+      if (!look) return faceAng[id] ?? 0
+      target = Math.atan2(look.y - y, look.x - x)
+      // 서 있는 동안만 훑어본다 — 달리면서 고개를 흔들면 어지럽다.
+      // 선수마다 위상이 달라(noiseOf의 p1) 전원이 같이 흔들리지 않는다.
+      scan = ((K.PLAY.SCAN_DEG * Math.PI) / 180) * Math.sin(2 * Math.PI * K.PLAY.SCAN_HZ * sec + noiseOf[id].p1)
     }
     let cur = faceAng[id] ?? target
-    let d = target - cur
+    let d = target + scan - cur
     while (d > Math.PI) d -= 2 * Math.PI
     while (d < -Math.PI) d += 2 * Math.PI
     cur += d * Math.min(1, dt * 9)
@@ -474,17 +498,22 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
             : 'reset'
           : 'live'
     const freeze = shotLeg && el >= shotLeg.start && el < shotLeg.start + 280 // 슛 순간 전원 멈칫
-    const adv = ballSteer.x - 60 // 하프라인 기준 공의 전진량 (상대 라인다운용)
+    // 공 전개가 끝나면 전진량을 그 시점 값으로 얼린다.
+    // 공은 소유자를 따라가고, 소유자는 팀 셰이프를 따라가고, 셰이프는 다시 공을 따라간다 —
+    // 이 고리가 살아 있으면 체인이 끝난 뒤 팀 전체가 뒤로 흘러내린다(측정 47m 후퇴).
+    if (el > chainEnd && frozenAdv == null) frozenAdv = { adv: ballSteer.x - 60, home: Math.max(0, ballSteer.x - ball0x) }
+    const settled = el > chainEnd + K.PLAY.SETTLE_MS
+    const adv = frozenAdv ? frozenAdv.adv : ballSteer.x - 60 // 하프라인 기준 공의 전진량 (상대 라인다운용)
     // 아군 라인업은 "이번 공격 시작점 대비" 전진량 — 자기 진영에서 시작해도 후퇴하지 않고
     // 공격 방향(오른쪽)으로만 밀고 올라간다
-    const advHome = Math.max(0, ballSteer.x - ball0x)
+    const advHome = frozenAdv ? frozenAdv.home : Math.max(0, ballSteer.x - ball0x)
 
     // 템포: 공 속도 EMA — 공이 빠르게 움직이는 국면(역습·긴 패스)엔 오프볼 전원이 급해진다.
     // 실제 축구에서 볼 템포와 오프볼 스프린트 강도가 함께 오르는 것의 근사.
     const ballSpd = prevBall && dt > 0.001 ? Math.hypot(ballSteer.x - prevBall.x, ballSteer.y - prevBall.y) / dt : 0
     prevBall = ballSteer
-    tempo += (clamp(ballSpd / 14, 0, 1) - tempo) * Math.min(1, dt * 3)
-    const urgency = 1 + 0.9 * tempo // 오프볼 속도 배율 1.0 ~ 1.9
+    tempo += (clamp(ballSpd / K.PLAY.TEMPO_REF, 0, 1) - tempo) * Math.min(1, dt * 3)
+    const urgency = 1 + K.PLAY.URGENCY_GAIN * tempo // 1.00 ~ 1.35
     urgencyRef.v = urgency
 
     // 판정 엔진(resolve.js)이 액션마다 계산해둔 수비 좌표 — 진행 중인 레그의 목표 좌표.
@@ -521,8 +550,11 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
 
     // 지원 런: 공과 가까운 자유 아군 2명이 공보다 앞 공간으로 침투해 패스 옵션을 만든다.
     // 판정에 안 쓰이는 순수 연출이라 자유롭게 뛴다. 히스테리시스(-4m 보정)로 역할 깜빡임 방지.
+    //
+    // 공 전개가 끝난 뒤(settled)에는 뽑지 않는다 — 끝난 공격에 계속 침투 런을 넣으면
+    // 목표가 "공 앞 10m"와 "자기 원위치" 사이를 오가며 선수가 앞뒤로 왔다 갔다 한다.
     const supporters = new Set()
-    if (mode === 'live') {
+    if (mode === 'live' && !settled) {
       players
         .filter((p) => !scripted.has(p.id))
         .map((p) => {
@@ -534,6 +566,10 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         .sort((a, b) => a.d - b.d)
         .slice(0, 3)
         .forEach((c) => supporters.add(c.id))
+      // 한번 침투를 시작했으면 최소한 이만큼은 유지한다. 거리 순으로만 뽑으면
+      // 두 선수가 비슷한 거리일 때 매 프레임 역할이 뒤바뀌며 둘 다 제자리에서 떤다.
+      for (const id of supPrev) if ((supUntil[id] ?? 0) > el && !reserved(id)) supporters.add(id)
+      for (const id of supporters) if (!supPrev.has(id)) supUntil[id] = el + K.PLAY.SUPPORT_HOLD_MS
     }
     supPrev = supporters
 
@@ -546,7 +582,18 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     const integrate = (id, rawTarget, maxSpeed, noiseScale = 1) => {
       const s = sim[id]
       const a = anchors[id]
-      let aim = rawTarget
+      // 역할이 바뀌면 목표가 30~50m씩 튀어 선수가 제자리에서 유턴했다(측정 47m 후퇴).
+      // 크게 튄 목표는 한 번에 따라가지 않고 BLEND 동안 옮겨 간다 — 방향 전환이
+      // "갑자기 뒤돌기"가 아니라 "판단을 바꾸는 움직임"으로 보이게.
+      const prevAim = aimPrev[id]
+      if (!prevAim) aimPrev[id] = { x: rawTarget.x, y: rawTarget.y }
+      else {
+        const jump = Math.hypot(rawTarget.x - prevAim.x, rawTarget.y - prevAim.y)
+        const k = jump > K.PLAY.TARGET_JUMP ? Math.min(1, (dt * 1000) / K.PLAY.TARGET_BLEND_MS) : 1
+        prevAim.x += (rawTarget.x - prevAim.x) * k
+        prevAim.y += (rawTarget.y - prevAim.y) * k
+      }
+      let aim = aimPrev[id]
       if (a) {
         if (a.leash <= 0.01) aim = a.point
         else {
@@ -723,8 +770,27 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     for (const p of players) home[p.id] = { x: sim[p.id].x, y: sim[p.id].y }
     for (const o of opponents) opp[o.id] = { x: sim[o.id].x, y: sim[o.id].y }
     const ball = ballAt((id) => home[id] ?? opp[id] ?? basePos(id))
-    for (const p of players) home[p.id].a = updateFace(p.id, home[p.id].x, home[p.id].y, ball, dt)
-    for (const o of opponents) opp[o.id].a = updateFace(o.id, opp[o.id].x, opp[o.id].y, ball, dt)
+    // 시선 대상: 공보다 앞서 나간 공격수는 골문(과 뒷공간)을 본다.
+    // 수비수는 자기 근처의 상대 공격수를 본다 — 마크 대상에서 눈을 떼지 않는다.
+    for (const p of players) {
+      const me = home[p.id]
+      const gaze = ball && me.x > ball.x + K.PLAY.GAZE_AHEAD ? { x: K.GOAL.x, y: K.GOAL.y } : ball
+      me.a = updateFace(p.id, me.x, me.y, ball, dt, sec, gaze)
+    }
+    for (const o of opponents) {
+      const me = opp[o.id]
+      let gaze = ball
+      if (o.position === 'DF' || o.position === 'MF') {
+        let near = null
+        for (const p of players) {
+          const hp = home[p.id]
+          const d = Math.hypot(hp.x - me.x, hp.y - me.y)
+          if (d < K.PLAY.GAZE_MARK_R && (!near || d < near.d)) near = { d, hp }
+        }
+        if (near) gaze = near.hp
+      }
+      me.a = updateFace(o.id, me.x, me.y, ball, dt, sec, gaze)
+    }
     let caption = null
     for (const c of captions) if (el >= c.t) caption = c.text
 

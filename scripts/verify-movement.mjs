@@ -100,7 +100,7 @@ function play({ chainActs, runs = [] }) {
     const prev = {}
     const stat = {}
     for (const p of [...home, ...opponents])
-      stat[p.id] = { max: 0, maxAt: 0, jump: 0, jumpAt: 0, moved: 0, stillRun: 0, worstStill: 0, win: [] }
+      stat[p.id] = { max: 0, maxAt: 0, jump: 0, jumpAt: 0, moved: 0, stillRun: 0, worstStill: 0, win: [], turns: 0, leg: null, mark: null }
     let lastEl = 0
     playSequence({
       actions: chain,
@@ -141,6 +141,22 @@ function play({ chainActs, runs = [] }) {
               s.jumpAt = elapsed
             }
             s.moved += d
+            // 유턴 세기 — TURN_SAMPLE_MS마다 이동 방향을 재고, 직전 방향과 반대로
+            // 꺾이면(>135도) 한 번으로 친다. "역할이 바뀌며 제자리에서 뒤도는" 움직임을 잡는다.
+            if (!s.mark) s.mark = { t: elapsed, x: p.x, y: p.y }
+            else if (elapsed - s.mark.t >= TURN_SAMPLE_MS) {
+              const vx = p.x - s.mark.x
+              const vy = p.y - s.mark.y
+              const vl = Math.hypot(vx, vy)
+              if (vl >= TURN_MIN_M) {
+                if (s.leg) {
+                  const cos = (s.leg.x * vx + s.leg.y * vy) / (s.leg.l * vl)
+                  if (cos < -0.7) s.turns++ // 135도 이상
+                }
+                s.leg = { x: vx, y: vy, l: vl }
+              }
+              s.mark = { t: elapsed, x: p.x, y: p.y }
+            }
             // 연속 정지 구간 길이
             if (v < 0.2) {
               s.stillRun += dt
@@ -195,6 +211,12 @@ const SPEED_WINDOW_MS = 150
 // "이 선수 다리로는 불가능하다"를 가르는 선이다.
 const SPEED_TOL = 1.15
 const STILL_MAX_S = 2.5
+// 유턴 판정 — 0.5초마다 2m 이상 이동한 방향을 비교한다
+const TURN_SAMPLE_MS = 500
+const TURN_MIN_M = 2
+// 한 재생에서 이보다 자주 뒤도는 선수가 있으면 역할 전환이 튀고 있다는 뜻.
+// 고치기 전에는 공격이 끝난 뒤 40m 전진 → 47m 후퇴가 나왔다.
+const TURN_MAX = 2
 
 for (const c of CASES) {
   const r = await play(c)
@@ -233,6 +255,12 @@ for (const c of CASES) {
     `${STILL_MAX_S}초 이상 굳어 있는 선수 없음 (최장 ${Math.max(...rows.filter((x) => x.id !== shooterId).map((x) => x.worstStill)).toFixed(1)}s)`,
     frozen.length === 0,
     frozen.length ? frozen.slice(0, 3).map((f) => `${f.p.name} ${f.worstStill.toFixed(1)}s`).join(', ') : null,
+  )
+  const spun = rows.filter((r2) => r2.turns > TURN_MAX).sort((a, b) => b.turns - a.turns)
+  chk(
+    `앞뒤로 왔다 갔다 하는 선수 없음 (최다 ${Math.max(...rows.map((x) => x.turns))}회)`,
+    spun.length === 0,
+    spun.length ? spun.slice(0, 3).map((f) => `${f.p.name} ${f.turns}회`).join(', ') : null,
   )
   console.log(`     (재생 ${(total / 1000).toFixed(1)}s · 총 이동 최대 ${Math.max(...rows.map((x) => x.moved)).toFixed(0)}m)`)
 }
