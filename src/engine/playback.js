@@ -13,6 +13,7 @@ import { commentaryFor } from './commentary.js'
 import { midpoint, samplePath, pathLength, pointAtLength } from './geometry.js'
 import { K, actionSpeed, isLobPass } from './constants.js'
 import { movementDuration, runSpeedOf } from './sheets.js'
+import { pressSlot } from './defense.js'
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
 // 이동/공 속도 (피치 단위 ≈ m/s) — 판정의 수비 이동 예산(resolve.js)과 공유
@@ -577,7 +578,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     // 아니라 복귀 중이고, 그 선수가 압박조 자리를 차지하면 정작 맞설 수 있는
     // 수비수가 판정 좌표(액션 도착점)로 미리 달려가 서 있게 된다 —
     // 달로트가 손흥민을 견제하지 않고 드리블 도착점에 먼저 가 기다리던 문제.
-    const pressers = new Set()
+    const pressers = new Map() // id → 압박 대열 순번 (0 = 볼에 붙는 사람)
     if (mode === 'live') {
       const cands = opponents
         .filter((o) => o.position !== 'GK' && !scripted.has(o.id))
@@ -586,7 +587,9 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           return { id: o.id, d: sim[o.id].x >= ballSteer.x ? d : d + K.PLAY.PRESS_BEHIND_PENALTY }
         })
         .sort((a, b) => a.d - b.d)
-      for (const c of cands.slice(0, 2)) if (c.d < 30) pressers.add(c.id)
+        .filter((c) => c.d < 30)
+        .slice(0, K.DEF.PRESS_N)
+      cands.forEach((c, i) => pressers.set(c.id, i))
     }
 
     // 지원 런: 공과 가까운 자유 아군 2명이 공보다 앞 공간으로 침투해 패스 옵션을 만든다.
@@ -733,10 +736,9 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         target = { x: 117.6, y: clamp(shotLeg.to.y, 35, 45) }
         spd = capOf[o.id] * K.PLAY.INTENT.GK_DIVE
       } else if (pressers.has(o.id)) {
-        const gx = 120 - ballSteer.x
-        const gy = 40 - ballSteer.y
-        const gl = Math.hypot(gx, gy) || 1
-        target = { x: ballSteer.x + (gx / gl) * 2.2, y: ballSteer.y + (gy / gl) * 2.2 } // 공-골문 사이 압박 지점
+        // 판정(defense.js)과 같은 자리 배분 — 0번은 볼에 붙고 뒤 순번은 좌우로 벌려 커버한다.
+        // 전원이 한 점을 노리면 화면에서 몸이 겹친다(예전 문제).
+        target = pressSlot(ballSteer, pressers.get(o.id))
         spd = paceOf(o.id, K.PLAY.INTENT.PRESS)
       } else if (o.position !== 'GK' && o.x < ballAim.x - K.PLAY.RECOVER_BEHIND) {
         // 공보다 한참 뒤에 처진 선수 — 자기 골문 쪽으로 전력 복귀한다.

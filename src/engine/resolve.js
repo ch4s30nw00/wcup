@@ -99,17 +99,20 @@ const ATTRIBUTION_MIN = 0.15
 function pathPressure(pts, opponents, beta, R, { sum = true, excludeGK = false, excludeId = null, betaScale = null } = {}) {
   let z = 0
   let worst = null
+  const all = [] // 압박 큰 순 — 드리블 포위처럼 "2번째 이후"가 필요한 곳에서 쓴다
   for (const o of opponents) {
     if (excludeGK && o.position === 'GK') continue
     if (o.id === excludeId) continue
     const { d, point, frac } = minDistToPath(pts, o)
     const pr = pressure(d, R)
+    all.push({ pr, id: o.id, point, frac, o })
     if (sum) z += beta * (betaScale ? betaScale(o) : 1) * pr
     if (!worst || pr > worst.pr) worst = { pr, id: o.id, point, frac, o }
   }
+  all.sort((a, b) => b.pr - a.pr)
   if (!sum && worst) z = beta * (betaScale ? betaScale(worst.o) : 1) * worst.pr
   if (worst && worst.pr < ATTRIBUTION_MIN) worst = null
-  return { z, worst }
+  return { z, worst, all }
 }
 
 // 크로스 기하 판정: 측면에서 MIN_L 이상 날아와 박스 안에 떨어지는 패스 (데이터 요청 §2·3·7)
@@ -285,7 +288,21 @@ export function calcDribble(action, opponents) {
     sum: false,
     betaScale: (o) => defScale(o, DEF_PRIMARY.dribble(o)),
   })
-  let z = C.Z0 + C.B_SKILL * (sDrib - 0.7) + C.B_LEN * L + def.z
+  // 포위 — 최근접 수비수 말고도 붙어 있는 사람들.
+  //
+  // def는 sum:false라 최근접 1명만 본다("1v1 대면 간격 모델"). 그래서 다섯 명이
+  // 둘러싸도 한 명과 대면한 것과 확률이 똑같았다(측정: 1명 48.2% = 5명 48.2%).
+  // 둘째부터 별도 항으로 더한다 — 계수를 B_DEF보다 작게 두는 이유는, 둘째 수비수는
+  // 공을 뺏으러 들어오는 사람이 아니라 빠져나갈 길을 막는 사람이기 때문이다.
+  //
+  // 2번째부터만 세므로 **검증 앵커는 하나도 흔들리지 않는다** — 드리블 앵커가 전부 1v1이다.
+  // ATTRIBUTION_MIN 아래는 빼서 "붙은 사람이 없으면 실패도 없다"는 경합 게이트 규칙을 지킨다.
+  let surroundZ = 0
+  for (const e of def.all.slice(1)) {
+    if (e.pr < ATTRIBUTION_MIN) continue
+    surroundZ += C.B_SURROUND * defScale(e.o, DEF_PRIMARY.dribble(e.o)) * e.pr
+  }
+  let z = C.Z0 + C.B_SKILL * (sDrib - 0.7) + C.B_LEN * L + def.z + surroundZ
   if (def.worst) z += C.B_BODY * def.worst.pr * (bodyOf(action.actor) - bodyOf(def.worst.o))
   // press = 이 드리블에 걸린 수비 압박의 크기. 0이면 뺏을 사람이 없다는 뜻이라
   // 경합 게이트가 실패 확률을 0으로 만든다 (probOf 참고).
@@ -293,7 +310,9 @@ export function calcDribble(action, opponents) {
   // A defender outside the actual 1v1 contest range cannot make a dribble
   // fail.  `pathPressure` removes that defender from `worst`; use the same
   // cutoff for the contest gate instead of leaving a tiny random failure.
-  return { z, worst: def.worst, press: def.worst ? -def.z : 0 }
+  // 경합 게이트의 press에도 포위를 반영한다 — 둘러싸였으면 압박이 큰 게 맞다.
+  // worst가 없으면(아무도 안 붙었으면) 포위도 없으므로 0 그대로다.
+  return { z, worst: def.worst, press: def.worst ? -(def.z + surroundZ) : 0 }
 }
 
 const LABEL = { pass: '패스', dribble: '드리블', shot: '슛' }
