@@ -331,44 +331,30 @@ function App() {
   )
 
   // --- 오프볼 런 지시 ---
-  // 드래그 시작(isFirst) 때 한 번만 판단: 이 선수의 마지막 런이 아직 체인에 "소비"되지
-  // 않았으면(그 뒤로 받거나 준 적 없음) 그 런을 조정, 소비됐으면 새 런을 추가.
-  // 소비된 런을 건드리면 그 위치로 유도된 패스 선들이 전부 따라 움직이기 때문.
-  const setRunTarget = (id, to, isFirst) => {
-    // 시트 모드: 이번 시트의 런은 이번 시트 시작 좌표에서 출발하고,
-    // 공 액션이 걸리는 시간 안에 갈 수 있는 거리(동심원) 밖으로는 못 나간다.
-    if (sheetMode) {
-      const from = (snaps[editIndex] ?? planPos)[id]
-      const player = byId[id]
-      if (from && player && sheetDur > 0) to = clampToReach(from, to, reachRadius(player, sheetDur))
-      return setRuns((rs) => {
-        const mine = rs.findLastIndex((r) => r.id === id && r.afterIndex === editIndex)
-        if (mine === -1) return [...rs, { id, to, ctrl: null, afterIndex: editIndex }]
-        return rs.map((r, i) => (i === mine ? { ...r, to, ctrl: null } : r))
-      })
-    }
-    // 원샷의 마지막 액션이 드리블이면, 오프볼 런도 그 드리블과 동시에
-    // 시작한다. 이전에는 드리블 뒤(afterIndex = chainActs.length)에 붙어
-    // 가동 반경이 없어지고 재생 타이밍도 어긋났다.
-    if (oneShotDribbleIndex != null && runWindowDur > 0) {
-      const from = (snaps[oneShotDribbleIndex] ?? planPos)[id]
-      const player = byId[id]
-      if (from && player) to = clampToReach(from, to, reachRadius(player, runWindowDur))
-      return setRuns((rs) => {
-        const mine = rs.findLastIndex((r) => r.id === id && r.afterIndex === oneShotDribbleIndex)
-        if (mine === -1) return [...rs, { id, to, ctrl: null, afterIndex: oneShotDribbleIndex }]
-        return rs.map((r, i) => (i === mine ? { ...r, to, ctrl: null } : r))
-      })
-    }
+  //
+  // 오프볼 런은 **공 액션이 있는 슬롯에서만** 그릴 수 있다 (사용자 확정 2026-07-28).
+  // 런은 "그 액션이 진행되는 동안 뛰는 것"이라, 액션이 없으면 뛸 시간 자체가 없다.
+  // 액션 없는 빈 슬롯에 런이 붙던 예전 방식에는 두 가지 문제가 있었다:
+  //   · 시간 예산이 없어 가동범위 동심원이 정의되지 않았다
+  //   · 스루패스가 같은 인덱스에 자기 런을 만들면서 사용자가 그린 런과 자리를 다퉜고,
+  //     그때 도착점을 "런 이전 좌표" 기준으로 잡아 선수가 안 움직인 것처럼 계산됐다
+  //
+  // runSlot = 지금 런이 붙을 액션의 인덱스. 없으면(-1) 런 자체가 불가능하다.
+  const runSlot = sheetMode ? editIndex : chainActs.length - 1
+  const runsAllowed = runSlot >= 0 && !!chainActs[runSlot]
+  // 그 슬롯의 액션이 걸리는 시간 = 런이 쓸 수 있는 시간 예산
+  const runSlotDur = sheetMode ? sheetDur : runWindowDur > 0 ? runWindowDur : actionDuration(chain[runSlot])
+
+  const setRunTarget = (id, to) => {
+    if (!runsAllowed) return // 공 액션 없는 슬롯에는 뛸 시간이 없다
+    const from = (snaps[runSlot] ?? planPos)[id]
+    const player = byId[id]
+    if (from && player && runSlotDur > 0) to = clampToReach(from, to, reachRadius(player, runSlotDur))
     setRuns((rs) => {
-      const lastIdx = rs.findLastIndex((r) => r.id === id)
-      if (isFirst) {
-        const consumed =
-          lastIdx === -1 ||
-          chain.some((leg) => (leg.actorId === id || leg.receiverId === id) && leg.index >= rs[lastIdx].afterIndex)
-        if (consumed) return [...rs, { id, to, ctrl: null, afterIndex: chainActs.length }]
-      }
-      return rs.map((r, i) => (i === lastIdx ? { ...r, to, ctrl: null } : r))
+      // 한 선수는 한 슬롯에 런 하나 — 다시 끌면 그 런의 도착점을 고친다
+      const mine = rs.findLastIndex((r) => r.id === id && r.afterIndex === runSlot)
+      if (mine === -1) return [...rs, { id, to, ctrl: null, afterIndex: runSlot }]
+      return rs.map((r, i) => (i === mine ? { ...r, to, ctrl: null } : r))
     })
   }
   const removeRun = (key) => setRuns((rs) => rs.filter((_, i) => i !== key))
@@ -826,6 +812,13 @@ function App() {
                   : `시트 ${editIndex + 1}: 공 액션(드리블/패스/슛) 하나를 그리면 동심원(그 시간 안에 갈 수 있는 범위)이 나타납니다.`}
             </p>
           )}
+          {/* 오프볼 런을 못 그리는 이유를 미리 알려준다 — 드래그해도 아무 일이 없으면
+              고장으로 읽힌다. 런은 "그 액션이 진행되는 동안" 뛰는 것이라 액션이 먼저다. */}
+          {!runsAllowed && phase === 'plan' && !isViewingPast && (
+            <p className="sheet-hint">
+              공 액션(드리블·패스·슛)을 하나 지시하면, 그 사이에 뛸 선수를 드래그해 지정할 수 있습니다.
+            </p>
+          )}
           {/* 셰이크(슛·골·차단 순간)는 이 래퍼의 transform으로 — 보드 내부 좌표는 불변 */}
           <div
             className={`board-wrap${frame?.fx?.slowmo ? ' slowmo' : ''}`}
@@ -868,6 +861,7 @@ function App() {
               selectedId={selectedId}
               sheetLocked={sheetFull}
               onPlayerClick={(id) => setSelectedId((prev) => (prev === id ? null : id))}
+              runsAllowed={runsAllowed}
               onRunSet={setRunTarget}
               onRunRemove={removeRun}
               onRunHandle={setRunHandle}

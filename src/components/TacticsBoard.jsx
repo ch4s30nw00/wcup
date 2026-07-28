@@ -3,6 +3,7 @@ import { quadPoint, handleFromCtrl } from '../engine/geometry'
 import { josaGa, josaEun } from '../engine/commentary'
 // 킷은 오프닝 화면과 공유한다 (data/kits.js) — 유니폼 색은 한 곳에서만 정한다.
 import { kitsFor } from '../data/kits'
+import { K } from '../engine/constants'
 
 // StatsBomb 좌표계와 동일한 120x80 피치. x: 0(우리 골대) → 120(상대 골대)
 const PITCH_W = 120
@@ -10,6 +11,8 @@ const PITCH_H = 80
 const DOT_R = 1.4
 const LEG_COLOR = { dribble: '#dbe4f2', pass: '#ffd23e', shot: '#ff6b5e' }
 const LOB_COLOR = '#8de7ff'
+// 시선 규칙은 재생(playback.js)과 같은 값을 써야 계획 화면과 재생이 어긋나 보이지 않는다
+const { GAZE_AHEAD, GAZE_MARK_R } = K.PLAY
 
 const LEG_MARKER = { dribble: 'url(#ah-move)', pass: 'url(#ah-pass)', shot: 'url(#ah-shot)' }
 
@@ -61,6 +64,7 @@ export default function TacticsBoard({
   selectedId,
   sheetLocked, // 시트에 공 행동이 이미 있어 새 공 행동은 막고 오프볼 런만 허용
   onPlayerClick,
+  runsAllowed, // 오프볼 런을 그릴 수 있는가 — 공 액션이 있는 슬롯에서만 true
   onRunSet,
   onRunRemove,
   onRunHandle,
@@ -120,11 +124,35 @@ export default function TacticsBoard({
 
   // 바라보는 방향 (도 단위) — 재생 중엔 playback이 넣어준 각도(pos.a), 계획 중엔
   // 공 방향을 본다. 공 소유자는 공이 발밑이라 방향이 무의미 → 상대 골문을 본다.
-  const facingDeg = (pos, id) => {
+  const facingDeg = (pos, id, opponent = false) => {
     if (pos.a != null) return (pos.a * 180) / Math.PI
     if (!ballPos) return 0
-    const tgt = id === carrierId ? { x: 120, y: 40 } : ballPos
+    const tgt = gazeTarget(pos, id, opponent)
     return (Math.atan2(tgt.y - pos.y, tgt.x - pos.x) * 180) / Math.PI
+  }
+
+  // 계획 화면에서 누가 어디를 보는가. 전원이 공만 노려보면 실감이 떨어진다는
+  // 평을 받았다 — 실제로는 공을 안 보는 순간이 더 많다.
+  //   공 소유자      → 상대 골문 (다음 수를 본다)
+  //   앞서 나간 아군  → 골문 (뒷공간·마무리를 노린다)
+  //   상대 수비수     → 근처 아군 공격수 (마크 대상에서 눈을 안 뗀다)
+  //   그 외          → 공
+  function gazeTarget(pos, id, opponent) {
+    if (!opponent) {
+      if (id === carrierId) return { x: 120, y: 40 }
+      return pos.x > ballPos.x + GAZE_AHEAD ? { x: 120, y: 40 } : ballPos
+    }
+    const o = opponents.find((x) => x.id === id)
+    if (o && (o.position === 'DF' || o.position === 'MF')) {
+      let near = null
+      for (const p of players) {
+        const hp = homePos(p)
+        const d = Math.hypot(hp.x - pos.x, hp.y - pos.y)
+        if (d < GAZE_MARK_R && (!near || d < near.d)) near = { d, hp }
+      }
+      if (near) return near.hp
+    }
+    return ballPos
   }
 
   function toPitch(e) {
@@ -174,6 +202,9 @@ export default function TacticsBoard({
     if (d.kind === 'eggshot') onEggShotMove(pt)
     else if (d.kind === 'edit') onEditMove(d.key, pt)
     else if (d.kind === 'run') {
+      // 공 액션이 없는 슬롯에서는 런을 못 그린다 — 끌어도 유령 경로가 남지 않게
+      // 여기서 막는다. 탭(선수 선택·패스 대상 지정)은 endDrag가 그대로 처리한다.
+      if (!runsAllowed) return
       onRunSet(d.key, pt, !d.began)
       d.began = true
     } else if (d.kind === 'dribble') {
@@ -500,7 +531,7 @@ export default function TacticsBoard({
               d={`M ${DOT_R + 1.35} 0 L ${DOT_R + 0.25} -0.68 L ${DOT_R + 0.25} 0.68 Z`}
               fill="#cdd6e8"
               opacity="0.85"
-              transform={`rotate(${facingDeg(pos, o.id)})`}
+              transform={`rotate(${facingDeg(pos, o.id, true)})`}
             />
             <circle r={DOT_R} fill={o.position === 'GK' ? awayKit.gk : awayKit.body} stroke={awayKit.ring} strokeWidth="0.28" />
             <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill={awayKit.num}>
