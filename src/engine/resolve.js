@@ -178,6 +178,14 @@ export function calcShot(action, opponents, prev = null) {
   })
   let z = C.B0 + C.B_DIST * lsFactor * (D + bendExtra) + C.B_ANG * theta + C.B_SKILL * (sEff - C.SEFF0) + block.z
 
+  // 조준 — 골문 안 어디를 노렸는가. 0 = 정중앙, 1 = 포스트 바로 옆.
+  // 구석은 키퍼가 못 닿지만 빗나가기도 쉽다. 그 차이를 마무리 스탯이 가른다 —
+  // 중립 스탯에서는 정확히 0이라 "구석 조준 = 공짜 보너스"가 되지 않는다 (K.SHOT.AIM_GAIN 참고).
+  // 조준은 게임에서 실제로 쥐어 준 조작(슛 재조준)인데 확률에는 아무 영향이 없었다.
+  const halfGoal = Math.abs(K.GOAL.postA - K.GOAL.postB) / 2
+  const aim = action.to ? Math.min(1, Math.abs(action.to.y - K.GOAL.y) / halfGoal) : 0
+  z += C.AIM_GAIN * (header ? C.AIM_HEADER : 1) * aim * (sEff - C.SEFF0)
+
   // 일반 xG는 평균 골키퍼를 이미 포함한다. 다만 슈터와 GK만 남은 1대1은
   // 공간·각도 우위가 크므로 별도 보너스를 준다. 슛길 중간에 필드 수비수가 있으면
   // 단독 찬스가 아니므로 이 보너스를 적용하지 않는다.
@@ -253,15 +261,34 @@ export function calcPass(action, opponents, prev = null) {
 
   // 리시버 압박: 도착점 최근접 수비수. 이 수비수는 경로(lane) 합산에서 제외 — 이중계상 방지
   // (보고서 검증표 0.34/0.47/0.70이 리시버 항 단독 기준).
+  //
+  // 다만 "도착점 최근접"이 곧 "리시버 마크맨"은 아니다. 근처에 수비수가 하나뿐이면,
+  // 리시버에서 한참 떨어진 채 **패스 길 한복판에 서 있는** 수비수도 최근접이 된다.
+  // 그러면 레인 합산에서 빠진 데다 리시버 압박도 거의 0이라 통째로 사라졌다 —
+  // 측정: 경로상 거리 0m인 수비수가 성공률을 65.5%→63.5%로 2%p밖에 못 깎았고,
+  // 차단자로 지목되지도 않았다(worst=undefined). 리시버 옆에 한 명만 더 세우면
+  // 같은 수비수가 레인으로 돌아와 12.8%가 됐다.
+  //
+  // 그래서 두 역할 중 **실제로 더 크게 작용하는 쪽으로 한 번만** 센다. 이중계상 방지라는
+  // 원래 목적은 그대로고(여전히 한 번만 센다), 어느 쪽으로 셀지만 고정 대신 비교로 정한다.
+  // 앵커(리시버 뒤 0.5/2/8m)는 전부 리시버 항이 더 커서 그대로 유지된다.
   let recv = null
   for (const o of opponents) {
     const dd = Math.hypot(o.x - action.to.x, o.y - action.to.y)
     if (!recv || dd < recv.d) recv = { d: dd, id: o.id, o }
   }
   const laneScale = (o) => defScale(o, DEF_PRIMARY.pass(o))
-  const lane = pathPressure(pts, opponents, C.B_LANE, C.R_LANE, { excludeId: recv?.id, betaScale: laneScale })
-  const recvPr = recv ? pressure(recv.d, C.R_RECV) : 0
-  const recvZ = recv ? C.B_RECV * laneScale(recv.o) * recvPr : 0
+  // 두 항 다 음수다 — 더 작은(더 음수인) 쪽이 더 크게 작용한다.
+  const asRecv = recv ? C.B_RECV * laneScale(recv.o) * pressure(recv.d, C.R_RECV) : 0
+  const asLane = recv ? C.B_LANE * laneScale(recv.o) * pressure(minDistToPath(pts, recv.o).d, C.R_LANE) : 0
+  const markingRecv = !!recv && asRecv <= asLane
+  const lane = pathPressure(pts, opponents, C.B_LANE, C.R_LANE, {
+    excludeId: markingRecv ? recv.id : null,
+    betaScale: laneScale,
+  })
+  // 레인 쪽으로 셌으면 리시버 항은 0 — 그 수비수는 이미 lane에 들어가 있다.
+  const recvPr = markingRecv ? pressure(recv.d, C.R_RECV) : 0
+  const recvZ = markingRecv ? asRecv : 0
   const shortBonus = C.SHORT_BONUS * Math.max(0, 1 - L / C.SHORT_DIST)
   const z = C.Z0 + C.B_LEN * L + C.B_PASS * (sPass - 0.7) + shortBonus + recvZ + lane.z
   // 연출 귀속: 경로 압박자와 리시버 마크맨 중 압박이 큰 쪽
