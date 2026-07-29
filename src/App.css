@@ -1531,3 +1531,27 @@ header h1 .sub {
     animation: none;
   }
 }
+
+/* 액션 시퀀스 행 = 한 시점. 누르면 그 액션까지만 반영한 보드를 본다
+   (예전 시트 탭이 하던 일 — 액션과 시점이 1:1이라 별도 UI가 필요 없다). */
+.seq-row {
+  cursor: pointer;
+  border-radius: 6px;
+  padding-left: 6px;
+  padding-right: 6px;
+  margin-left: -6px;
+  margin-right: -6px;
+}
+.seq-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.seq-row.viewing {
+  background: rgba(120, 200, 255, 0.14);
+  box-shadow: inset 2px 0 0 #9fd8ff;
+}
+.seq-back {
+  float: right;
+  padding: 2px 10px;
+  font-size: 12px;
+  line-height: 1.6;
+}
