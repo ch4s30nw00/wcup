@@ -90,17 +90,43 @@ export function ctrlFromHandle(a, b, h) {
 // 자르는 위치는 이 함수 하나 — UI(드래그), 체인 유도(공유 링크·옛 저장분), 판정이
 // 전부 같은 상한을 통과한 ctrl을 본다. 화면의 궤적과 판정의 궤적은 언제나 같다.
 
+// 감아 차는 폭의 개인차 계수 — 벽을 넘겨 감는 건 기술이다 (K.BEND.SKILL_* 참고).
+// player를 안 주면 1을 돌려주므로, 기하만 알면 되는 호출부(검증 하네스 등)는
+// 예전 그대로 쓸 수 있다.
+// norm()은 resolve.js에도 있지만 여기서 가져오면 순환 import가 된다 (resolve → geometry).
+const normStat = (v) => K.STAT_FLOOR + (1 - K.STAT_FLOOR) * (v / K.STAT.FM_MAX)
+const bendSkill = (player) => {
+  const mix = K.BEND.SKILL_MIX
+  return normStat(mix.crossing * player.stats.crossing + mix.flair * player.stats.flair)
+}
+export function bendSkillFactor(player, kind = 'pass') {
+  const B = K.BEND
+  if (!B.SKILL_KINDS[kind] || !player?.stats) return 1
+  const f = 1 + B.SKILL_GAIN * (bendSkill(player) - K.STAT.MID)
+  return Math.min(B.SKILL_MAX, Math.max(B.SKILL_MIN, f))
+}
+
+// 휜 만큼 늘어난 거리에 곱하는 대가 계수 — 발기술이 좋으면 같은 휨이 싸다.
+// 상한(bendSkillFactor)과 반대 방향이다: 스킬이 높을수록 1보다 **작아진다**.
+export function bendCostFactor(player) {
+  const B = K.BEND
+  if (!player?.stats) return 1
+  const f = 1 - B.COST_GAIN * (bendSkill(player) - K.STAT.MID)
+  return Math.min(B.COST_MAX, Math.max(B.COST_MIN, f))
+}
+
 // 이 액션이 허용하는 최대 새지타(현 중점 ↔ 곡선 중점 거리) m.
 // 거리 비례라 가까우면 조금, 멀수록 크게 휜다 — 절대 상한은 두지 않는다.
-export function maxBend(chordLen, kind = 'pass') {
+export function maxBend(chordLen, kind = 'pass', player = null) {
   const B = K.BEND
-  return Math.max(B.MIN_M, (B.RATIO[kind] ?? B.RATIO.pass) * chordLen)
+  const ratio = (B.RATIO[kind] ?? B.RATIO.pass) * bendSkillFactor(player, kind)
+  return Math.max(B.MIN_M, ratio * chordLen)
 }
 
 // 곡률 핸들 위치를 허용 범위 안으로 당긴다.
 // 휨(좌우) 방향은 유지하고 깊이만 상한까지, 앞뒤(현 방향)는 K.BEND.ALONG까지 —
 // 패스·슛은 ALONG=0이라 핸들이 궤적 가운데에 고정되고 좌우로만 움직인다.
-export function clampHandle(a, b, h, kind = 'pass') {
+export function clampHandle(a, b, h, kind = 'pass', player = null) {
   const m = midpoint(a, b)
   const dx = b.x - a.x
   const dy = b.y - a.y
@@ -113,13 +139,13 @@ export function clampHandle(a, b, h, kind = 'pass') {
   // 현 방향(along)과 수직 방향(perp = 휨)으로 분해 — 부호를 남겨 좌/우 방향은 보존
   const lim = (v, max) => Math.min(max, Math.max(-max, v))
   const along = lim(ox * ux + oy * uy, (K.BEND.ALONG[kind] ?? 0) * chord)
-  const perp = lim(-ox * uy + oy * ux, maxBend(chord, kind))
+  const perp = lim(-ox * uy + oy * ux, maxBend(chord, kind, player))
   return { x: m.x + ux * along - uy * perp, y: m.y + uy * along + ux * perp }
 }
 
 // 제어점을 허용 범위 안으로. ctrl이 없으면 직선(중점)을 돌려주므로
 // `ctrl ?? midpoint(from, to)` 자리를 그대로 대체할 수 있다.
-export function clampCtrl(a, b, ctrl, kind = 'pass') {
+export function clampCtrl(a, b, ctrl, kind = 'pass', player = null) {
   if (!ctrl) return midpoint(a, b)
-  return ctrlFromHandle(a, b, clampHandle(a, b, handleFromCtrl(a, ctrl, b), kind))
+  return ctrlFromHandle(a, b, clampHandle(a, b, handleFromCtrl(a, ctrl, b), kind, player))
 }

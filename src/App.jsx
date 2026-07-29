@@ -206,7 +206,8 @@ function App() {
         receiverId: act.receiverId,
         from: cur,
         to,
-        ctrl: clampCtrl(cur, to, act.ctrl, act.type),
+        // 휨 상한은 차는 사람의 발기술에 달렸다 — 크로스·발재간이 좋을수록 더 감긴다
+        ctrl: clampCtrl(cur, to, act.ctrl, act.type, byId[carrier]),
         index,
       }
       if (act.receiverId !== 'GOAL') {
@@ -471,7 +472,8 @@ function App() {
   const setChainHandle = (i, h) => {
     const leg = chain[i]
     if (!leg) return
-    const ctrl = ctrlFromHandle(leg.from, leg.to, clampHandle(leg.from, leg.to, h, leg.type))
+    // 끌 수 있는 한계도 같은 상한을 쓴다 — 화면에서 잡히는 폭과 판정이 어긋나면 안 된다
+    const ctrl = ctrlFromHandle(leg.from, leg.to, clampHandle(leg.from, leg.to, h, leg.type, byId[leg.actorId]))
     setChainActs((cs) => cs.map((c, idx) => (idx === i ? { ...c, ctrl } : c)))
   }
   // 체인이므로 그 뒤도 함께 삭제. 그 액션에 딸린 오프볼 런도 같이 지운다 —

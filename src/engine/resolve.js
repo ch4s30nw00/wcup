@@ -29,7 +29,7 @@
 //
 // 보류 항: PK 특례 0.76 (PK 상황 미도입) · 컨디션/체력 스케일
 
-import { samplePath, pathLength, minDistToPath } from './geometry.js'
+import { samplePath, pathLength, minDistToPath, bendCostFactor } from './geometry.js'
 import { initDefense, advanceDefense } from './defense.js'
 import { checkOffside, offsideWarnings } from './offside.js'
 import { K, actionSpeed, isLobPass } from './constants.js'
@@ -171,7 +171,9 @@ export function calcShot(action, opponents, prev = null) {
   // "크게 휘려 그려서 블로커만 피하고 xG는 직선 슛 그대로"가 성립해버린다.
   // 호 길이가 현보다 길어진 만큼을 거리에 더해 그 공짜를 없앤다.
   // (곡률 자체는 geometry.clampCtrl이 이미 상한을 씌운 상태 — 여기선 남은 휨의 값을 매긴다)
-  const bendExtra = Math.max(0, pathLength(pts) - Math.hypot(action.to.x - from.x, action.to.y - from.y))
+  const bendExtra =
+    Math.max(0, pathLength(pts) - Math.hypot(action.to.x - from.x, action.to.y - from.y)) *
+    bendCostFactor(action.actor)
   const block = pathPressure(pts, opponents, C.B_BLOCK, C.R_BLOCK, {
     excludeGK: true,
     betaScale: (o) => defScale(o, DEF_PRIMARY.shot(o)),
@@ -290,7 +292,11 @@ export function calcPass(action, opponents, prev = null) {
   const recvPr = markingRecv ? pressure(recv.d, C.R_RECV) : 0
   const recvZ = markingRecv ? asRecv : 0
   const shortBonus = C.SHORT_BONUS * Math.max(0, 1 - L / C.SHORT_DIST)
-  const z = C.Z0 + C.B_LEN * L + C.B_PASS * (sPass - 0.7) + shortBonus + recvZ + lane.z
+  // 휘어서 늘어난 거리는 발기술로 값이 달라진다 — 잘 감는 선수는 같은 휨을 더 싸게 친다.
+  // 직선이면 늘어난 거리가 0이라 계수와 무관하다(앵커는 전부 직선). K.BEND.COST_* 참고.
+  const chord = Math.hypot(action.to.x - action.from.x, action.to.y - action.from.y)
+  const effL = chord + Math.max(0, L - chord) * bendCostFactor(action.actor)
+  const z = C.Z0 + C.B_LEN * effL + C.B_PASS * (sPass - 0.7) + shortBonus + recvZ + lane.z
   // 연출 귀속: 경로 압박자와 리시버 마크맨 중 압박이 큰 쪽
   let worst = lane.worst
   if (recv && recvPr >= ATTRIBUTION_MIN && (!worst || recvPr > worst.pr)) {
