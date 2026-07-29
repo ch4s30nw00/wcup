@@ -70,9 +70,10 @@ function App() {
   // 아래 파생값이 통째로 새로 계산된다(그래서 전술도 같이 비워야 한다 — pickMatch 참고).
   const [matchId, setMatchId] = useState(INITIAL_MATCH.match_id)
   // 튜토리얼: 실제 보드 위에서 돈다. null이면 비활성.
-  // tutReading = 설명 카드를 보는 중 / false면 그 기술을 직접 해보는 중.
+  // tutCollapsed = 설명을 접어 둔 상태 (카드가 보드를 가릴 때 사용자가 접는다).
+  // 새 단계로 넘어가면 다시 펼친다 — 읽을 설명이 새로 생겼기 때문.
   const [tutStep, setTutStep] = useState(null)
-  const [tutReading, setTutReading] = useState(true)
+  const [tutCollapsed, setTutCollapsed] = useState(false)
   // 좌표 편집 모드 (개발 전용, 프로덕션 번들에서는 통째로 빠진다 — EDITABLE 참고).
   // editPos = 아직 저장 안 한 좌표 (id → {x,y}). null이면 데이터 원본 그대로.
   const [editMode, setEditMode] = useState(false)
@@ -585,14 +586,14 @@ function App() {
       setSaveMsg(null)
     }
     setTutStep(0)
-    setTutReading(true)
+    setTutCollapsed(false)
     setScreen('board')
   }
   const exitTutorial = () => setTutStep(null)
   function nextTutorial() {
     if (tutStep >= TUTORIAL_STEPS.length - 1) return exitTutorial()
     setTutStep((n) => n + 1)
-    setTutReading(true)
+    setTutCollapsed(false)
   }
 
   // ── 좌표 편집 (개발 전용) ──────────────────────────────────────────
@@ -1084,9 +1085,9 @@ function App() {
       {tutStep != null && (
         <TutorialCoach
           step={tutStep}
-          reading={tutReading}
+          collapsed={tutCollapsed}
           state={{ chainActs, runs, phase }}
-          onPractice={() => setTutReading(false)}
+          onToggle={() => setTutCollapsed((v) => !v)}
           onNext={nextTutorial}
           onSkip={nextTutorial}
           onExit={exitTutorial}

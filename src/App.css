@@ -1044,8 +1044,8 @@ header h1 .sub {
 }
 
 /* ── 튜토리얼 코치 ──────────────────────────────────────────────────
-   실제 보드 위에 떠서 단계별로 안내한다. 보드를 가리면 안 되므로 화면 아래쪽에
-   고정하고, 실습 중(coach-strip)에는 한 줄로 접어 미션만 남긴다. */
+   실제 보드 위에 떠서 단계별로 안내한다. 설명과 미션이 한 카드에 함께 있고,
+   보드를 가릴 때는 ▾로 접어 미션만 남긴다(.collapsed). 화면 아래쪽 고정. */
 .coach {
   position: fixed;
   left: 50%;
@@ -1059,8 +1059,6 @@ header h1 .sub {
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
   padding: 12px 14px;
   color: #dbe4f2;
-}
-.coach-card {
   border-color: #ffd23e;
 }
 .coach-head {
@@ -1068,6 +1066,26 @@ header h1 .sub {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 6px;
+}
+.coach-head-btns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* 접기 — 설명을 띄운 채로 미션을 하다 보면 카드가 보드를 가릴 때가 있다.
+   접어도 미션과 버튼은 남으므로 진행에 지장이 없다. */
+.coach-fold {
+  background: none;
+  border: none;
+  color: #6b7689;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-family: inherit;
+}
+.coach-fold:hover {
+  color: #ffd23e;
 }
 .coach-step {
   font-size: 10.5px;
@@ -1107,6 +1125,9 @@ header h1 .sub {
   border-radius: 7px;
   padding: 7px 9px;
 }
+.coach.collapsed .coach-mission {
+  margin-bottom: 6px;
+}
 .coach-mission {
   display: flex;
   align-items: center;
@@ -1137,8 +1158,13 @@ header h1 .sub {
   border-radius: 8px;
   cursor: pointer;
 }
-.coach-go:hover {
+.coach-go:hover:not(:disabled) {
   filter: brightness(1.08);
+}
+.coach-go:disabled {
+  background: #2c3648;
+  color: #6b7689;
+  cursor: default;
 }
 .coach-skip {
   padding: 8px 12px;
