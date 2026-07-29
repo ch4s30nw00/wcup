@@ -448,7 +448,13 @@ console.log('\n[스모크] 실제 데이터로 resolveSequence (손흥민 드리
   res.steps.forEach((s, i) => console.log(`    ${i + 1}. ${s.type} p=${(s.p * 100).toFixed(0)}%${s.header ? ' (헤더)' : ''}${s.cross ? ' (크로스)' : ''}`))
   console.log(`    outcome=${res.outcome} pTotal=${(res.pTotal * 100).toFixed(1)}%`)
   checkDir('스텝별 defPos 스냅샷 존재', res.steps.every((s) => s.defPos && Object.keys(s.defPos).length === opponents.length))
-  checkDir('확률이 유효 범위', res.steps.every((s) => s.p >= K.P_MIN && s.p <= K.P_MAX))
+  // 드리블만 상한이 다르다. probOf의 경합 게이트가 "붙은 수비수가 없으면 실패도 없다"를
+  // 보장하므로 무압박 드리블은 p=1.0이 정상이다 — P_MAX(0.97)로 깎으면 그 요구가 깨진다.
+  // 예전엔 손흥민 경로에 수비수가 우연히 걸려 있어 이 구분 없이도 통과했다.
+  checkDir(
+    '확률이 유효 범위',
+    res.steps.every((s) => s.p >= K.P_MIN && s.p <= (s.type === 'dribble' ? 1 : K.P_MAX)),
+  )
 }
 
 // ── 4b. 경기 데이터 무결성 — 경기 선택 화면에 뜨는 모든 경기 ─────────
