@@ -98,8 +98,20 @@ export function throughBallDuration({ runnerFrom, ballFrom, to, player, passKind
 //     d / speed  ≤  |p(d) − ballFrom| / K.SPEED.pass + REACT
 //   (좌변 = 리시버가 d만큼 뛰는 시간, 우변 = 공의 비행시간 + 인지 반응)
 //
-// 좌변은 1/speed(≈0.16 s/m)로, 우변은 최대 1/22(≈0.045 s/m)로 증가하므로
-// 차 f(d)는 d에 대해 **단조 증가**다. 그래서 이분탐색으로 안전하게 최대 d를 찾는다.
+// 주의 — 여기서 "공의 비행시간"은 **최저 속도** 기준이어야 한다.
+//
+// 실제로 쓰는 패스 속도(throughPassSpeed)는 "리시버와 동시에 도착"하도록 역산한 값이라,
+// 그 속도로 비행시간을 재면 성립 구간 내내 좌변과 우변이 정확히 같아진다 → f(d) ≡ 0.
+// 예전 구현이 그렇게 되어 있어서, 성립 구간(폭 6m 남짓)에서 f의 부호가 부동소수점
+// 잡음(±1e-16)으로만 정해졌다. 이분탐색이 그 잡음을 따라가느라 구간 아무 데나 수렴했고,
+// 마우스를 0.5m 움직일 때마다 조준점이 최대 4.7m씩 튀었다.
+//
+// 성립을 실제로 가르는 건 속도 하한이다: 공을 그보다 느리게 굴릴 수 없으니 너무 먼
+// 목표를 찍으면 공이 먼저 도착해 버린다. 하한 속도로 재면 성립 구간에서 f가 확실히
+// 음수라 경계가 하나로 정해진다 — 경계값 자체는 예전과 같다(둘 다 "속도 = 하한"인 점).
+//
+// 좌변은 1/speed(≈0.13 s/m)로, 우변은 하한 속도의 포화 때문에 최대 ≈0.11 s/m로
+// 증가하므로 차 f(d)는 d에 대해 **단조 증가**다. 그래서 이분탐색이 안전하다.
 //
 //   runnerFrom — 리시버가 지금 서 있는 자리
 //   ballFrom   — 패스가 출발하는 지점(공 소유자)
@@ -117,10 +129,19 @@ export function throughTarget({ runnerFrom, ballFrom, want, player, passKind = '
   // f(d) ≤ 0 이면 그 지점은 "공보다 먼저(또는 같이) 도착 가능" = 성립
   const f = (d) => {
     const p = at(d)
+    const ballDist = Math.hypot(p.x - ballFrom.x, p.y - ballFrom.y)
+    // 공이 낼 수 있는 가장 느린 속도 — 이보다 더 느리게 굴릴 수 없으므로 이게 성립의 경계다.
+    // throughBallDuration(실제 패스 속도)을 쓰면 f가 항상 0이 된다 (위 주석 참고).
+    // 스루 계열이 아니면 속도가 애초에 고정이라 그 값이 곧 하한이다 — throughSpeedLimits는
+    // 스루 전용 상수를 쓰므로 일반 패스에 그대로 물리면 스루패스로 오인한다.
+    const slowest = isThroughPassKind(passKind)
+      ? throughSpeedLimits(ballDist, passKind).min
+      : actionSpeed({ type: 'pass', passKind })
     // The runner and ball start together.  Do not add DEF.REACT here: that
     // delay is for defenders reading a pass, not a user-directed runner.
-    const ballT = throughBallDuration({ runnerFrom, ballFrom, to: p, player, passKind })
-    return d / speed - ballT
+    // 리시버 시간의 하한은 throughPassSpeed가 쓰는 값과 같게 맞춘다.
+    const runnerT = Math.max(K.PLAY.ACTION_MIN_MS / 1000, d / speed)
+    return runnerT - ballDist / slowest
   }
   if (f(maxD) <= 0) return want // 찍은 지점이 이미 성립 — 손대지 않는다
   let lo = 0
