@@ -367,12 +367,22 @@ function App() {
   // 공 가진 선수 드래그 = 드리블. 드래그 시작(isFirst)에 새 레그 추가, 이후엔 목표만 갱신.
   // 직전 레그가 이미 드리블이면 그 레그를 다시 조정하는 것으로 취급.
   const setDribble = (pt, isFirst) => {
+    // 이번 호출이 새 레그를 붙이는가, 이미 그린 드리블을 조정하는가.
+    //
+    // isFirst는 "새 제스처의 첫 프레임"이다(드래그 시작 또는 메뉴에서 도착점 탭).
+    // 새 제스처면 언제나 레그를 하나 더 붙인다 — 선수는 직전 드리블의 끝점에 서 있으므로
+    // 거기서 다시 끄는 건 "여기서 더 몰고 간다"는 뜻이다. 예전에는 직전이 드리블이면
+    // 무조건 그 레그를 조정해서, 몰고 가다 방향을 꺾는 **드리블 두 번을 아예 못 그렸다**.
+    // (실수로 살짝 끈 경우는 dropDribble이 출발점 3.5m 안에서 취소한다)
+    //
+    // 시트 모드는 예외다. 시트 1장에 공 액션 1개라, 이번 시트에 이미 그렸으면 늘 조정이다.
+    const sheetHasAction = sheetMode && chainActs.length > sheetCount
+    const lastAct = chainActs[chainActs.length - 1]
+    const adjusting = (sheetHasAction || !isFirst) && lastAct?.type === 'dribble'
     // 원샷에서 런을 먼저 그리고 나중에 드리블을 그린 경우도 예외 없이
     // 드리블 시간 안에서 갈 수 있는 거리로 다시 제한한다.
-    const lastAct = chainActs[chainActs.length - 1]
-    const dribbleIndex = lastAct?.type === 'dribble' ? chainActs.length - 1 : chainActs.length
-    const existingDribble = lastAct?.type === 'dribble' ? chain[chain.length - 1] : null
-    const dribbleFrom = existingDribble?.from ?? planPos[carrierId]
+    const dribbleIndex = adjusting ? chainActs.length - 1 : chainActs.length
+    const dribbleFrom = adjusting ? chain[chain.length - 1].from : planPos[carrierId]
     // 오프볼 런을 먼저 찍고 드리블을 나중에 그린 경우도 포함한다.
     // 시트/원샷 어느 쪽이든 새 드리블 시간에 맞춰 목표를 즉시 반경 안으로 당긴다.
     if (dribbleFrom) {
@@ -395,8 +405,10 @@ function App() {
         if (last?.type !== 'dribble') return cs
         return cs.map((c, i) => (i === cs.length - 1 ? { ...c, to: pt, ctrl: isFirst ? null : c.ctrl } : c))
       }
-      if (isFirst && last?.type !== 'dribble') return [...cs, { type: 'dribble', to: pt, ctrl: null }]
-      return cs.map((c, i) => (i === cs.length - 1 ? { ...c, to: pt, ctrl: isFirst ? null : c.ctrl } : c))
+      // 새 제스처 = 새 레그. 드리블 뒤에 또 드리블을 이어 붙일 수 있다.
+      if (isFirst) return [...cs, { type: 'dribble', to: pt, ctrl: null }]
+      // 같은 제스처가 이어지는 중 — 방금 붙인 레그의 도착점만 따라간다
+      return cs.map((c, i) => (i === cs.length - 1 ? { ...c, to: pt } : c))
     })
   }
   const dropDribble = (pt) => {
