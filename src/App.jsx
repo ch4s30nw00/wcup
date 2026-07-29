@@ -268,13 +268,26 @@ function App() {
   const runWindowIndex = lastIndex >= 0 ? lastIndex : null
   const runWindowLeg = runWindowIndex != null ? chain[runWindowIndex] : null
   const runWindowDur = runWindowLeg ? actionDuration(runWindowLeg) : 0
+  // 원을 안 받는 사람 = **이 액션 창 동안 오프볼 런을 줄 수 없는 사람**.
+  //   드리블 — 몰고 가는 본인. 경로가 이미 그려져 있다.
+  //   슛     — 차는 본인. 그 자리에 선다.
+  //   패스   — **받는 쪽**. 공이 닿는 순간 그가 소유자가 되므로, 끌면 오프볼 런이 아니라
+  //            새 드리블이 붙는다. 원을 그려주면 "이만큼 움직일 수 있다"는 거짓말이 된다.
+  //            반대로 **주는 쪽은 공을 놓는 순간부터 자유**다 — 주고 달리기가 여기서 나온다.
+  //
+  // 예전에는 종류를 안 가리고 carrierAt(= 액션 직전의 공 소유자)을 뺐다. 패스에서는
+  // 그게 주는 쪽이라, 정작 자유로워진 사람에게 원이 없고 못 쓰는 쪽에만 있었다.
+  const noCircleId =
+    runWindowLeg?.type === 'pass' && runWindowLeg.receiverId !== 'GOAL'
+      ? runWindowLeg.receiverId
+      : carrierAt[runWindowIndex]
   const reachCircles = useMemo(() => {
     if (runWindowIndex == null || isViewingPast || phase !== 'plan' || !(runWindowDur > 0)) return null
     const at = snaps[runWindowIndex] ?? planPos
     return basePlayers
-      .filter((p) => p.id !== carrierAt[runWindowIndex]) // 공 소유자는 액션 본인이라 제외
+      .filter((p) => p.id !== noCircleId)
       .map((p) => ({ id: p.id, ...at[p.id], r: reachRadius(p, runWindowDur) }))
-  }, [runWindowIndex, isViewingPast, phase, runWindowDur, snaps, planPos, carrierAt, basePlayers])
+  }, [runWindowIndex, isViewingPast, phase, runWindowDur, snaps, planPos, noCircleId, basePlayers])
 
   // 이스터에그 — 실제 경기 재현 감지.
   // 새 방식(egg.sequence 있으면): 골로 끝났고, "공을 주고받은 선수 순서"가 시나리오와
