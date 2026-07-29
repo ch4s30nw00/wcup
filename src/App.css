@@ -86,6 +86,16 @@ header h1 .sub {
   opacity: 0.45;
   cursor: default;
 }
+/* 설계 모드 전환 줄 — 보드 아래. 매번 누르는 버튼이 아니라 한 번 정해두는 설정이라
+   눈에 먼저 띄지 않아도 된다. .commentary-row에 합치지 않는 이유는 그 줄이
+   align-items: stretch라 토글이 해설 박스 높이만큼 늘어나기 때문. */
+.mode-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .sheet-tabs {
   display: flex;
   gap: 4px;
@@ -112,15 +122,6 @@ header h1 .sub {
 }
 .sheet-tab.locked {
   color: #8a93a6;
-}
-.sheet-confirm {
-  padding: 6px 14px;
-  border-color: rgba(120, 200, 255, 0.5);
-  color: #9fd8ff;
-  font-weight: 700;
-}
-.sheet-del:hover {
-  color: #ff8a7d;
 }
 .sheet-hint {
   margin: 0;

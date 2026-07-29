@@ -302,13 +302,10 @@ function App() {
     setSheetCount((n) => n + 1)
     setViewSheet(null)
   }
-  // 시트 삭제 = 그 시트부터 뒤로 전부 삭제 (체인이므로)
-  const deleteSheetFrom = (i) => {
-    setChainActs((cs) => cs.slice(0, i))
-    setRuns((rs) => rs.filter((r) => r.afterIndex < i))
-    setSheetCount(Math.min(sheetCount, i))
-    setViewSheet(null)
-  }
+  // 주 버튼(.kickoff)이 지금 "시트 확정"인가 "실행"인가.
+  // 슛을 그렸으면 확정하지 않는다 — 슛은 전개의 끝이라 넘어갈 다음 시트가 없다.
+  // 예전에는 슛 뒤에도 확정이 눌려, 공 액션도 오프볼 런도 못 넣는 빈 시트가 열렸다.
+  const sheetStep = canConfirmSheet && !shotTaken
 
   // 이스터에그 — 실제 경기 재현 감지.
   // 새 방식(egg.sequence 있으면): 골로 끝났고, "공을 주고받은 선수 순서"가 시나리오와
@@ -755,61 +752,40 @@ function App() {
               경기가 sheetModeAvailable: false면 줄 전체를 그리지 않는다. 첫 경기는
               시트 모드까지 갈 정교함이 필요 없는 판이라, 배우기 전에 버튼부터 보이면
               "이건 또 뭐지"가 된다. 빈 div를 남기면 여백만 뜨므로 통째로 뺀다. */}
-          {sheetModeAvailable && (
-          <div className="sheet-bar">
-            <button
-              className={`mode-toggle${sheetMode ? ' on' : ''}`}
-              onClick={() => {
-                setSheetMode((v) => !v)
-                setViewSheet(null)
-                setSheetCount(chainActs.length)
-              }}
-              disabled={phase !== 'plan'}
-              title="시트 모드: 액션 1개 + 오프볼 런 = 시트 1장씩 확정해 나가는 설계"
-            >
-              {sheetMode ? '📑 시트 모드' : '📄 원샷 모드'}
-            </button>
-            {sheetMode && (
-              <>
-                <div className="sheet-tabs">
-                  {Array.from({ length: totalSheets }, (_, i) => (
-                    <button
-                      key={i}
-                      className={`sheet-tab${shownSheet === i ? ' active' : ''}${i < sheetCount ? ' locked' : ''}`}
-                      onClick={() => setViewSheet(i === editIndex ? null : i)}
-                      title={i < sheetCount ? '확정된 시트 (열람만)' : '편집 중인 시트'}
-                    >
-                      시트 {i + 1}
-                      {i < sheetCount ? ' 🔒' : ''}
-                    </button>
-                  ))}
-                </div>
-                {canConfirmSheet && (
-                  <button className="ctrl sheet-confirm" onClick={confirmSheet}>
-                    시트 {editIndex + 1} 확정 → 다음 ▶
+          {/* 보드 위에는 시트 탭만 둔다 — 어느 시트를 보고 있는지 알려주는 표시다.
+              확정·되돌리기·모드 전환은 전부 보드 아래로 내렸다. 조작하는 버튼이
+              보드를 사이에 두고 위아래로 갈려 있으면 시선이 두 번 움직인다. */}
+          {sheetModeAvailable && sheetMode && (
+            <div className="sheet-bar">
+              <div className="sheet-tabs">
+                {Array.from({ length: totalSheets }, (_, i) => (
+                  <button
+                    key={i}
+                    className={`sheet-tab${shownSheet === i ? ' active' : ''}${i < sheetCount ? ' locked' : ''}`}
+                    onClick={() => setViewSheet(i === editIndex ? null : i)}
+                    title={i < sheetCount ? '확정된 시트 (열람만)' : '편집 중인 시트'}
+                  >
+                    시트 {i + 1}
+                    {i < sheetCount ? ' 🔒' : ''}
                   </button>
-                )}
-                {isViewingPast && (
-                  <button className="ctrl" onClick={() => setViewSheet(null)}>
-                    편집 중인 시트로 ↩
-                  </button>
-                )}
-                {sheetCount > 0 && !isViewingPast && (
-                  <button className="ctrl sheet-del" onClick={() => deleteSheetFrom(editIndex - 1)}>
-                    이전 시트 삭제
-                  </button>
-                )}
-              </>
-            )}
-          </div>
+                ))}
+              </div>
+              {isViewingPast && (
+                <button className="ctrl" onClick={() => setViewSheet(null)}>
+                  편집 중인 시트로 ↩
+                </button>
+              )}
+            </div>
           )}
           {sheetModeAvailable && sheetMode && phase === 'plan' && (
             <p className="sheet-hint">
               {isViewingPast
                 ? `시트 ${shownSheet + 1} 열람 중 — 확정된 시트는 수정할 수 없습니다.`
-                : sheetFull
-                  ? `이 시트에는 공 행동을 하나만 설정할 수 있습니다. 오프볼 런을 더 넣거나, 시트를 확정해 다음 시트로 넘어가주세요.`
-                  : `시트 ${editIndex + 1}: 공 액션(드리블/패스/슛) 하나를 그리면 동심원(그 시간 안에 갈 수 있는 범위)이 나타납니다.`}
+                : shotTaken
+                  ? `슛으로 전개가 끝났습니다. 아래 [전술 확정 — 실행]을 누르세요.`
+                  : sheetFull
+                    ? `이 시트에는 공 행동을 하나만 설정할 수 있습니다. 오프볼 런을 더 넣거나, 아래 [시트 ${editIndex + 1} 확정]으로 다음 시트로 넘어가세요.`
+                    : `시트 ${editIndex + 1}: 공 액션(드리블/패스/슛) 하나를 그리면 동심원(그 시간 안에 갈 수 있는 범위)이 나타납니다.`}
             </p>
           )}
           {/* 오프볼 런을 못 그리는 이유를 미리 알려준다 — 드래그해도 아무 일이 없으면
@@ -881,13 +857,30 @@ function App() {
                 {phase === 'plan' || !frame?.caption ? `🎯 ${moment.objective}` : `📢 ${frame.caption}`}
               </span>
             </div>
+            {/* 시트 확정과 실행은 같은 버튼이다. 조작 지점이 두 모드에서 같아야
+                원샷을 쓰던 사람이 시트 모드로 와도 하던 대로 하면 된다.
+                그리고 슛을 그리는 순간 이 버튼이 실행으로 바뀌므로 **확정할 방법 자체가
+                사라진다** — 예전에는 슛 뒤에도 확정이 눌려 아무것도 못 하는 빈 시트가 열렸다. */}
             <button
-              className={`kickoff${tutFocus?.confirm ? ' tut-pulse' : ''}`}
-              onClick={handleConfirm}
-              disabled={!chain.length || phase === 'playing'}
+              className={`kickoff${tutFocus?.confirm && !sheetStep ? ' tut-pulse' : ''}`}
+              onClick={sheetStep ? confirmSheet : handleConfirm}
+              disabled={sheetStep ? false : !chain.length || phase === 'playing'}
             >
-              {phase === 'playing' ? '재생 중…' : '전술 확정 — 실행 ▶'}
+              {sheetStep
+                ? `시트 ${editIndex + 1} 확정 → 다음 ▶`
+                : phase === 'playing'
+                  ? '재생 중…'
+                  : '전술 확정 — 실행 ▶'}
             </button>
+            {sheetMode && phase === 'plan' && chainActs.length > 0 && (
+              <button
+                className="ctrl"
+                onClick={() => removeChainFrom(chainActs.length - 1)}
+                title="마지막 시트의 공 액션과 오프볼 런을 지우고 그 시트로 돌아갑니다"
+              >
+                ↩ 되돌리기
+              </button>
+            )}
             {phase !== 'plan' && (
               <>
                 <button className="ctrl" onClick={backToPlan}>다시 조정</button>
@@ -895,6 +888,26 @@ function App() {
               </>
             )}
           </div>
+          {/* 설계 모드 전환 — 매번 누르는 버튼이 아니라 한 번 정해두는 설정에 가깝다.
+              보드 위 맨 앞에 두면 처음 보는 사람이 "이건 또 뭐지"부터 만난다.
+              별도 줄로 두는 이유: .commentary-row는 align-items:stretch라
+              거기 넣으면 토글이 해설 박스 높이만큼 세로로 늘어난다. */}
+          {sheetModeAvailable && (
+            <div className="mode-row">
+              <button
+                className={`mode-toggle${sheetMode ? ' on' : ''}`}
+                onClick={() => {
+                  setSheetMode((v) => !v)
+                  setViewSheet(null)
+                  setSheetCount(chainActs.length)
+                }}
+                disabled={phase !== 'plan'}
+                title="시트 모드: 액션 1개 + 오프볼 런 = 시트 1장씩 확정해 나가는 설계"
+              >
+                {sheetMode ? '📑 시트 모드' : '📄 원샷 모드'}
+              </button>
+            </div>
+          )}
 
           {/* 좌표 편집 (개발 전용) — 배포 번들에는 들어가지 않는다 */}
           {EDITABLE && (
