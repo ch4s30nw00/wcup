@@ -227,8 +227,18 @@ console.log('\n[드리블 병행 런] 가속도 반경 끝 목표까지 계속 �
       `runner stays within its leash before the explicit run (${preRunDrift.toFixed(2)}m / ${K.PLAY.LEASH_WAIT}m)`,
       preRunDrift <= K.PLAY.LEASH_WAIT,
     )
-    const maxFrameStep = Math.max(...runnerTimeline.slice(1).map((f, i) => Math.hypot(f.player.x - runnerTimeline[i].player.x, f.player.y - runnerTimeline[i].player.y)))
-    chk(`off-ball run has no frame jump (${maxFrameStep.toFixed(2)}m)`, maxFrameStep <= 0.35)
+    // 프레임 간격이 일정하지 않으므로 고정 상수(예전 0.35m)로는 판정할 수 없다 —
+    // 긴 프레임 한 번에 값이 ±50% 튀어 이 검사는 무작위로 빨간불이 됐다.
+    // 이제 엔진이 한 프레임 이동량을 물리 상한으로 자르므로(K.PLAY.JUMP_CAP),
+    // 그 상한과 직접 비교한다. 상수가 아니라 규칙을 검사하는 것이라 흔들리지 않는다.
+    const stepOver = runnerTimeline.slice(1).map((f, i) => {
+      const dt = (f.elapsed - runnerTimeline[i].elapsed) / 1000
+      if (!(dt > 0)) return 0
+      const step = Math.hypot(f.player.x - runnerTimeline[i].player.x, f.player.y - runnerTimeline[i].player.y)
+      return step - Math.max(runSpeedOf(runner), K.SPEED.dribble) * K.PLAY.JUMP_CAP * dt
+    })
+    const worstOver = Math.max(...stepOver)
+    chk(`off-ball run stays within the physical step cap (초과 ${worstOver.toFixed(3)}m)`, worstOver <= 0.02)
     const passArrivalGap = Math.min(...runnerTimeline
       .filter((f) => f.elapsed >= handoffAt)
       .map((f) => Math.hypot(f.ball.x - runTarget.x, f.ball.y - runTarget.y)))

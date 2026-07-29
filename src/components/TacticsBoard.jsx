@@ -49,7 +49,7 @@ export default function TacticsBoard({
   planPos, // 계획상 각 선수의 최종 위치 (id → {x,y})
   carrierId, // 체인 끝에서 공을 갖게 될 선수 — 이 선수를 드래그하면 드리블
   shotTaken,
-  reachCircles, // 시트 모드 가동범위: [{ id, x, y, r }] — 이번 시트 시간 안에 갈 수 있는 거리
+  reachCircles, // 가동범위 동심원: [{ id, x, y, r }] — 마지막 액션 시간 안에 갈 수 있는 거리
   tutFocus, // 튜토리얼 지목: { playerId?, ball?, action? } — 그 단계가 가리키는 대상을 점멸시킨다
   shotZone, // 재현 판정 구역: { x, y, rx, ry, label } — 그날 슛이 나온 지점과 타원 허용 반경
   onEggShotMove, // (pt) — 구역 중심 끌어 옮기기. 있으면 마커가 잡힌다 (개발 전용)
@@ -62,7 +62,6 @@ export default function TacticsBoard({
   offsideIds, // 계획 단계 오프사이드 경고 대상 receiverId Set — 빨간 점멸
   offsideFx, // 재생 중 오프사이드 깃발 효과
   selectedId,
-  sheetLocked, // 시트에 공 행동이 이미 있어 새 공 행동은 막고 오프볼 런만 허용
   onPlayerClick,
   runsAllowed, // 오프볼 런을 그릴 수 있는가 — 공 액션이 있는 슬롯에서만 true
   onRunSet,
@@ -177,10 +176,6 @@ export default function TacticsBoard({
     }
     // 편집 모드는 interactive를 끈 채로 돌아간다 — 'edit'만 통과시킨다
     if (kind === 'edit' ? !editMode : !interactive) return
-    // 시트에 공 행동을 하나 설정한 뒤에는 새 드리블·패스·슛을 만들 수 없다.
-    // 단, 이미 그린 드리블의 도착점 조정과 오프볼 런 편집은 계속 허용한다.
-    const editingCurrentDribble = kind === 'dribble' && chain[chain.length - 1]?.type === 'dribble'
-    if (sheetLocked && (kind === 'ball' || kind === 'aim' || (kind === 'dribble' && !editingCurrentDribble))) return
     e.stopPropagation()
     e.target.setPointerCapture(e.pointerId)
     dragRef.current = { kind, key, startX: e.clientX, startY: e.clientY, moved: false }
@@ -245,7 +240,6 @@ export default function TacticsBoard({
     } else if (d.kind === 'dribble') {
       // 공 소유자 탭(드래그 아님) = 액션 메뉴. 드래그는 기존대로 즉시 드리블.
       if (!d.moved) {
-        if (sheetLocked) return
         setMenuOpen((v) => !v)
         setMode(null)
         return
@@ -271,10 +265,6 @@ export default function TacticsBoard({
   // 빈 잔디 탭 — 드리블 조준 중이면 그 지점이 도착점, 아니면 메뉴를 닫는다
   function boardDown(e) {
     if (!interactive) return
-    if (sheetLocked && mode && mode !== 'stats') {
-      closeMenu()
-      return
-    }
     if (mode === 'dribble') {
       onDribbleSet(toPitch(e), true)
       closeMenu()
@@ -300,7 +290,6 @@ export default function TacticsBoard({
   }
 
   function aimDown(e) {
-    if (sheetLocked) return
     e.stopPropagation()
     e.target.setPointerCapture(e.pointerId)
     dragRef.current = { kind: 'aim', startX: e.clientX, startY: e.clientY, moved: true }
@@ -453,9 +442,8 @@ export default function TacticsBoard({
           )
         })}
 
-      {/* 가동범위 동심원 (시트 모드) — 이번 시트의 공 액션이 걸리는 시간 동안
-          그 선수가 갈 수 있는 거리. 바깥 = 전력 100%, 안쪽 = 여유 70%.
-          오프볼 런 목표는 바깥 원 안으로 클램프된다. */}
+      {/* 가동범위 동심원 — 마지막 공 액션이 걸리는 시간 동안 그 선수가 갈 수 있는 거리.
+          오프볼 런 목표는 이 원 안으로 클램프된다. */}
       {reachCircles?.map((c) => (
         <g key={`reach-${c.id}`} pointerEvents="none">
           <circle

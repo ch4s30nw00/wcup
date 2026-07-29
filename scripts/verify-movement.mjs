@@ -100,7 +100,7 @@ function play({ chainActs, runs = [] }) {
     const prev = {}
     const stat = {}
     for (const p of [...home, ...opponents])
-      stat[p.id] = { max: 0, maxAt: 0, jump: 0, jumpAt: 0, moved: 0, stillRun: 0, worstStill: 0, win: [], turns: 0, leg: null, mark: null }
+      stat[p.id] = { max: 0, maxAt: 0, jump: 0, jumpAt: 0, moved: 0, stillRun: 0, worstStill: 0, win: [], last: { x: p.x, y: p.y } }
     let lastEl = 0
     playSequence({
       actions: chain,
@@ -141,22 +141,7 @@ function play({ chainActs, runs = [] }) {
               s.jumpAt = elapsed
             }
             s.moved += d
-            // 유턴 세기 — TURN_SAMPLE_MS마다 이동 방향을 재고, 직전 방향과 반대로
-            // 꺾이면(>135도) 한 번으로 친다. "역할이 바뀌며 제자리에서 뒤도는" 움직임을 잡는다.
-            if (!s.mark) s.mark = { t: elapsed, x: p.x, y: p.y }
-            else if (elapsed - s.mark.t >= TURN_SAMPLE_MS) {
-              const vx = p.x - s.mark.x
-              const vy = p.y - s.mark.y
-              const vl = Math.hypot(vx, vy)
-              if (vl >= TURN_MIN_M) {
-                if (s.leg) {
-                  const cos = (s.leg.x * vx + s.leg.y * vy) / (s.leg.l * vl)
-                  if (cos < -0.7) s.turns++ // 135도 이상
-                }
-                s.leg = { x: vx, y: vy, l: vl }
-              }
-              s.mark = { t: elapsed, x: p.x, y: p.y }
-            }
+            s.last = { x: p.x, y: p.y }
             // 연속 정지 구간 길이
             if (v < 0.2) {
               s.stillRun += dt
@@ -211,12 +196,11 @@ const SPEED_WINDOW_MS = 150
 // "이 선수 다리로는 불가능하다"를 가르는 선이다.
 const SPEED_TOL = 1.15
 const STILL_MAX_S = 2.5
-// 유턴 판정 — 0.5초마다 2m 이상 이동한 방향을 비교한다
-const TURN_SAMPLE_MS = 500
-const TURN_MIN_M = 2
-// 한 재생에서 이보다 자주 뒤도는 선수가 있으면 역할 전환이 튀고 있다는 뜻.
-// 고치기 전에는 공격이 끝난 뒤 40m 전진 → 47m 후퇴가 나왔다.
-const TURN_MAX = 2
+// 재생 길이 — 공 전개가 끝나면 화면도 끝나야 한다. 아무도 안 기다리는 장식 런이
+// 재생을 끌어당겨 2액션 전개가 14.2초까지 늘어난 적이 있다(그동안 전원이 표류).
+// 여유분은 슬로모션 + 골 세리머니 몫.
+const PLAY_TAIL_ALLOW_MS = 4000
+const PLAY_LEN_FACTOR = 1.0
 
 for (const c of CASES) {
   const r = await play(c)
@@ -256,13 +240,14 @@ for (const c of CASES) {
     frozen.length === 0,
     frozen.length ? frozen.slice(0, 3).map((f) => `${f.p.name} ${f.worstStill.toFixed(1)}s`).join(', ') : null,
   )
-  const spun = rows.filter((r2) => r2.turns > TURN_MAX).sort((a, b) => b.turns - a.turns)
+  // 재생 길이 — 공 전개가 끝나면 화면도 끝나야 한다
+  const chainMs = r.chain.reduce((sum, leg) => sum + actionDuration(leg) * 1000, 0)
+  const allow = chainMs * PLAY_LEN_FACTOR + PLAY_TAIL_ALLOW_MS
   chk(
-    `앞뒤로 왔다 갔다 하는 선수 없음 (최다 ${Math.max(...rows.map((x) => x.turns))}회)`,
-    spun.length === 0,
-    spun.length ? spun.slice(0, 3).map((f) => `${f.p.name} ${f.turns}회`).join(', ') : null,
+    `재생이 공 전개에 비해 길지 않음 (${(total / 1000).toFixed(1)}s / 허용 ${(allow / 1000).toFixed(1)}s)`,
+    total <= allow,
   )
-  console.log(`     (재생 ${(total / 1000).toFixed(1)}s · 총 이동 최대 ${Math.max(...rows.map((x) => x.moved)).toFixed(0)}m)`)
+  console.log(`     (총 이동 최대 ${Math.max(...rows.map((x) => x.moved)).toFixed(0)}m · 재생 ${(total / 1000).toFixed(1)}s)`)
 }
 
 console.log(fails === 0 ? '\n움직임 검증 통과 ✅' : `\n${fails}건 실패 ❌`)

@@ -70,9 +70,10 @@ function App() {
   // 아래 파생값이 통째로 새로 계산된다(그래서 전술도 같이 비워야 한다 — pickMatch 참고).
   const [matchId, setMatchId] = useState(INITIAL_MATCH.match_id)
   // 튜토리얼: 실제 보드 위에서 돈다. null이면 비활성.
-  // tutReading = 설명 카드를 보는 중 / false면 그 기술을 직접 해보는 중.
+  // tutCollapsed = 설명을 접어 둔 상태 (카드가 보드를 가릴 때 사용자가 접는다).
+  // 새 단계로 넘어가면 다시 펼친다 — 읽을 설명이 새로 생겼기 때문.
   const [tutStep, setTutStep] = useState(null)
-  const [tutReading, setTutReading] = useState(true)
+  const [tutCollapsed, setTutCollapsed] = useState(false)
   // 좌표 편집 모드 (개발 전용, 프로덕션 번들에서는 통째로 빠진다 — EDITABLE 참고).
   // editPos = 아직 저장 안 한 좌표 (id → {x,y}). null이면 데이터 원본 그대로.
   const [editMode, setEditMode] = useState(false)
@@ -103,12 +104,9 @@ function App() {
   // 받고→넘기고→또 뛰는 것처럼 같은 선수가 시점이 다른 런을 여러 개 가질 수 있다.
   const [runs, setRuns] = useState(SHARED?.runs ?? [])
   const [selectedId, setSelectedId] = useState(null)
-  // 시트(페이즈) 모드 — 기존 원샷 설계와 병행하는 프로토타입 토글.
-  // sheetCount = 확정된 시트 수. 그 인덱스의 시트가 지금 편집 중인 시트다.
-  // viewSheet = 열람 중인 시트 (null이면 편집 중인 시트를 본다).
-  const [sheetMode, setSheetMode] = useState(false)
-  const [sheetCount, setSheetCount] = useState(0)
-  const [viewSheet, setViewSheet] = useState(null)
+  // 열람 중인 시점 = 그 인덱스 액션까지만 반영한 보드를 본다 (null이면 최신).
+  // 액션 시퀀스 패널에서 행을 클릭해 오간다 — 액션 하나가 곧 한 시점이다.
+  const [viewAt, setViewAt] = useState(null)
   const [phase, setPhase] = useState('plan') // plan | playing | done
   const [result, setResult] = useState(null)
   const [frame, setFrame] = useState(null) // 재생 중 위치: { home, opp, ball, caption }
@@ -242,15 +240,10 @@ function App() {
   }, [planPos, pendingDefense, ballPlanPos, basePlayers])
 
   // --- 시트 모드 파생값 ---
-  // 편집 중인 시트 = sheetCount 인덱스. 그 시트의 공 액션이 걸리는 시간이
-  // 이번 시트에서 모두가 움직일 수 있는 시간 예산 = 동심원 반경의 근거.
-  const editIndex = sheetCount
-  const editLeg = chain[editIndex] ?? null
-  const sheetDur = actionDuration(editLeg)
-  const totalSheets = Math.max(chain.length, sheetCount + 1)
-  // 열람 중인 시트 (null = 편집 중인 시트). 마지막 시트만 편집 가능.
-  const shownSheet = viewSheet ?? editIndex
-  const isViewingPast = viewSheet != null && viewSheet < editIndex
+  // 지금 편집하는 시점 = 마지막 액션. 과거 시점은 열람만 된다.
+  const lastIndex = chainActs.length - 1
+  const shownAt = viewAt ?? lastIndex
+  const isViewingPast = viewAt != null && viewAt < lastIndex
 
   // 튜토리얼이 지목하는 대상을 지금 화면의 실제 값으로 푼다.
   // 'carrier'는 매번 다시 푼다 — 체인이 자라면 공 주인이 바뀌므로 점멸도 따라가야 한다.
@@ -268,47 +261,33 @@ function App() {
     }
   }, [tutStep, carrierId, byId, phase, chain.length])
 
-  // 시트 모드 노출 여부는 경기가 정한다. 첫 경기(2022 포르투갈전)는 한 번에 그려도
-  // 풀리는 판이라 꺼 두고, 두 번째 경기부터 열린다 — 필드가 없으면 열린 것이 기본값이라
-  // 새 경기를 추가할 때 아무것도 안 해도 된다 (scenarios.json의 sheetModeAvailable).
-  const sheetModeAvailable = scenario.sheetModeAvailable !== false
-
-  // 가동범위 동심원 — 이번 시트 시작 좌표를 중심으로, 전력(100%)·여유(70%) 두 겹.
-  // 공 액션을 아직 안 그렸으면 시간 예산이 0이라 원도 없다 (그리면 그때 나타난다).
-  const oneShotDribbleIndex =
-    !sheetMode && chainActs.length > 0 && chainActs[chainActs.length - 1]?.type === 'dribble'
-      ? chainActs.length - 1
-      : null
-  // 원샷에서도 마지막 액션이 드리블이면 그 드리블 시간 동안의 오프볼 런을
-  // 같은 시트처럼 취급한다. 반경 표시·좌표 제한·재생 타이밍이 함께 맞춰진다.
-  const runWindowIndex = sheetMode ? editIndex : oneShotDribbleIndex
+  // 가동범위 동심원 — 마지막 액션의 출발 좌표를 중심으로, 그 액션이 걸리는 시간 동안
+  // 각 선수가 갈 수 있는 거리. 액션 종류를 가리지 않는다 — 드리블이든 패스든 슛이든
+  // 그동안 다른 선수들은 움직인다. (예전에는 드리블일 때만 띄웠는데, 그러면 패스에 붙인
+  // 런이 보이지 않는 벽에 걸렸다 — 원은 안 보이면서 목표는 그 패스 시간으로 잘렸다)
+  const runWindowIndex = lastIndex >= 0 ? lastIndex : null
   const runWindowLeg = runWindowIndex != null ? chain[runWindowIndex] : null
   const runWindowDur = runWindowLeg ? actionDuration(runWindowLeg) : 0
-  // 튜토리얼 중에도 그대로 보여준다. 한때는 시트 모드를 설명하기 전까지 숨겼는데,
-  // 동심원은 원샷 모드에서도 "드리블하는 동안 남들은 이만큼 움직인다"를 알려주는
-  // 핵심 장치라 감추면 오프볼 런 단계가 통째로 이해되지 않는다.
+  // 원을 안 받는 사람 = **이 액션 창 동안 오프볼 런을 줄 수 없는 사람**.
+  //   드리블 — 몰고 가는 본인. 경로가 이미 그려져 있다.
+  //   슛     — 차는 본인. 그 자리에 선다.
+  //   패스   — **받는 쪽**. 공이 닿는 순간 그가 소유자가 되므로, 끌면 오프볼 런이 아니라
+  //            새 드리블이 붙는다. 원을 그려주면 "이만큼 움직일 수 있다"는 거짓말이 된다.
+  //            반대로 **주는 쪽은 공을 놓는 순간부터 자유**다 — 주고 달리기가 여기서 나온다.
+  //
+  // 예전에는 종류를 안 가리고 carrierAt(= 액션 직전의 공 소유자)을 뺐다. 패스에서는
+  // 그게 주는 쪽이라, 정작 자유로워진 사람에게 원이 없고 못 쓰는 쪽에만 있었다.
+  const noCircleId =
+    runWindowLeg?.type === 'pass' && runWindowLeg.receiverId !== 'GOAL'
+      ? runWindowLeg.receiverId
+      : carrierAt[runWindowIndex]
   const reachCircles = useMemo(() => {
     if (runWindowIndex == null || isViewingPast || phase !== 'plan' || !(runWindowDur > 0)) return null
     const at = snaps[runWindowIndex] ?? planPos
     return basePlayers
-      .filter((p) => p.id !== carrierAt[runWindowIndex]) // 공 소유자는 액션 본인이라 제외
+      .filter((p) => p.id !== noCircleId)
       .map((p) => ({ id: p.id, ...at[p.id], r: reachRadius(p, runWindowDur) }))
-  }, [runWindowIndex, isViewingPast, phase, runWindowDur, snaps, planPos, carrierAt, basePlayers])
-
-  // 시트 확정 — 이번 시트에 공 액션이 있어야 넘어갈 수 있다
-  const canConfirmSheet = sheetMode && phase === 'plan' && !isViewingPast && chain.length > sheetCount
-  const confirmSheet = () => {
-    if (!canConfirmSheet) return
-    setSheetCount((n) => n + 1)
-    setViewSheet(null)
-  }
-  // 시트 삭제 = 그 시트부터 뒤로 전부 삭제 (체인이므로)
-  const deleteSheetFrom = (i) => {
-    setChainActs((cs) => cs.slice(0, i))
-    setRuns((rs) => rs.filter((r) => r.afterIndex < i))
-    setSheetCount(Math.min(sheetCount, i))
-    setViewSheet(null)
-  }
+  }, [runWindowIndex, isViewingPast, phase, runWindowDur, snaps, planPos, noCircleId, basePlayers])
 
   // 이스터에그 — 실제 경기 재현 감지.
   // 새 방식(egg.sequence 있으면): 골로 끝났고, "공을 주고받은 선수 순서"가 시나리오와
@@ -340,10 +319,12 @@ function App() {
   //     그때 도착점을 "런 이전 좌표" 기준으로 잡아 선수가 안 움직인 것처럼 계산됐다
   //
   // runSlot = 지금 런이 붙을 액션의 인덱스. 없으면(-1) 런 자체가 불가능하다.
-  const runSlot = sheetMode ? editIndex : chainActs.length - 1
+  const runSlot = lastIndex
   const runsAllowed = runSlot >= 0 && !!chainActs[runSlot]
-  // 그 슬롯의 액션이 걸리는 시간 = 런이 쓸 수 있는 시간 예산
-  const runSlotDur = sheetMode ? sheetDur : runWindowDur > 0 ? runWindowDur : actionDuration(chain[runSlot])
+  // 그 슬롯의 액션이 걸리는 시간 = 런이 쓸 수 있는 시간 예산.
+  // 동심원(runWindowDur)과 **같은 값**이어야 한다 — 갈라 두면 원은 안 보이는데
+  // 목표만 잘리는 "보이지 않는 벽"이 생긴다.
+  const runSlotDur = runWindowDur
 
   const setRunTarget = (id, to) => {
     if (!runsAllowed) return // 공 액션 없는 슬롯에는 뛸 시간이 없다
@@ -370,14 +351,22 @@ function App() {
   // 공 가진 선수 드래그 = 드리블. 드래그 시작(isFirst)에 새 레그 추가, 이후엔 목표만 갱신.
   // 직전 레그가 이미 드리블이면 그 레그를 다시 조정하는 것으로 취급.
   const setDribble = (pt, isFirst) => {
+    // 이번 호출이 새 레그를 붙이는가, 이미 그린 드리블을 조정하는가.
+    //
+    // isFirst는 "새 제스처의 첫 프레임"이다(드래그 시작 또는 메뉴에서 도착점 탭).
+    // 새 제스처면 언제나 레그를 하나 더 붙인다 — 선수는 직전 드리블의 끝점에 서 있으므로
+    // 거기서 다시 끄는 건 "여기서 더 몰고 간다"는 뜻이다. 예전에는 직전이 드리블이면
+    // 무조건 그 레그를 조정해서, 몰고 가다 방향을 꺾는 **드리블 두 번을 아예 못 그렸다**.
+    // (실수로 살짝 끈 경우는 dropDribble이 출발점 3.5m 안에서 취소한다)
+    //
+    const lastAct = chainActs[chainActs.length - 1]
+    const adjusting = !isFirst && lastAct?.type === 'dribble'
     // 원샷에서 런을 먼저 그리고 나중에 드리블을 그린 경우도 예외 없이
     // 드리블 시간 안에서 갈 수 있는 거리로 다시 제한한다.
-    const lastAct = chainActs[chainActs.length - 1]
-    const dribbleIndex = lastAct?.type === 'dribble' ? chainActs.length - 1 : chainActs.length
-    const existingDribble = lastAct?.type === 'dribble' ? chain[chain.length - 1] : null
-    const dribbleFrom = existingDribble?.from ?? planPos[carrierId]
-    // 오프볼 런을 먼저 찍고 드리블을 나중에 그린 경우도 포함한다.
-    // 시트/원샷 어느 쪽이든 새 드리블 시간에 맞춰 목표를 즉시 반경 안으로 당긴다.
+    const dribbleIndex = adjusting ? chainActs.length - 1 : chainActs.length
+    const dribbleFrom = adjusting ? chain[chain.length - 1].from : planPos[carrierId]
+    // 오프볼 런을 먼저 찍고 드리블을 나중에 그린 경우도 포함한다 —
+    // 새 드리블 시간에 맞춰 목표를 즉시 반경 안으로 당긴다.
     if (dribbleFrom) {
       const dribble = { type: 'dribble', from: dribbleFrom, to: pt, ctrl: midpoint(dribbleFrom, pt) }
       const maxMove = actionDuration(dribble)
@@ -392,14 +381,10 @@ function App() {
       )
     }
     setChainActs((cs) => {
-      const last = cs[cs.length - 1]
-      // 시트 모드: 이번 시트에 이미 드리블이 있으면 그걸 조정, 다른 액션이면 무시
-      if (sheetMode && cs.length > sheetCount) {
-        if (last?.type !== 'dribble') return cs
-        return cs.map((c, i) => (i === cs.length - 1 ? { ...c, to: pt, ctrl: isFirst ? null : c.ctrl } : c))
-      }
-      if (isFirst && last?.type !== 'dribble') return [...cs, { type: 'dribble', to: pt, ctrl: null }]
-      return cs.map((c, i) => (i === cs.length - 1 ? { ...c, to: pt, ctrl: isFirst ? null : c.ctrl } : c))
+      // 새 제스처 = 새 레그. 드리블 뒤에 또 드리블을 이어 붙일 수 있다.
+      if (isFirst) return [...cs, { type: 'dribble', to: pt, ctrl: null }]
+      // 같은 제스처가 이어지는 중 — 방금 붙인 레그의 도착점만 따라간다
+      return cs.map((c, i) => (i === cs.length - 1 ? { ...c, to: pt } : c))
     })
   }
   const dropDribble = (pt) => {
@@ -408,19 +393,15 @@ function App() {
       setChainActs((cs) => cs.slice(0, -1)) // 제자리로 되돌리면 드리블 취소
     }
   }
-  // 시트 모드에서는 시트 1장에 공 액션 1개 — 이미 그렸으면 확정하고 넘어가야 한다
-  const sheetFull = sheetMode && chain.length > sheetCount
   const addPass = (receiverId, to, passKind = 'ground') => {
     // 슛 재조준 — 이미 슛으로 끝나 있으면 새 액션을 붙이지 않고 목적지만 갈아끼운다.
     // 슛은 전개의 끝이라 항상 마지막 액션이므로 마지막 하나만 보면 된다.
-    // (액션이 늘지 않으므로 sheetFull이어도 허용한다 — 시트가 넘치는 게 아니다)
     // ctrl은 비운다: 곡률 핸들은 옛 도착점 기준이라 목적지가 바뀌면 뜻이 달라진다.
     const last = chainActs[chainActs.length - 1]
     if (receiverId === 'GOAL' && last?.type === 'shot') {
       setChainActs((cs) => cs.map((c, i) => (i === cs.length - 1 ? { ...c, to, ctrl: null } : c)))
       return
     }
-    if (sheetFull) return
     setChainActs((cs) => [
       ...cs,
       {
@@ -454,7 +435,6 @@ function App() {
   }
 
   const addThroughPass = (receiverId, pt, passKind = 'through') => {
-    if (sheetFull) return
     const idx = chainActs.length // 이 패스가 놓일 체인 인덱스 = 런의 앵커
     const to = throughTargetOf(receiverId, pt, passKind)
     setRuns((rs) => [...rs, { id: receiverId, to, ctrl: null, afterIndex: idx }])
@@ -467,14 +447,13 @@ function App() {
     const ctrl = ctrlFromHandle(leg.from, leg.to, clampHandle(leg.from, leg.to, h, leg.type))
     setChainActs((cs) => cs.map((c, idx) => (idx === i ? { ...c, ctrl } : c)))
   }
-  // 체인이므로 그 뒤도 함께 삭제. 시트 모드면 확정 시트 수도 되돌린다.
+  // 체인이므로 그 뒤도 함께 삭제. 그 액션에 딸린 오프볼 런도 같이 지운다 —
+  // 남겨두면 applyRunsAt의 Math.min(afterIndex, len)에 걸려 체인 맨 끝으로
+  // 재앵커되고, 지운 액션의 침투가 엉뚱한 시점에 되살아난다.
   const removeChainFrom = (i) => {
     setChainActs((cs) => cs.slice(0, i))
-    if (sheetMode) {
-      setRuns((rs) => rs.filter((r) => r.afterIndex < i))
-      setSheetCount((n) => Math.min(n, i))
-      setViewSheet(null)
-    }
+    setRuns((rs) => rs.filter((r) => r.afterIndex < i))
+    setViewAt(null)
   }
 
   // --- 공유 링크 ---
@@ -568,8 +547,7 @@ function App() {
     backToPlan()
     setChainActs([])
     setRuns([])
-    setSheetCount(0)
-    setViewSheet(null)
+    setViewAt(null)
   }
 
   const selected = selectedId ? byId[selectedId] : null
@@ -589,7 +567,6 @@ function App() {
     if (id !== matchId) {
       clearAll()
       setSelectedId(null)
-      setSheetMode(false)
       setMatchId(id)
       // 편집 중이던 좌표는 그 경기 것이다 — 경기가 바뀌면 같이 버린다
       setEditPos(null)
@@ -614,7 +591,6 @@ function App() {
   function startTutorial() {
     clearAll()
     setSelectedId(null)
-    setSheetMode(false)
     if (matchId !== DEFAULT_MATCH_ID) {
       setMatchId(DEFAULT_MATCH_ID)
       // 편집 중이던 좌표는 그 경기 것이다 — 경기가 바뀌면 같이 버린다 (pickMatch와 같은 이유)
@@ -623,14 +599,14 @@ function App() {
       setSaveMsg(null)
     }
     setTutStep(0)
-    setTutReading(true)
+    setTutCollapsed(false)
     setScreen('board')
   }
   const exitTutorial = () => setTutStep(null)
   function nextTutorial() {
     if (tutStep >= TUTORIAL_STEPS.length - 1) return exitTutorial()
     setTutStep((n) => n + 1)
-    setTutReading(true)
+    setTutCollapsed(false)
   }
 
   // ── 좌표 편집 (개발 전용) ──────────────────────────────────────────
@@ -751,66 +727,16 @@ function App() {
 
       <main>
         <div className="board-col">
-          {/* 설계 모드 전환 + 시트 탭 — 기존 원샷 모드를 대체하지 않는 병행 프로토타입.
-              경기가 sheetModeAvailable: false면 줄 전체를 그리지 않는다. 첫 경기는
-              시트 모드까지 갈 정교함이 필요 없는 판이라, 배우기 전에 버튼부터 보이면
-              "이건 또 뭐지"가 된다. 빈 div를 남기면 여백만 뜨므로 통째로 뺀다. */}
-          {sheetModeAvailable && (
-          <div className="sheet-bar">
-            <button
-              className={`mode-toggle${sheetMode ? ' on' : ''}`}
-              onClick={() => {
-                setSheetMode((v) => !v)
-                setViewSheet(null)
-                setSheetCount(chainActs.length)
-              }}
-              disabled={phase !== 'plan'}
-              title="시트 모드: 액션 1개 + 오프볼 런 = 시트 1장씩 확정해 나가는 설계"
-            >
-              {sheetMode ? '📑 시트 모드' : '📄 원샷 모드'}
-            </button>
-            {sheetMode && (
-              <>
-                <div className="sheet-tabs">
-                  {Array.from({ length: totalSheets }, (_, i) => (
-                    <button
-                      key={i}
-                      className={`sheet-tab${shownSheet === i ? ' active' : ''}${i < sheetCount ? ' locked' : ''}`}
-                      onClick={() => setViewSheet(i === editIndex ? null : i)}
-                      title={i < sheetCount ? '확정된 시트 (열람만)' : '편집 중인 시트'}
-                    >
-                      시트 {i + 1}
-                      {i < sheetCount ? ' 🔒' : ''}
-                    </button>
-                  ))}
-                </div>
-                {canConfirmSheet && (
-                  <button className="ctrl sheet-confirm" onClick={confirmSheet}>
-                    시트 {editIndex + 1} 확정 → 다음 ▶
-                  </button>
-                )}
-                {isViewingPast && (
-                  <button className="ctrl" onClick={() => setViewSheet(null)}>
-                    편집 중인 시트로 ↩
-                  </button>
-                )}
-                {sheetCount > 0 && !isViewingPast && (
-                  <button className="ctrl sheet-del" onClick={() => deleteSheetFrom(editIndex - 1)}>
-                    이전 시트 삭제
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-          )}
-          {sheetModeAvailable && sheetMode && phase === 'plan' && (
+          {/* 과거 시점을 열람 중이면 그 사실과 빠져나갈 길을 알린다 —
+              보드가 조작되지 않는 이유가 화면에 있어야 고장으로 안 읽힌다. */}
+          {isViewingPast && phase === 'plan' && (
             <p className="sheet-hint">
-              {isViewingPast
-                ? `시트 ${shownSheet + 1} 열람 중 — 확정된 시트는 수정할 수 없습니다.`
-                : sheetFull
-                  ? `이 시트에는 공 행동을 하나만 설정할 수 있습니다. 오프볼 런을 더 넣거나, 시트를 확정해 다음 시트로 넘어가주세요.`
-                  : `시트 ${editIndex + 1}: 공 액션(드리블/패스/슛) 하나를 그리면 동심원(그 시간 안에 갈 수 있는 범위)이 나타납니다.`}
+              {shownAt + 1}번 액션 시점을 보는 중입니다 — 과거 시점에서는 전술을 고칠 수 없습니다.
+              오른쪽 액션 시퀀스에서 <b>최신으로 ↩</b>를 누르세요.
             </p>
+          )}
+          {shotTaken && phase === 'plan' && !isViewingPast && (
+            <p className="sheet-hint">슛으로 전개가 끝났습니다. 아래 [전술 확정 — 실행]을 누르세요.</p>
           )}
           {/* 오프볼 런을 못 그리는 이유를 미리 알려준다 — 드래그해도 아무 일이 없으면
               고장으로 읽힌다. 런은 "그 액션이 진행되는 동안" 뛰는 것이라 액션이 먼저다. */}
@@ -829,11 +755,11 @@ function App() {
               opponents={opponents}
               flipX={scenario.viewFlipX ?? false}
               matchId={scenario.match_id}
-              // 이전 시트를 열람 중이면 그 시점까지의 체인·좌표만 보여준다
-              runLegs={isViewingPast ? runLegs.filter((r) => r.afterIndex <= shownSheet) : runLegs}
-              chain={isViewingPast ? chain.slice(0, shownSheet + 1) : chain}
-              planPos={isViewingPast ? (snaps[shownSheet + 1] ?? planPos) : planPos}
-              carrierId={isViewingPast ? (carrierAt[shownSheet + 1] ?? carrierId) : carrierId}
+              // 과거 시점을 열람 중이면 그 시점까지의 체인·좌표만 보여준다
+              runLegs={isViewingPast ? runLegs.filter((r) => r.afterIndex <= shownAt) : runLegs}
+              chain={isViewingPast ? chain.slice(0, shownAt + 1) : chain}
+              planPos={isViewingPast ? (snaps[shownAt + 1] ?? planPos) : planPos}
+              carrierId={isViewingPast ? (carrierAt[shownAt + 1] ?? carrierId) : carrierId}
               shotTaken={shotTaken}
               reachCircles={reachCircles}
               tutFocus={tutFocus}
@@ -859,7 +785,6 @@ function App() {
               offsideIds={offsideIds}
               offsideFx={phase !== 'plan' ? frame?.fx : null}
               selectedId={selectedId}
-              sheetLocked={sheetFull}
               onPlayerClick={(id) => setSelectedId((prev) => (prev === id ? null : id))}
               runsAllowed={runsAllowed}
               onRunSet={setRunTarget}
@@ -881,6 +806,10 @@ function App() {
                 {phase === 'plan' || !frame?.caption ? `🎯 ${moment.objective}` : `📢 ${frame.caption}`}
               </span>
             </div>
+            {/* 시트 확정과 실행은 같은 버튼이다. 조작 지점이 두 모드에서 같아야
+                원샷을 쓰던 사람이 시트 모드로 와도 하던 대로 하면 된다.
+                그리고 슛을 그리는 순간 이 버튼이 실행으로 바뀌므로 **확정할 방법 자체가
+                사라진다** — 예전에는 슛 뒤에도 확정이 눌려 아무것도 못 하는 빈 시트가 열렸다. */}
             <button
               className={`kickoff${tutFocus?.confirm ? ' tut-pulse' : ''}`}
               onClick={handleConfirm}
@@ -888,6 +817,15 @@ function App() {
             >
               {phase === 'playing' ? '재생 중…' : '전술 확정 — 실행 ▶'}
             </button>
+            {phase === 'plan' && chainActs.length > 0 && (
+              <button
+                className="ctrl"
+                onClick={() => removeChainFrom(chainActs.length - 1)}
+                title="마지막 공 액션과 거기 딸린 오프볼 런을 지웁니다"
+              >
+                ↩ 되돌리기
+              </button>
+            )}
             {phase !== 'plan' && (
               <>
                 <button className="ctrl" onClick={backToPlan}>다시 조정</button>
@@ -895,7 +833,6 @@ function App() {
               </>
             )}
           </div>
-
           {/* 좌표 편집 (개발 전용) — 배포 번들에는 들어가지 않는다 */}
           {EDITABLE && (
             <div className="edit-row">
@@ -1033,19 +970,40 @@ function App() {
           </section>
 
           <section className="panel">
-            <h2>액션 시퀀스</h2>
+            <h2>
+              액션 시퀀스
+              {/* 과거 시점 열람 중일 때만 빠져나갈 길을 띄운다 */}
+              {isViewingPast && phase === 'plan' && (
+                <button className="ctrl seq-back" onClick={() => setViewAt(null)}>최신으로 ↩</button>
+              )}
+            </h2>
             {chain.length === 0 && runLegs.length === 0 ? (
               <p className="muted">공이나 선수를 드래그해 전개를 설계하세요. 공은 지금 {byId[moment.ball].name}에게 있습니다.</p>
             ) : (
               <ul className="actions-list">
+                {/* 행을 누르면 그 액션까지만 반영한 보드를 본다 — 액션 하나가 곧 한 시점이다.
+                    (예전 시트 탭이 하던 일. 액션과 시점이 1:1이라 별도 개념이 필요 없다) */}
                 {chain.map((leg, i) => (
-                  <li key={`c${i}`} className="action-row">
+                  <li
+                    key={`c${i}`}
+                    className={`action-row seq-row${shownAt === i && isViewingPast ? ' viewing' : ''}`}
+                    onClick={() => phase === 'plan' && setViewAt(i === lastIndex ? null : i)}
+                    title="이 시점의 보드 보기"
+                  >
                     <span>
                       {i + 1}. {leg.type === 'pass' ? (PASS_KIND_LABEL[chainActs[leg.index]?.passKind ?? (chainActs[leg.index]?.through ? 'through' : 'ground')] ?? '패스') : TYPE_LABEL[leg.type]} — {byId[leg.actorId].name}
                       {leg.type === 'pass' ? ` → ${byId[leg.receiverId].name}` : leg.type === 'shot' ? ' → 골문' : ''}
                     </span>
                     {phase === 'plan' && (
-                      <button onClick={() => removeChainFrom(leg.index)} title="이 액션부터 뒤로 전부 삭제">✕</button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation() // 행 클릭(시점 열람)과 구분
+                          removeChainFrom(leg.index)
+                        }}
+                        title="이 액션부터 뒤로 전부 삭제"
+                      >
+                        ✕
+                      </button>
                     )}
                   </li>
                 ))}
@@ -1140,9 +1098,9 @@ function App() {
       {tutStep != null && (
         <TutorialCoach
           step={tutStep}
-          reading={tutReading}
+          collapsed={tutCollapsed}
           state={{ chainActs, runs, phase }}
-          onPractice={() => setTutReading(false)}
+          onToggle={() => setTutCollapsed((v) => !v)}
           onNext={nextTutorial}
           onSkip={nextTutorial}
           onExit={exitTutorial}
