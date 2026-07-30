@@ -126,6 +126,11 @@
           "y": 45,
           "rx": 11,
           "ry": 8
+        },
+        "video": {
+          "youtubeId": "32BqcFvuZBI",
+          "start": 6008,
+          "credit": "JTBC Sports"
         }
       },
       "tutorial": {
