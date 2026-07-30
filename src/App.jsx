@@ -1125,7 +1125,6 @@ function App() {
                   #{selected.number} {selected.name}{' '}
                   <span className="pos">
                     {selected.position} · {selected.roles.join('/')} · {selected.heightCm}cm
-                    {selected.estimated ? ' · 추정치' : ''}
                   </span>
                 </div>
                 <dl className="stats">
