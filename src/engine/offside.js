@@ -25,7 +25,8 @@ import { K } from './constants.js'
 // (골문 쪽 = x가 큰 쪽. 내림차순 정렬 후 index 1 = 뒤에서 2번째.)
 export function offsideLineX(opponents) {
   if (!opponents || opponents.length < 2) return null
-  const xs = opponents.map((o) => o.x).sort((a, b) => b - a)
+  const radius = K.OFFSIDE.PLAYER_RADIUS
+  const xs = opponents.map((o) => o.x - radius).sort((a, b) => b - a)
   return xs[1]
 }
 
@@ -38,12 +39,16 @@ export function offsideLineX(opponents) {
 export function checkOffside({ receiver, opponents, ball }) {
   const O = K.OFFSIDE
   const lineX = offsideLineX(opponents)
-  const marginM = lineX == null ? -Infinity : receiver.x - lineX
+  // Players are discs on the board.  For attacks toward x=120, use the
+  // non-goalward (rear) edge consistently for both the defender line and
+  // receiver.  A runner whose circle has come back behind the line is onside.
+  const receiverRearX = receiver.x - O.PLAYER_RADIUS
+  const marginM = lineX == null ? -Infinity : receiverRearX - lineX
   const offside =
     lineX != null &&
-    receiver.x > O.HALFWAY_X + O.EPS &&
+    receiverRearX > O.HALFWAY_X + O.EPS &&
     marginM > O.EPS &&
-    receiver.x > ball.x + O.EPS
+    receiverRearX > ball.x + O.EPS
   return { offside, lineX, marginM }
 }
 

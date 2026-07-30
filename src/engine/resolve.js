@@ -99,17 +99,20 @@ const ATTRIBUTION_MIN = 0.15
 function pathPressure(pts, opponents, beta, R, { sum = true, excludeGK = false, excludeId = null, betaScale = null } = {}) {
   let z = 0
   let worst = null
+  const all = [] // 압박 큰 순 — 드리블 포위처럼 "2번째 이후"가 필요한 곳에서 쓴다
   for (const o of opponents) {
     if (excludeGK && o.position === 'GK') continue
     if (o.id === excludeId) continue
     const { d, point, frac } = minDistToPath(pts, o)
     const pr = pressure(d, R)
+    all.push({ d, pr, id: o.id, point, frac, o })
     if (sum) z += beta * (betaScale ? betaScale(o) : 1) * pr
     if (!worst || pr > worst.pr) worst = { pr, id: o.id, point, frac, o }
   }
+  all.sort((a, b) => b.pr - a.pr)
   if (!sum && worst) z = beta * (betaScale ? betaScale(worst.o) : 1) * worst.pr
   if (worst && worst.pr < ATTRIBUTION_MIN) worst = null
-  return { z, worst }
+  return { z, worst, all }
 }
 
 // 크로스 기하 판정: 측면에서 MIN_L 이상 날아와 박스 안에 떨어지는 패스 (데이터 요청 §2·3·7)
@@ -131,7 +134,8 @@ const airOf = (p) => 0.5 * norm(p.stats.jumping) + 0.3 * normH(p.heightCm) + 0.2
 const bodyOf = (p) => 0.5 * norm(p.stats.strength) + 0.5 * norm(p.stats.balance)
 
 // --- 슈팅: 로지스틱 xG ------------------------------------------------------
-// z = B0 + B_DIST·lsFactor·D + B_ANG·θ + B_SKILL·(S_eff − SEFF0) + Σ B_BLOCK·defScale·e^(−d/R_BLOCK)
+// z = B0 + B_DIST·lsFactor·(D + bend) + B_ANG·θ + B_SKILL·(S_eff − SEFF0) + Σ B_BLOCK·defScale·e^(−d/R_BLOCK)
+//   bend = 호 길이 − 현 길이 (휘어 찬 만큼 실제 비행 거리가 늘어난다. 직선 슛이면 0)
 // GK 제외 = 이중계상 방지 (로지스틱 xG는 이미 "평균 키퍼 모집단"에서 캘리브레이션된 값)
 // prev(직전 액션)가 크로스면 헤더 슛: 골결:헤더 = 3:7 + 공중 듀얼 (데이터 요청 §2·3)
 export function calcShot(action, opponents, prev = null) {
@@ -163,11 +167,16 @@ export function calcShot(action, opponents, prev = null) {
   if (theta > Math.PI) theta = 2 * Math.PI - theta
 
   const pts = samplePath(from, action.ctrl, action.to)
+  // 휘어 찬 슛은 공이 실제로 더 멀리 난다. 거리 감쇠를 직선 D로만 매기면
+  // "크게 휘려 그려서 블로커만 피하고 xG는 직선 슛 그대로"가 성립해버린다.
+  // 호 길이가 현보다 길어진 만큼을 거리에 더해 그 공짜를 없앤다.
+  // (곡률 자체는 geometry.clampCtrl이 이미 상한을 씌운 상태 — 여기선 남은 휨의 값을 매긴다)
+  const bendExtra = Math.max(0, pathLength(pts) - Math.hypot(action.to.x - from.x, action.to.y - from.y))
   const block = pathPressure(pts, opponents, C.B_BLOCK, C.R_BLOCK, {
     excludeGK: true,
     betaScale: (o) => defScale(o, DEF_PRIMARY.shot(o)),
   })
-  let z = C.B0 + C.B_DIST * lsFactor * D + C.B_ANG * theta + C.B_SKILL * (sEff - C.SEFF0) + block.z
+  let z = C.B0 + C.B_DIST * lsFactor * (D + bendExtra) + C.B_ANG * theta + C.B_SKILL * (sEff - C.SEFF0) + block.z
 
   // 일반 xG는 평균 골키퍼를 이미 포함한다. 다만 슈터와 GK만 남은 1대1은
   // 공간·각도 우위가 크므로 별도 보너스를 준다. 슛길 중간에 필드 수비수가 있으면
@@ -251,16 +260,28 @@ export function calcPass(action, opponents, prev = null) {
   }
   const laneScale = (o) => defScale(o, DEF_PRIMARY.pass(o))
   const lane = pathPressure(pts, opponents, C.B_LANE, C.R_LANE, { excludeId: recv?.id, betaScale: laneScale })
+  // 도착점 주변에 상대가 있어도 공이 지나가는 중앙 통로가 비어 있으면
+  // 리시버 압박 감점을 완화한다. 반대로 실제 통로에 수비수가 있으면 기존 감점과
+  // 경로 감점을 모두 유지한다.
+  const laneBlocked = lane.all.some((e) =>
+    e.frac > 0.08 &&
+    e.frac < 0.92 &&
+    e.d <= C.CLEAR_LANE_R
+  )
   const recvPr = recv ? pressure(recv.d, C.R_RECV) : 0
-  const recvZ = recv ? C.B_RECV * laneScale(recv.o) * recvPr : 0
+  const recvBeta = laneBlocked ? C.B_RECV : C.B_RECV_CLEAR
+  const recvZ = recv ? recvBeta * laneScale(recv.o) * recvPr : 0
   const shortBonus = C.SHORT_BONUS * Math.max(0, 1 - L / C.SHORT_DIST)
-  const z = C.Z0 + C.B_LEN * L + C.B_PASS * (sPass - 0.7) + shortBonus + recvZ + lane.z
+  const rawZ = C.Z0 + C.B_LEN * L + C.B_PASS * (sPass - 0.7) + shortBonus + recvZ + lane.z
+  const simpleShort = !cross && !header && !laneBlocked && L <= C.SHORT_DIST
+  const shortFloorZ = Math.log(C.SHORT_CLEAR_FLOOR / (1 - C.SHORT_CLEAR_FLOOR))
+  const z = simpleShort ? Math.max(rawZ, shortFloorZ) : rawZ
   // 연출 귀속: 경로 압박자와 리시버 마크맨 중 압박이 큰 쪽
   let worst = lane.worst
   if (recv && recvPr >= ATTRIBUTION_MIN && (!worst || recvPr > worst.pr)) {
     worst = { pr: recvPr, id: recv.id, point: action.to, frac: 1 }
   }
-  return { z, worst, cross, header }
+  return { z, worst, cross, header, laneBlocked, simpleShort }
 }
 
 // --- 드리블: 1v1 (기하 지배) ------------------------------------------------
@@ -279,7 +300,21 @@ export function calcDribble(action, opponents) {
     sum: false,
     betaScale: (o) => defScale(o, DEF_PRIMARY.dribble(o)),
   })
-  let z = C.Z0 + C.B_SKILL * (sDrib - 0.7) + C.B_LEN * L + def.z
+  // 포위 — 최근접 수비수 말고도 붙어 있는 사람들.
+  //
+  // def는 sum:false라 최근접 1명만 본다("1v1 대면 간격 모델"). 그래서 다섯 명이
+  // 둘러싸도 한 명과 대면한 것과 확률이 똑같았다(측정: 1명 48.2% = 5명 48.2%).
+  // 둘째부터 별도 항으로 더한다 — 계수를 B_DEF보다 작게 두는 이유는, 둘째 수비수는
+  // 공을 뺏으러 들어오는 사람이 아니라 빠져나갈 길을 막는 사람이기 때문이다.
+  //
+  // 2번째부터만 세므로 **검증 앵커는 하나도 흔들리지 않는다** — 드리블 앵커가 전부 1v1이다.
+  // ATTRIBUTION_MIN 아래는 빼서 "붙은 사람이 없으면 실패도 없다"는 경합 게이트 규칙을 지킨다.
+  let surroundZ = 0
+  for (const e of def.all.slice(1)) {
+    if (e.pr < ATTRIBUTION_MIN) continue
+    surroundZ += C.B_SURROUND * defScale(e.o, DEF_PRIMARY.dribble(e.o)) * e.pr
+  }
+  let z = C.Z0 + C.B_SKILL * (sDrib - 0.7) + C.B_LEN * L + def.z + surroundZ
   if (def.worst) z += C.B_BODY * def.worst.pr * (bodyOf(action.actor) - bodyOf(def.worst.o))
   // press = 이 드리블에 걸린 수비 압박의 크기. 0이면 뺏을 사람이 없다는 뜻이라
   // 경합 게이트가 실패 확률을 0으로 만든다 (probOf 참고).
@@ -287,7 +322,9 @@ export function calcDribble(action, opponents) {
   // A defender outside the actual 1v1 contest range cannot make a dribble
   // fail.  `pathPressure` removes that defender from `worst`; use the same
   // cutoff for the contest gate instead of leaving a tiny random failure.
-  return { z, worst: def.worst, press: def.worst ? -def.z : 0 }
+  // 경합 게이트의 press에도 포위를 반영한다 — 둘러싸였으면 압박이 큰 게 맞다.
+  // worst가 없으면(아무도 안 붙었으면) 포위도 없으므로 0 그대로다.
+  return { z, worst: def.worst, press: def.worst ? -(def.z + surroundZ) : 0 }
 }
 
 const LABEL = { pass: '패스', dribble: '드리블', shot: '슛' }
@@ -319,12 +356,12 @@ export function defenseTimeline(actions, ctx) {
     const before = defs
     // 패스가 떠나는 순간 리시버가 서 있는 자리 — 오프사이드는 도착점이 아니라 이 좌표로 판정한다.
     // (아직 이 액션의 이동을 반영하기 전이므로 atkPos가 곧 "그 순간"의 좌표다.)
-    const receiverAt = a.receiverId ? (atkPos.get(a.receiverId) ?? a.to) : null
+    const receiverAt = a.receiverId ? (a.receiverFrom ?? atkPos.get(a.receiverId) ?? a.to) : null
     // 액터(드리블)·리시버(패스)가 도착점으로 이동
     if (a.type === 'dribble') moveAtk(a.actorId, a.to)
     else if (a.type === 'pass') moveAtk(a.receiverId, a.to)
     // 수비 재배치: 이 액션의 시간 예산만큼 볼 도착점에 반응해 이동
-    defs = advanceDefense(defs, { to: a.to, durSec: actionSeconds(a), attackers: [...atkPos.values()] })
+    defs = advanceDefense(defs, { from: a.from, to: a.to, durSec: actionSeconds(a), attackers: [...atkPos.values()] })
     return { before, after: defs, receiverAt }
   })
 }

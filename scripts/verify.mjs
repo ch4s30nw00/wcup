@@ -10,8 +10,9 @@ import { initDefense, advanceDefense } from '../src/engine/defense.js'
 import { matchScore } from '../src/engine/match.js'
 import { throughTarget, throughBallDuration, throughSpeedLimits, actionDuration, runSpeedOf } from '../src/engine/sheets.js'
 import { encodeShare, decodeShare } from '../src/engine/share.js'
+import { isReplayMatch, inShotZone, touchOrder, eggRadii } from '../src/engine/replay.js'
 import { XT_GRID, xtAt, planScore, planGrade } from '../src/engine/xt.js'
-import { midpoint } from '../src/engine/geometry.js'
+import { midpoint, handleFromCtrl, clampCtrl, maxBend } from '../src/engine/geometry.js'
 import { K } from '../src/engine/constants.js'
 import { readFileSync } from 'node:fs'
 
@@ -44,10 +45,40 @@ for (const [L, want] of [[8, 0.913], [20, 0.75], [30, 0.55]]) {
   check(`L=${L}m`, sigmoid(calcPass(a, []).z), want)
 }
 
-console.log('[앵커] 패스 리시버 압박 (L=20, d=0.5/2/8 → 0.34/0.47/0.70)')
-for (const [d, want] of [[0.5, 0.34], [2, 0.47], [8, 0.7]]) {
+console.log('[앵커] 열린 통로의 패스 리시버 압박 (L=20, d=0.5/2/8 → 0.53/0.61/0.72)')
+for (const [d, want] of [[0.5, 0.53], [2, 0.61], [8, 0.72]]) {
   const a = act('pass', { x: 40, y: 40 }, { x: 60, y: 40 })
   check(`d_recv=${d}m`, sigmoid(calcPass(a, [defAt(60 + d, 40)]).z), want)
+}
+
+console.log('[패스 통로] 실제 경로가 막힐 때만 강한 감점')
+{
+  const a = act('pass', { x: 40, y: 40 }, { x: 60, y: 40 })
+  const nearReceiver = { ...defAt(60.5, 40), id: 'near_receiver' }
+  const clear = calcPass(a, [nearReceiver])
+  const blocked = calcPass(a, [nearReceiver, { ...defAt(50, 40), id: 'lane_blocker' }])
+  checkDir('열린 통로 판별', clear.laneBlocked === false)
+  checkDir('막힌 통로 판별', blocked.laneBlocked === true)
+  checkDir(
+    `열린 통로가 막힌 통로보다 충분히 유리 (${sigmoid(clear.z).toFixed(2)} > ${sigmoid(blocked.z).toFixed(2)})`,
+    sigmoid(clear.z) > sigmoid(blocked.z) + 0.15,
+  )
+}
+
+console.log('[짧은 패스] 통로가 열린 일반 패스는 주변 압박에도 최소 82%')
+{
+  const short = act('pass', { x: 40, y: 40 }, { x: 48, y: 40 })
+  const nearReceiver = { ...defAt(48.5, 40), id: 'short_near_receiver' }
+  const clear = calcPass(short, [nearReceiver])
+  const blocked = calcPass(short, [nearReceiver, { ...defAt(44, 40), id: 'short_lane_blocker' }])
+  checkDir(
+    `열린 8m 패스 ${Math.round(sigmoid(clear.z) * 100)}% (최소 80%)`,
+    clear.simpleShort === true && sigmoid(clear.z) >= 0.8,
+  )
+  checkDir(
+    `8m라도 실제 통로가 막히면 최소 확률 미적용 (${Math.round(sigmoid(blocked.z) * 100)}%)`,
+    blocked.simpleShort === false && sigmoid(blocked.z) < 0.8,
+  )
 }
 
 console.log('[앵커] 중앙·무압박 발슈팅 xG (6/12/18/25yd → 0.42/0.18/0.09/0.04)')
@@ -188,6 +219,67 @@ console.log('[경합 게이트] 패스·슛에는 적용하지 않는다 (빠질
   checkDir(`무수비 슛 12m → ${(shot * 100).toFixed(0)}% (< 100%, 골결정력으로 빗나갈 수 있다)`, shot < 1)
 }
 
+// ── 2b-2. 곡률 상한 — "말도 안 되게 휘면 확률이 후해지는" 구멍 막기 ───
+console.log('\n[곡률 상한] 궤적을 무한히 휘어 수비를 우회할 수 없는가')
+{
+  const sag = (a, b, c) => {
+    const h = handleFromCtrl(a, c, b)
+    const m = midpoint(a, b)
+    return Math.hypot(h.x - m.x, h.y - m.y)
+  }
+  // 곡률 핸들(곡선 중점)을 hx,hy로 끌었을 때의 제어점
+  const ctrlAt = (a, b, hx, hy) => ({ x: 2 * hx - (a.x + b.x) / 2, y: 2 * hy - (a.y + b.y) / 2 })
+
+  const a = { x: 40, y: 40 }
+  const b = { x: 60, y: 40 } // 20m
+  const wild = ctrlAt(a, b, 50, 28) // 12m 휘게 끌기
+  for (const kind of ['pass', 'shot', 'dribble']) {
+    const got = sag(a, b, clampCtrl(a, b, wild, kind))
+    check(`20m ${kind} 최대 휨`, got, maxBend(20, kind), 0.02)
+  }
+  checkDir('휨 방향은 유지된다 (끈 쪽으로 휜다)', handleFromCtrl(a, clampCtrl(a, b, wild, 'pass'), b).y < 40)
+  checkDir('ctrl 없으면 직선(중점)', Math.abs(clampCtrl(a, b, null).y - 40) < 1e-9)
+  checkDir(
+    `가까우면 적게, 멀수록 크게 (6m→${maxBend(6, 'pass').toFixed(1)}m · 20m→${maxBend(20, 'pass').toFixed(1)}m · 45m→${maxBend(45, 'pass').toFixed(1)}m)`,
+    maxBend(6, 'pass') < maxBend(20, 'pass') && maxBend(20, 'pass') < maxBend(45, 'pass'),
+  )
+  checkDir('절대 상한이 없어 롱패스도 계속 커진다', maxBend(80, 'pass') > maxBend(45, 'pass'))
+  checkDir('최대로 휘어도 반원(50%)까지는 안 간다', maxBend(30, 'pass') < 0.5 * 30)
+
+  // 공의 조절점은 가운데 고정 — 좌우(휨)로만 움직이고 앞뒤로는 못 끈다 (사용자 요청 2026-07-27)
+  for (const kind of ['pass', 'shot']) {
+    const fwd = ctrlAt(a, b, 58, 36) // 앞으로 8m + 옆으로 4m 끌기
+    const h = handleFromCtrl(a, clampCtrl(a, b, fwd, kind), b)
+    checkDir(`${kind} 조절점은 앞뒤로 안 밀린다 (x ${h.x.toFixed(2)} = 중점 50)`, Math.abs(h.x - 50) < 1e-6)
+    checkDir(`${kind} 좌우(휨)는 그대로 먹는다 (y ${h.y.toFixed(2)})`, Math.abs(h.y - 36) < 1e-6)
+  }
+  {
+    // 드리블·런은 사람이 달리는 경로라 앞뒤 치우침을 조금 허용한다
+    const h = handleFromCtrl(a, clampCtrl(a, b, ctrlAt(a, b, 58, 36), 'dribble'), b)
+    checkDir(`드리블은 앞뒤 치우침 허용 (x ${h.x.toFixed(2)} ≠ 50)`, h.x > 50)
+  }
+
+  // 핵심 회귀: 예전엔 슛이 휘어도 거리 감쇠가 직선 D 그대로여서, 크게 휘어
+  // 블로커만 피하면 "수비 없는 직선 슛"과 같은 xG가 나왔다.
+  const from = { x: 100, y: 40 }
+  const to = { x: 119, y: 40 }
+  const def = defAt(109.5, 40) // 슛길 한가운데
+  const shotAt = (ctrl) => ({ type: 'shot', from, to, ctrl, actor: neutral() })
+  const xg = (ctrl, opp) => sigmoid(calcShot(shotAt(ctrl), opp).z)
+  const open = xg(midpoint(from, to), [])
+  const blocked = xg(midpoint(from, to), [def])
+  const bent = xg(clampCtrl(from, to, ctrlAt(from, to, 109.5, 30), 'shot'), [def])
+  checkDir(`막힌 직선 슛 ${(blocked * 100).toFixed(1)}% < 열린 직선 슛 ${(open * 100).toFixed(1)}%`, blocked < open)
+  checkDir(
+    `휘어서 우회해도 열린 슛만큼은 안 된다 (${(bent * 100).toFixed(1)}% < ${(open * 100).toFixed(1)}%)`,
+    bent < open,
+  )
+  checkDir(`그래도 우회는 이득이다 (${(bent * 100).toFixed(1)}% > 막힘 ${(blocked * 100).toFixed(1)}%)`, bent > blocked)
+  // 휜 만큼 비행 거리가 늘어 xG가 깎인다 (같은 궤적, 수비 없음)
+  const bentOpen = xg(clampCtrl(from, to, ctrlAt(from, to, 109.5, 30), 'shot'), [])
+  checkDir(`휘어 차면 거리값을 문다 (${(bentOpen * 100).toFixed(1)}% < 직선 ${(open * 100).toFixed(1)}%)`, bentOpen < open)
+}
+
 // ── 2c. 스루패스 도착점 — "공과 사람이 같이 도착" ────────────────────
 console.log('\n[스루패스] 도착점이 리시버 가동범위 안에 들어오는가')
 {
@@ -257,12 +349,33 @@ console.log('[수비 재배치] 결정론 — 같은 입력 두 번 = 같은 좌
   checkDir('결정론 유지', mk() === mk())
 }
 
+console.log('[수비 복귀] 코너 종료 뒤에는 자기 진영으로, 코너 중에는 대형 유지')
+{
+  const advanced = initDefense([{ ...defAt(12, 40), id: 'advanced_df', position: 'DF' }])
+  const counter = advanceDefense(advanced, {
+    from: { x: 59, y: 23 },
+    to: { x: 95, y: 26 },
+    durSec: 5.5,
+    attackers: [],
+  })
+  const corner = advanceDefense(advanced, {
+    from: { x: 112, y: 3 },
+    to: { x: 108, y: 36 },
+    durSec: 5.5,
+    attackers: [],
+  })
+  const counterMove = counter[0].x - advanced[0].x
+  const cornerMove = Math.hypot(corner[0].x - advanced[0].x, corner[0].y - advanced[0].y)
+  checkDir(`역습 시작 시 전진한 DF가 자기 진영 쪽으로 복귀 (${counterMove.toFixed(1)}m)`, counterMove > 18)
+  checkDir(`코너킥 진행 중에는 과도하게 이동하지 않음 (${cornerMove.toFixed(1)}m)`, cornerMove <= K.DEF.MOVE_CAP * K.DEF.SET_PIECE_MOVE_SCALE + 0.01)
+}
+
 // ── 3b. 오프사이드 (순수 기하) ───────────────────────────────────────
 console.log('\n[오프사이드] 최후방 2번째 수비수 라인 판정')
 {
   // 백4(x=90,92,94,96) + GK(116.5). 내림차순 116.5, 96, 94, 92, 90 → 라인 = 96
   const line4 = [defAt(90, 30), defAt(92, 38), defAt(94, 46), defAt(96, 54), { ...defAt(116.5, 40), position: 'GK' }]
-  check('라인 = 최후방 2번째 (GK 포함 정렬)', offsideLineX(line4), 96, 0.001)
+  check('라인 = 최후방 2번째 (GK 포함 정렬)', offsideLineX(line4), 96 - K.OFFSIDE.PLAYER_RADIUS, 0.001)
 
   const at = (rx, ball = { x: 70, y: 40 }) => checkOffside({ receiver: { x: rx, y: 40 }, opponents: line4, ball })
   checkDir('라인 뒤(x=98) → 오프사이드', at(98).offside === true)
@@ -300,6 +413,14 @@ console.log('[오프사이드] resolveSequence 통합 — 확정 실패 + 턴오
   checkDir(`라인 뒤에 서 있는 리시버 → outcome=OFFSIDE (${off.outcome})`, off.outcome === 'OFFSIDE')
   checkDir('오프사이드 스텝은 확정 실패', off.steps[0].success === false && off.steps[0].offside === true)
   checkDir(`오프사이드면 pTotal=0 (${off.pTotal})`, off.pTotal === 0)
+
+  const movedBackAtKick = {
+    ...mkPass(104),
+    receiverFrom: { x: 95.9, y: 40 },
+  }
+  const movedBack = resolveSequence([movedBackAtKick], { opponents: defs, players: standingOff, seed: 1 })
+  checkDir('runner returned behind line at kick is onside', movedBack.steps[0].offside === false)
+  checkDir('plan warning uses the runner position at kick', planOffside([movedBackAtKick], { opponents: defs, players: standingOff }).length === 0)
 
   // (ii) 리시버가 라인 앞에서 출발해 공을 향해 달려든다 → 도착점이 라인 뒤여도 온사이드.
   //      역습 스루패스가 성립하는 근거 — 90+1 장면 재현이 오프사이드로 막히면 안 된다.
@@ -473,6 +594,53 @@ console.log('\n[공유 링크] 전술 → URL → 전술 왕복')
   checkDir('다른 버전 → null', decodeShare('9.123.d_1_2.', { playerIds: ids }) === null)
   checkDir('범위 밖 선수 인덱스 → null', decodeShare('1.123.p_99.', { playerIds: ids }) === null)
   checkDir('빈 전술도 유효 (시드만 공유)', decodeShare('1.777..', { playerIds: ids })?.seed === 777)
+}
+
+
+// ── 재현(이스터에그) 판정 ────────────────────────────────────────────
+console.log('\n[재현 판정] 순서 + 타원 구역 (engine/replay.js)')
+{
+  const egg = { sequence: ['a', 'b'], shot: { x: 106, y: 44, rx: 18, ry: 8 } }
+  const leg = (type, actorId, from) => ({ type, actorId, from })
+  const chainOf = (shotFrom) => [leg('dribble', 'a', { x: 60, y: 40 }), leg('pass', 'a', { x: 80, y: 40 }), leg('shot', 'b', shotFrom)]
+  const hit = (from, outcome = 'GOAL') => isReplayMatch({ egg, chain: chainOf(from), outcome })
+
+  checkDir('정확한 순서 + 중심에서 슛 → 성공', hit({ x: 106, y: 44 }))
+  checkDir('골이 아니면 실패', !hit({ x: 106, y: 44 }, 'MISS'))
+  checkDir('같은 선수 연속 액션은 한 번으로', touchOrder(chainOf({ x: 106, y: 44 })).join() === 'a,b')
+  checkDir('순서가 다르면 실패',
+    !isReplayMatch({ egg, chain: [leg('dribble', 'b', { x: 60, y: 40 }), leg('shot', 'a', { x: 106, y: 44 })], outcome: 'GOAL' }))
+  checkDir('거쳐간 선수가 하나 더 많으면 실패',
+    !isReplayMatch({ egg, chain: [leg('dribble', 'a', { x: 60, y: 40 }), leg('pass', 'c', { x: 80, y: 40 }), leg('shot', 'b', { x: 106, y: 44 })], outcome: 'GOAL' }))
+
+  // 타원으로 바꾼 이유 — 원이었다면 통과했을 지점이 좌우로는 걸러져야 한다
+  checkDir('거리축 17m 뒤 → 성공 (중거리는 거리가 자유)', hit({ x: 89, y: 44 }))
+  checkDir('좌우 11m 옆 → 실패 (반경 18 원이었다면 통과했다)', !hit({ x: 106, y: 55 }))
+  checkDir('거리축 19m 뒤 → 실패', !hit({ x: 87, y: 44 }))
+  checkDir('좌우 7.5m 옆 → 성공', hit({ x: 106, y: 51.5 }))
+  checkDir('타원 경계 위 → 성공', inShotZone({ x: 124, y: 44 }, egg.shot))
+  checkDir('두 축이 섞인 대각선은 원보다 좁다', !inShotZone({ x: 93, y: 50 }, egg.shot))
+
+  // 구 데이터 폴백
+  checkDir('tol만 있으면 원 (rx=ry=tol)', eggRadii({ tol: 9 }).rx === 9 && eggRadii({ tol: 9 }).ry === 9)
+  checkDir('구역 데이터가 없으면 순서만으로 인정',
+    isReplayMatch({ egg: { sequence: ['a', 'b'] }, chain: chainOf({ x: 5, y: 5 }), outcome: 'GOAL' }))
+}
+
+console.log('[재현 판정] 실제 데이터 — egg-shots.json이 원본인가')
+{
+  const load = (f) => JSON.parse(readFileSync(new URL(f, import.meta.url), 'utf-8'))
+  const scns = [load('../src/data/scenarios.json'), load('../src/data/kor_ita_2002.json'), ...load('../src/data/scenes-2026.json').matches]
+  const store = load('../src/data/egg-shots.json').shots
+  for (const scn of scns) {
+    const shot = scn.moments[0].easterEgg?.shot
+    if (!shot) continue
+    const src = store[scn.match_id]
+    checkDir(`${scn.match_id}: rx·ry 보유, 좌우축 ≤ 거리축`,
+      Number.isFinite(shot.rx) && Number.isFinite(shot.ry) && shot.ry <= shot.rx)
+    checkDir(`${scn.match_id}: 원본(egg-shots.json)과 일치`,
+      !!src && src.x === shot.x && src.y === shot.y && src.rx === shot.rx && src.ry === shot.ry)
+  }
 }
 
 console.log(fails === 0 ? '\n모든 검증 통과 ✅' : `\n${fails}건 실패 ❌`)

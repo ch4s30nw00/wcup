@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react'
 import { quadPoint, handleFromCtrl } from '../engine/geometry'
 import { josaGa, josaEun } from '../engine/commentary'
+// 킷은 오프닝 화면과 공유한다 (data/kits.js) — 유니폼 색은 한 곳에서만 정한다.
+import { kitsFor } from '../data/kits'
+import { K } from '../engine/constants'
 
 // StatsBomb 좌표계와 동일한 120x80 피치. x: 0(우리 골대) → 120(상대 골대)
 const PITCH_W = 120
@@ -8,36 +11,9 @@ const PITCH_H = 80
 const DOT_R = 1.4
 const LEG_COLOR = { dribble: '#dbe4f2', pass: '#ffd23e', shot: '#ff6b5e' }
 const LOB_COLOR = '#8de7ff'
+// 시선 규칙은 재생(playback.js)과 같은 값을 써야 계획 화면과 재생이 어긋나 보이지 않는다
+const { GAZE_AHEAD, GAZE_MARK_R } = K.PLAY
 
-// 팀 킷. 기본값은 조작하는 팀(홈) 빨강 / 상대 남색이고, 실제 유니폼이 그와 어긋나
-// 두 팀을 구분하기 어려운 경기만 덮어쓴다.
-//
-// 팀이 아니라 경기로 거는 이유: 같은 팀도 상대에 따라 홈/원정 킷이 갈린다.
-// 스페인은 포르투갈(빨강)을 만나면 흰색, 결승에서 아르헨티나를 만나면 빨간색이다.
-//
-// num을 따로 두는 이유: 흰 킷에서 등번호를 흰색으로 쓰면 보이지 않는다.
-// ring은 테두리이자 공 소유자를 감싸는 점선 색이라, 밝은 킷에서는 어두워야 한다.
-const KIT = {
-  RED: { body: '#c8102e', gk: '#e8a020', ring: '#fff', num: '#fff' },
-  RED_GKGREEN: { body: '#c8102e', gk: '#2f9e44', ring: '#fff', num: '#fff' }, // 결승 스페인 — GK만 녹색
-  WHITE: { body: '#f2f5fa', gk: '#f0a500', ring: '#1a2330', num: '#10141c' },
-  SKY: { body: '#75aadb', gk: '#3b2f6f', ring: '#10314f', num: '#0d2438' },
-  SKY_GKLIME: { body: '#75aadb', gk: '#a5d64c', ring: '#10314f', num: '#0d2438' }, // 결승 아르헨티나 — GK만 연두색
-  NAVY: { body: '#1e3a6e', gk: '#3f6f2f', ring: '#cdd6e8', num: '#fff' },
-  NAVY_GKTEAL: { body: '#1e3a6e', gk: '#17a2b8', ring: '#cdd6e8', num: '#fff' }, // 4강 아르헨티나 — GK 청록
-  WHITE_GKYELLOW: { body: '#f2f5fa', gk: '#ffd23e', ring: '#c8102e', num: '#c8102e' }, // 4강 잉글랜드 — 흰 킷·빨간 테두리/번호, GK 노랑
-  RED_GKTEAL: { body: '#c8102e', gk: '#17a2b8', ring: '#fff', num: '#fff' }, // 2022 한국 — 빨강 킷, GK 청록
-  WHITE_GKGOLD: { body: '#f4f6fa', gk: '#ffd23e', ring: '#10141c', num: '#10141c' }, // 2022 포르투갈 — 흰 킷·검은 테두리/번호, GK 노랑
-  BRAZIL: { body: '#ffcb05', gk: '#7b2cbf', ring: '#009c3b', num: '#009c3b' }, // 브라질 — 노랑 킷·초록 테두리/번호, GK 보라
-}
-// match_id → [홈 킷, 원정 킷]
-const MATCH_KIT = {
-  kor_por_2022: [KIT.RED_GKTEAL, KIT.WHITE_GKGOLD], // 홈=한국 빨강(GK 청록) / 원정=포르투갈 흰색(GK 노랑)
-  por_esp_2026_r16: [KIT.WHITE, KIT.RED], // 홈=ESP 흰색 / 원정=포르투갈 빨강
-  bra_nor_2026_r16: [KIT.RED_GKGREEN, KIT.BRAZIL], // 홈=노르웨이 빨강(GK 녹색) / 원정=브라질 노랑(GK 보라)
-  eng_arg_2026_sf: [KIT.NAVY_GKTEAL, KIT.WHITE_GKYELLOW], // 홈=아르헨티나 남색(GK 청록) / 원정=잉글랜드 흰색(GK 노랑)
-  arg_esp_2026_final: [KIT.RED_GKGREEN, KIT.SKY_GKLIME], // 홈=ESP 빨강(GK 녹색) / 원정=아르헨티나 하늘색(GK 연두)
-}
 const LEG_MARKER = { dribble: 'url(#ah-move)', pass: 'url(#ah-pass)', shot: 'url(#ah-shot)' }
 
 // 터치 화면은 손가락 기준 — 보이지 않는 히트 영역과 클릭/드래그 판정 거리를 키운다.
@@ -73,7 +49,10 @@ export default function TacticsBoard({
   planPos, // 계획상 각 선수의 최종 위치 (id → {x,y})
   carrierId, // 체인 끝에서 공을 갖게 될 선수 — 이 선수를 드래그하면 드리블
   shotTaken,
-  reachCircles, // 시트 모드 가동범위: [{ id, x, y, r }] — 이번 시트 시간 안에 갈 수 있는 거리
+  reachCircles, // 가동범위 동심원: [{ id, x, y, r }] — 마지막 액션 시간 안에 갈 수 있는 거리
+  tutFocus, // 튜토리얼 지목: { playerId?, ball?, action? } — 그 단계가 가리키는 대상을 점멸시킨다
+  shotZone, // 재현 판정 구역: { x, y, rx, ry, label } — 그날 슛이 나온 지점과 타원 허용 반경
+  onEggShotMove, // (pt) — 구역 중심 끌어 옮기기. 있으면 마커가 잡힌다 (개발 전용)
   ballPos,
   ballTrail, // 재생 중 공 트레일 [{x,y}] — 빠른 패스·슛의 혜성 꼬리 (평시 null)
   displayHome, // 재생 중 애니메이션 위치 (id → {x,y,a}), 평시 null
@@ -83,8 +62,8 @@ export default function TacticsBoard({
   offsideIds, // 계획 단계 오프사이드 경고 대상 receiverId Set — 빨간 점멸
   offsideFx, // 재생 중 오프사이드 깃발 효과
   selectedId,
-  sheetLocked, // 시트에 공 행동이 이미 있어 새 공 행동은 막고 오프볼 런만 허용
   onPlayerClick,
+  runsAllowed, // 오프볼 런을 그릴 수 있는가 — 공 액션이 있는 슬롯에서만 true
   onRunSet,
   onRunRemove,
   onRunHandle,
@@ -96,13 +75,17 @@ export default function TacticsBoard({
   throughTargetOf, // (receiverId, pt) → 실제로 성립하는 도착점 (조준 미리보기용, 확정과 같은 계산)
   offsidePosIds, // 지금 오프사이드 위치에 서 있는 아군 id Set
   flipX, // 보기만 좌우 반전 — 그날 중계에서 홈팀이 왼쪽으로 공격한 경기 (좌표는 그대로)
-  matchId, // 킷 색을 고르는 데만 쓴다 (MATCH_KIT 참고)
+  matchId, // 킷 색을 고르는 데만 쓴다 (data/kits.js 참고)
   // 좌표 편집 모드(개발 전용). 켜면 전술 조작 대신 양 팀 아무나 끌어서 자리를 옮긴다.
   // 장면 좌표를 중계 화면 보고 맞추는 용도라, 실제 게임 조작과는 완전히 분리한다.
   editMode,
   onEditMove, // (playerId, {x, y})
 }) {
-  const [homeKit, awayKit] = MATCH_KIT[matchId] ?? [KIT.RED, KIT.NAVY]
+  const [homeKit, awayKit] = kitsFor(matchId)
+  // 튜토리얼이 가리키는 메뉴 항목. 패스 계열은 두 창에 걸쳐 있다 —
+  // 메인 메뉴에서는 [패스](종류 선택)를, 열린 종류 창에서는 그 종류 자체를 깜빡인다.
+  const MAIN_MENU_OF = { dribble: 'dribble', shot: 'shot', pass: 'pass-select', lob: 'pass-select', through: 'pass-select' }
+  const tutMainMenuKey = tutFocus?.action ? MAIN_MENU_OF[tutFocus.action] : null
   const svgRef = useRef(null)
   const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
   const [ballDrag, setBallDrag] = useState(null)
@@ -140,11 +123,35 @@ export default function TacticsBoard({
 
   // 바라보는 방향 (도 단위) — 재생 중엔 playback이 넣어준 각도(pos.a), 계획 중엔
   // 공 방향을 본다. 공 소유자는 공이 발밑이라 방향이 무의미 → 상대 골문을 본다.
-  const facingDeg = (pos, id) => {
+  const facingDeg = (pos, id, opponent = false) => {
     if (pos.a != null) return (pos.a * 180) / Math.PI
     if (!ballPos) return 0
-    const tgt = id === carrierId ? { x: 120, y: 40 } : ballPos
+    const tgt = gazeTarget(pos, id, opponent)
     return (Math.atan2(tgt.y - pos.y, tgt.x - pos.x) * 180) / Math.PI
+  }
+
+  // 계획 화면에서 누가 어디를 보는가. 전원이 공만 노려보면 실감이 떨어진다는
+  // 평을 받았다 — 실제로는 공을 안 보는 순간이 더 많다.
+  //   공 소유자      → 상대 골문 (다음 수를 본다)
+  //   앞서 나간 아군  → 골문 (뒷공간·마무리를 노린다)
+  //   상대 수비수     → 근처 아군 공격수 (마크 대상에서 눈을 안 뗀다)
+  //   그 외          → 공
+  function gazeTarget(pos, id, opponent) {
+    if (!opponent) {
+      if (id === carrierId) return { x: 120, y: 40 }
+      return pos.x > ballPos.x + GAZE_AHEAD ? { x: 120, y: 40 } : ballPos
+    }
+    const o = opponents.find((x) => x.id === id)
+    if (o && (o.position === 'DF' || o.position === 'MF')) {
+      let near = null
+      for (const p of players) {
+        const hp = homePos(p)
+        const d = Math.hypot(hp.x - pos.x, hp.y - pos.y)
+        if (d < GAZE_MARK_R && (!near || d < near.d)) near = { d, hp }
+      }
+      if (near) return near.hp
+    }
+    return ballPos
   }
 
   function toPitch(e) {
@@ -159,12 +166,16 @@ export default function TacticsBoard({
   }
 
   function startDrag(e, kind, key) {
+    // 재현 구역 마커는 계획/재생과 무관한 개발용 오버레이라 어느 상태에서든 잡힌다
+    // (마커가 보이는 것 자체가 이미 개발 모드 + 표시 켬을 뜻한다).
+    if (kind === 'eggshot') {
+      e.stopPropagation()
+      e.target.setPointerCapture(e.pointerId)
+      dragRef.current = { kind, key, startX: e.clientX, startY: e.clientY, moved: false }
+      return
+    }
     // 편집 모드는 interactive를 끈 채로 돌아간다 — 'edit'만 통과시킨다
     if (kind === 'edit' ? !editMode : !interactive) return
-    // 시트에 공 행동을 하나 설정한 뒤에는 새 드리블·패스·슛을 만들 수 없다.
-    // 단, 이미 그린 드리블의 도착점 조정과 오프볼 런 편집은 계속 허용한다.
-    const editingCurrentDribble = kind === 'dribble' && chain[chain.length - 1]?.type === 'dribble'
-    if (sheetLocked && (kind === 'ball' || kind === 'aim' || (kind === 'dribble' && !editingCurrentDribble))) return
     e.stopPropagation()
     e.target.setPointerCapture(e.pointerId)
     dragRef.current = { kind, key, startX: e.clientX, startY: e.clientY, moved: false }
@@ -183,11 +194,16 @@ export default function TacticsBoard({
       setDragging(true)
     }
     const pt = toPitch(e)
-    if (d.kind === 'edit') onEditMove(d.key, pt)
+    if (d.kind === 'eggshot') onEggShotMove(pt)
+    else if (d.kind === 'edit') onEditMove(d.key, pt)
     else if (d.kind === 'run') {
+      // 공 액션이 없는 슬롯에서는 런을 못 그린다 — 끌어도 유령 경로가 남지 않게
+      // 여기서 막는다. 탭(선수 선택·패스 대상 지정)은 endDrag가 그대로 처리한다.
+      if (!runsAllowed) return
       onRunSet(d.key, pt, !d.began)
       d.began = true
     } else if (d.kind === 'dribble') {
+      if (shotTaken) return // 슛으로 끝난 뒤에는 드래그 드리블도 막는다
       onDribbleSet(pt, !d.began)
       d.began = true
     } else if (d.kind === 'ball') setBallDrag(pt)
@@ -224,7 +240,6 @@ export default function TacticsBoard({
     } else if (d.kind === 'dribble') {
       // 공 소유자 탭(드래그 아님) = 액션 메뉴. 드래그는 기존대로 즉시 드리블.
       if (!d.moved) {
-        if (sheetLocked) return
         setMenuOpen((v) => !v)
         setMode(null)
         return
@@ -250,10 +265,6 @@ export default function TacticsBoard({
   // 빈 잔디 탭 — 드리블 조준 중이면 그 지점이 도착점, 아니면 메뉴를 닫는다
   function boardDown(e) {
     if (!interactive) return
-    if (sheetLocked && mode && mode !== 'stats') {
-      closeMenu()
-      return
-    }
     if (mode === 'dribble') {
       onDribbleSet(toPitch(e), true)
       closeMenu()
@@ -279,7 +290,6 @@ export default function TacticsBoard({
   }
 
   function aimDown(e) {
-    if (sheetLocked) return
     e.stopPropagation()
     e.target.setPointerCapture(e.pointerId)
     dragRef.current = { kind: 'aim', startX: e.clientX, startY: e.clientY, moved: true }
@@ -333,6 +343,15 @@ export default function TacticsBoard({
         <filter id="ghostBlur" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="0.3" />
         </filter>
+        {/* 재현 구역 그라디언트 — 가장자리를 흐리게 뺀다.
+            테두리가 선명하면 "이 선만 넘으면 된다"로 읽히는데, 우리가 아는 건
+            "이 언저리"까지다. 판정은 원 안팎으로 딱 갈리지만 그건 근사이고,
+            화면은 근사인 걸 근사로 보여야 한다. */}
+        <radialGradient id="eggZone">
+          <stop offset="0%" stopColor="#ffd23e" stopOpacity="0.30" />
+          <stop offset="55%" stopColor="#ffd23e" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#ffd23e" stopOpacity="0" />
+        </radialGradient>
       </defs>
 
       {/* 잔디 */}
@@ -359,6 +378,52 @@ export default function TacticsBoard({
       {/* 상대 골문 */}
       <rect x={118.6} y={36.34} width={1.4} height={7.32} fill="#10141c" stroke="#e6f2e6" strokeWidth="0.35" />
 
+      {/* 재현 구역 — 그날 슛이 나온 지점과 판정 허용 반경.
+          잔디 바로 위, 선수 아래에 깔아 조작을 가리지 않는다. */}
+      {shotZone && (
+        <g>
+          {/* 거리축(rx)과 좌우축(ry)이 다른 타원 — 중거리는 앞뒤로 길고 좌우로는 좁다 */}
+          <ellipse
+            cx={shotZone.x}
+            cy={shotZone.y}
+            rx={shotZone.rx}
+            ry={shotZone.ry}
+            fill="url(#eggZone)"
+            pointerEvents="none"
+          />
+          {/* 실제 슛 지점 — 구역의 중심이자 영상으로 대조할 기준점.
+              onEggShotMove가 있으면 끌어서 옮길 수 있다 (개발 모드). */}
+          <g pointerEvents="none" stroke="#ffd23e" strokeWidth="0.3" opacity="0.95">
+            <line x1={shotZone.x - 1.8} y1={shotZone.y} x2={shotZone.x + 1.8} y2={shotZone.y} />
+            <line x1={shotZone.x} y1={shotZone.y - 1.8} x2={shotZone.x} y2={shotZone.y + 1.8} />
+          </g>
+          <circle cx={shotZone.x} cy={shotZone.y} r="0.55" fill="#ffd23e" pointerEvents="none" />
+          {shotZone.label && (
+            <text
+              x={shotZone.x}
+              y={shotZone.y - 2.8}
+              textAnchor="middle"
+              fontSize="2.2"
+              fontWeight="700"
+              fill="#ffd23e"
+              pointerEvents="none"
+            >
+              {shotZone.label}
+            </text>
+          )}
+          {onEggShotMove && (
+            <circle
+              className="egg-anchor"
+              cx={shotZone.x}
+              cy={shotZone.y}
+              r={HIT.handle}
+              fill="transparent"
+              onPointerDown={(e) => startDrag(e, 'eggshot')}
+            />
+          )}
+        </g>
+      )}
+
       {/* 수비 반경 오라 — 궤적 입력 중에만 흐리게 표시 */}
       {showAuras &&
         opponents.map((o) => {
@@ -377,9 +442,8 @@ export default function TacticsBoard({
           )
         })}
 
-      {/* 가동범위 동심원 (시트 모드) — 이번 시트의 공 액션이 걸리는 시간 동안
-          그 선수가 갈 수 있는 거리. 바깥 = 전력 100%, 안쪽 = 여유 70%.
-          오프볼 런 목표는 바깥 원 안으로 클램프된다. */}
+      {/* 가동범위 동심원 — 마지막 공 액션이 걸리는 시간 동안 그 선수가 갈 수 있는 거리.
+          오프볼 런 목표는 이 원 안으로 클램프된다. */}
       {reachCircles?.map((c) => (
         <g key={`reach-${c.id}`} pointerEvents="none">
           <circle
@@ -455,7 +519,7 @@ export default function TacticsBoard({
               d={`M ${DOT_R + 1.35} 0 L ${DOT_R + 0.25} -0.68 L ${DOT_R + 0.25} 0.68 Z`}
               fill="#cdd6e8"
               opacity="0.85"
-              transform={`rotate(${facingDeg(pos, o.id)})`}
+              transform={`rotate(${facingDeg(pos, o.id, true)})`}
             />
             <circle r={DOT_R} fill={o.position === 'GK' ? awayKit.gk : awayKit.body} stroke={awayKit.ring} strokeWidth="0.28" />
             <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill={awayKit.num}>
@@ -503,6 +567,13 @@ export default function TacticsBoard({
             }
           >
             <circle r={HIT.player} fill="transparent" />
+            {/* 튜토리얼 지목 — "화면 어디를 보라"는 말로는 사람마다 배치가 달라 안 통한다.
+                점멸은 링에만 건다. 선수 g 전체에 걸면 선수가 같이 깜빡여 사라진다. */}
+            {tutFocus?.playerId === p.id && (
+              <g className="tut-focus" pointerEvents="none">
+                <circle r={DOT_R + 2.2} fill="none" stroke="#ffd23e" strokeWidth="0.5" />
+              </g>
+            )}
             {/* 오프사이드 경고 — 설계를 막지는 않고, 이대로 실행하면 깃발이 오른다는 신호 */}
             {interactive && offsideIds?.has(p.id) && (
               <g className="offside-warn" pointerEvents="none">
@@ -597,6 +668,11 @@ export default function TacticsBoard({
           onPointerDown={(e) => !shotTaken && startDrag(e, 'ball')}
         >
           <circle r={HIT.ball} fill="transparent" />
+          {tutFocus?.ball && (
+            <g className="tut-focus" pointerEvents="none">
+              <circle r={ballRadius + 1.6} fill="none" stroke="#ffd23e" strokeWidth="0.45" />
+            </g>
+          )}
           <circle r={ballRadius} fill="#fff" stroke="#10141c" strokeWidth="0.25" />
           <circle r={ballRadius * 0.4} fill="#10141c" />
         </g>
@@ -748,6 +824,10 @@ export default function TacticsBoard({
                     }}>
                       <rect x={bx} y={by} width={MENU.w - 0.6} height={MENU.h - 0.6} rx="1.2"
                         fill="rgba(16,20,28,0.92)" stroke="#3d4a63" strokeWidth="0.3" />
+                      {tutFocus?.action === it.key && (
+                        <rect className="tut-focus" x={bx} y={by} width={MENU.w - 0.6} height={MENU.h - 0.6}
+                          rx="1.2" fill="none" stroke="#ffd23e" strokeWidth="0.6" pointerEvents="none" />
+                      )}
                       <text x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h / 2 - 0.3}
                         textAnchor="middle" fontSize="2.35" fontWeight="700" fill={it.color} pointerEvents="none">
                         {it.label}
@@ -768,10 +848,13 @@ export default function TacticsBoard({
       {interactive && menuOpen && carrierPos && (
         <g>
           {(() => {
+            // 슛으로 전개가 끝나면 더 이상 액션을 붙일 수 없다 — 능력치 보기만 남긴다.
             const items = [
-              { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2' },
-              { key: 'pass-select', label: '패스', hint: '종류 선택', color: '#ffd23e' },
-              { key: 'shot', label: '슛', hint: '골문 조준', color: '#ff6b5e', disabled: shotTaken },
+              { key: 'dribble', label: '드리블', hint: '도착점 탭', color: '#dbe4f2', disabled: shotTaken },
+              { key: 'pass-select', label: '패스', hint: '종류 선택', color: '#ffd23e', disabled: shotTaken },
+              // 슛은 잠그지 않는다 — 새 액션이 붙는 게 아니라 이미 찬 슛의 목적지를
+              // 다시 겨누는 것이라, 막으면 한 번 찍은 코스를 영영 못 고친다.
+              { key: 'shot', label: '슛', hint: shotTaken ? '다시 조준' : '골문 조준', color: '#ff6b5e' },
               { key: 'stats', label: '능력치', hint: '카드 보기', color: '#9aa3b5' },
             ]
             const rows = Math.ceil(items.length / 2)
@@ -809,6 +892,10 @@ export default function TacticsBoard({
                         stroke={active ? '#ffd23e' : '#3d4a63'}
                         strokeWidth={active ? 0.45 : 0.3}
                       />
+                      {tutMainMenuKey === it.key && !it.disabled && (
+                        <rect className="tut-focus" x={bx} y={by} width={MENU.w - 0.6} height={MENU.h - 0.6}
+                          rx="1.2" fill="none" stroke="#ffd23e" strokeWidth="0.6" pointerEvents="none" />
+                      )}
                       <text
                         x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h / 2 - 0.3}
                         textAnchor="middle" fontSize="2.7" fontWeight="700" fill={it.color}
@@ -820,7 +907,7 @@ export default function TacticsBoard({
                         x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h - 1.7}
                         textAnchor="middle" fontSize="1.8" fill="#6b7385" pointerEvents="none"
                       >
-                        {it.disabled ? '슛 완료' : it.hint}
+                        {it.disabled ? '슛으로 종료' : it.hint}
                       </text>
                     </g>
                   )
