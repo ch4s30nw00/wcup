@@ -2,7 +2,7 @@
 //   node scripts/build-scenes-2026.mjs <CSV경로>
 //
 // 왜 스크립트인가: 선수 스탯은 데이터담당의 CSV(터치라인_엔진_v2/
-// worldcup_2026_fm26_name_match_corrected.csv)가 원본이다. 손으로 옮겨 적으면
+// worldcup_2026_stats.csv)가 원본이다. 손으로 옮겨 적으면
 // CSV가 갱신될 때마다 어긋나므로, 매핑 규칙만 여기 두고 결과 JSON은 재생성한다.
 //
 // ⚠️ 좌표는 "실측"이 아니다. 중계 영상 기준의 정확한 좌표는 공개 소스에 없어서,

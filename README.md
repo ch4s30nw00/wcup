@@ -92,7 +92,7 @@ src/
 
 ### 선수 데이터 (`src/data/players.json`)
 
-**v2.1부터 데이터담당 CSV(FM 1~20 스케일, 16스탯 + 키)가 정식 반영됐습니다.** 항목 예시:
+**v2.1부터 데이터담당 CSV(1~20 스케일, 16스탯 + 키)가 정식 반영됐습니다.** 항목 예시:
 
 ```json
 {
@@ -104,7 +104,7 @@ src/
     "acceleration": 15, "pace": 15, "jumping": 10, "balance": 12,
     "marking": 5, "tackle": 6, "positioning": 7, "anticipation": 15
   },
-  "statSource": "fm26", "overall": 85, "condition": 100
+  "overall": 85, "condition": 100
 }
 ```
 
@@ -112,9 +112,11 @@ src/
   크로스=crossing · 패스=passing · 헤더=heading · 몸싸움=strength · 가속도=acceleration ·
   주력=pace · 점프거리=jumping · 균형감각=balance · 일대일마크=marking · 태클=tackle ·
   수비위치선정=positioning · 예측력=anticipation. `norm()`은 부록 A대로 `v/20` 어댑터로 교체됨.
-- `statSource: "fm26"` = 데이터담당 CSV(worldcup_2026_fm26) 원본값,
-  `"estimate"` = 2026 명단에 없는 2022 출전 선수(권경원·김진수·정우영·페페·안토니우 실바·
-  윌리암 카르발류·주앙 마리우·오르타)의 추정치 — 데이터담당이 확정값으로 교체해 주세요.
+- 필드가 없으면 데이터담당 CSV(`worldcup_2026_stats.csv`) 원본값입니다.
+  `estimated: true` = 사람이 손으로 넣은 추정치(현재 83명) — 화면의 선수 정보에
+  "· 추정치"로 표시됩니다. 2026 명단에 없는 2022 출전 선수(권경원·김진수·정우영·페페·
+  안토니우 실바·윌리암 카르발류·주앙 마리우·오르타)와 CSV에 없는 교체 선수가 여기 해당합니다 —
+  데이터담당이 확정값으로 교체해 주세요.
 - `team`은 scenarios.json의 `home`/`away`와 매칭돼 자동으로 스쿼드가 갈립니다.
 - 배열 순서 = formations.json 슬롯 순서 (GK → DF → MF → FW). 단, moment에
   `positions`가 있으면 좌표·온필드 명단 모두 positions가 우선합니다 (아래 경기 데이터
