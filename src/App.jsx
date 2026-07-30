@@ -35,6 +35,26 @@ const INITIAL_SEED = SHARED ? SHARED.seed : HAS_SEED_LINK ? SEED_PARAM : rollSee
 // false로 접혀서, 관련 UI와 저장 코드는 배포 번들에 아예 들어가지 않는다.
 const EDITABLE = import.meta.env.DEV
 
+// --- 이스터에그 영상 (유튜브 임베드) ---
+// 영상은 우리가 갖고 있지 않다. 유튜브 공식 iframe 플레이어로 그 채널의 영상을
+// 그대로 띄우는 것뿐이라, 재생 집계·광고·권리 처리는 전부 유튜브와 업로더 몫이다.
+//   start    그 골이 나오는 시각(초)부터 재생 — 없으면 처음부터 튼다
+//   nocookie 도메인은 재생 전까지 추적 쿠키를 심지 않는다
+//   autoplay 팝업이 뜨는 순간 바로 재생. 브라우저가 막으면 해당 시각의 정지 화면으로
+//            남을 뿐 깨지지 않는다 (mute는 걸지 않는다 — 소리 없는 골 장면은 의미가 없다)
+//
+// 영상을 고를 땐 **임베드가 허용된 것**이어야 한다. 업로더가 외부 재생을 막아두면
+// 플레이어 자리에 "동영상 소유자가 다른 웹사이트에서 재생할 수 없도록 설정했습니다"만
+// 뜬다. 확인법: https://www.youtube.com/oembed?url=<영상URL>&format=json 이 JSON을
+// 돌려주면 임베드 가능, 401이면 막힌 영상이다.
+const youtubeEmbed = ({ youtubeId, start }) => {
+  const q = new URLSearchParams({ autoplay: '1', rel: '0', playsinline: '1' })
+  if (start) q.set('start', String(start))
+  return `https://www.youtube-nocookie.com/embed/${youtubeId}?${q}`
+}
+// 지역 제한·임베드 비활성으로 플레이어가 막힐 때 빠져나갈 구멍
+const youtubeWatch = ({ youtubeId, start }) => `https://youtu.be/${youtubeId}${start ? `?t=${start}` : ''}`
+
 const TYPE_LABEL = { dribble: '드리블', pass: '패스', shot: '슛' }
 const PASS_KIND_LABEL = {
   ground: '패스',
@@ -1148,13 +1168,32 @@ function App() {
             <div className="egg-badge">🏆 재현 성공 — 실제 역사와 같은 전개!</div>
             <h3>{egg.title}</h3>
             <div className="egg-photos">
-              {egg.images?.length ? (
+              {egg.video?.youtubeId ? (
+                <>
+                  {/* 팝업을 닫으면 이 iframe이 언마운트되면서 재생도 함께 멈춘다 */}
+                  <div className="egg-video">
+                    <iframe
+                      src={youtubeEmbed(egg.video)}
+                      title={egg.title}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      allowFullScreen
+                    />
+                  </div>
+                  <small className="egg-credit">
+                    {egg.video.credit ? `영상 · ${egg.video.credit} · ` : '영상 · '}
+                    <a href={youtubeWatch(egg.video)} target="_blank" rel="noreferrer noopener">
+                      유튜브에서 보기 ↗
+                    </a>
+                  </small>
+                </>
+              ) : egg.images?.length ? (
                 egg.images.map((src) => <img key={src} src={src} alt={egg.title} />)
               ) : (
                 <div className="egg-placeholder">
                   <span>📸</span>
-                  <p>실제 장면 이미지 자리</p>
-                  <small>public/moments/에 이미지를 넣고 scenarios.json의 easterEgg.images에 경로(예: "/moments/m91_goal.jpg")를 추가하면 여기에 표시됩니다.</small>
+                  <p>실제 장면 영상·이미지 자리</p>
+                  <small>easterEgg.video에 {'{ youtubeId, start }'}를 넣으면 그 시각부터 재생됩니다. 이미지를 쓸 땐 public/moments/에 넣고 easterEgg.images에 경로를 추가하세요.</small>
                 </div>
               )}
             </div>

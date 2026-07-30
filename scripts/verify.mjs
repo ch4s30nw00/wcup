@@ -45,10 +45,40 @@ for (const [L, want] of [[8, 0.913], [20, 0.75], [30, 0.55]]) {
   check(`L=${L}m`, sigmoid(calcPass(a, []).z), want)
 }
 
-console.log('[앵커] 패스 리시버 압박 (L=20, d=0.5/2/8 → 0.34/0.47/0.70)')
-for (const [d, want] of [[0.5, 0.34], [2, 0.47], [8, 0.7]]) {
+console.log('[앵커] 열린 통로의 패스 리시버 압박 (L=20, d=0.5/2/8 → 0.53/0.61/0.72)')
+for (const [d, want] of [[0.5, 0.53], [2, 0.61], [8, 0.72]]) {
   const a = act('pass', { x: 40, y: 40 }, { x: 60, y: 40 })
   check(`d_recv=${d}m`, sigmoid(calcPass(a, [defAt(60 + d, 40)]).z), want)
+}
+
+console.log('[패스 통로] 실제 경로가 막힐 때만 강한 감점')
+{
+  const a = act('pass', { x: 40, y: 40 }, { x: 60, y: 40 })
+  const nearReceiver = { ...defAt(60.5, 40), id: 'near_receiver' }
+  const clear = calcPass(a, [nearReceiver])
+  const blocked = calcPass(a, [nearReceiver, { ...defAt(50, 40), id: 'lane_blocker' }])
+  checkDir('열린 통로 판별', clear.laneBlocked === false)
+  checkDir('막힌 통로 판별', blocked.laneBlocked === true)
+  checkDir(
+    `열린 통로가 막힌 통로보다 충분히 유리 (${sigmoid(clear.z).toFixed(2)} > ${sigmoid(blocked.z).toFixed(2)})`,
+    sigmoid(clear.z) > sigmoid(blocked.z) + 0.15,
+  )
+}
+
+console.log('[짧은 패스] 통로가 열린 일반 패스는 주변 압박에도 최소 82%')
+{
+  const short = act('pass', { x: 40, y: 40 }, { x: 48, y: 40 })
+  const nearReceiver = { ...defAt(48.5, 40), id: 'short_near_receiver' }
+  const clear = calcPass(short, [nearReceiver])
+  const blocked = calcPass(short, [nearReceiver, { ...defAt(44, 40), id: 'short_lane_blocker' }])
+  checkDir(
+    `열린 8m 패스 ${Math.round(sigmoid(clear.z) * 100)}% (최소 80%)`,
+    clear.simpleShort === true && sigmoid(clear.z) >= 0.8,
+  )
+  checkDir(
+    `8m라도 실제 통로가 막히면 최소 확률 미적용 (${Math.round(sigmoid(blocked.z) * 100)}%)`,
+    blocked.simpleShort === false && sigmoid(blocked.z) < 0.8,
+  )
 }
 
 console.log('[앵커] 중앙·무압박 발슈팅 xG (6/12/18/25yd → 0.42/0.18/0.09/0.04)')
@@ -319,12 +349,33 @@ console.log('[수비 재배치] 결정론 — 같은 입력 두 번 = 같은 좌
   checkDir('결정론 유지', mk() === mk())
 }
 
+console.log('[수비 복귀] 코너 종료 뒤에는 자기 진영으로, 코너 중에는 대형 유지')
+{
+  const advanced = initDefense([{ ...defAt(12, 40), id: 'advanced_df', position: 'DF' }])
+  const counter = advanceDefense(advanced, {
+    from: { x: 59, y: 23 },
+    to: { x: 95, y: 26 },
+    durSec: 5.5,
+    attackers: [],
+  })
+  const corner = advanceDefense(advanced, {
+    from: { x: 112, y: 3 },
+    to: { x: 108, y: 36 },
+    durSec: 5.5,
+    attackers: [],
+  })
+  const counterMove = counter[0].x - advanced[0].x
+  const cornerMove = Math.hypot(corner[0].x - advanced[0].x, corner[0].y - advanced[0].y)
+  checkDir(`역습 시작 시 전진한 DF가 자기 진영 쪽으로 복귀 (${counterMove.toFixed(1)}m)`, counterMove > 18)
+  checkDir(`코너킥 진행 중에는 과도하게 이동하지 않음 (${cornerMove.toFixed(1)}m)`, cornerMove <= K.DEF.MOVE_CAP * K.DEF.SET_PIECE_MOVE_SCALE + 0.01)
+}
+
 // ── 3b. 오프사이드 (순수 기하) ───────────────────────────────────────
 console.log('\n[오프사이드] 최후방 2번째 수비수 라인 판정')
 {
   // 백4(x=90,92,94,96) + GK(116.5). 내림차순 116.5, 96, 94, 92, 90 → 라인 = 96
   const line4 = [defAt(90, 30), defAt(92, 38), defAt(94, 46), defAt(96, 54), { ...defAt(116.5, 40), position: 'GK' }]
-  check('라인 = 최후방 2번째 (GK 포함 정렬)', offsideLineX(line4), 96, 0.001)
+  check('라인 = 최후방 2번째 (GK 포함 정렬)', offsideLineX(line4), 96 - K.OFFSIDE.PLAYER_RADIUS, 0.001)
 
   const at = (rx, ball = { x: 70, y: 40 }) => checkOffside({ receiver: { x: rx, y: 40 }, opponents: line4, ball })
   checkDir('라인 뒤(x=98) → 오프사이드', at(98).offside === true)
@@ -362,6 +413,14 @@ console.log('[오프사이드] resolveSequence 통합 — 확정 실패 + 턴오
   checkDir(`라인 뒤에 서 있는 리시버 → outcome=OFFSIDE (${off.outcome})`, off.outcome === 'OFFSIDE')
   checkDir('오프사이드 스텝은 확정 실패', off.steps[0].success === false && off.steps[0].offside === true)
   checkDir(`오프사이드면 pTotal=0 (${off.pTotal})`, off.pTotal === 0)
+
+  const movedBackAtKick = {
+    ...mkPass(104),
+    receiverFrom: { x: 95.9, y: 40 },
+  }
+  const movedBack = resolveSequence([movedBackAtKick], { opponents: defs, players: standingOff, seed: 1 })
+  checkDir('runner returned behind line at kick is onside', movedBack.steps[0].offside === false)
+  checkDir('plan warning uses the runner position at kick', planOffside([movedBackAtKick], { opponents: defs, players: standingOff }).length === 0)
 
   // (ii) 리시버가 라인 앞에서 출발해 공을 향해 달려든다 → 도착점이 라인 뒤여도 온사이드.
   //      역습 스루패스가 성립하는 근거 — 90+1 장면 재현이 오프사이드로 막히면 안 된다.

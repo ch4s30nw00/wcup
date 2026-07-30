@@ -105,7 +105,7 @@ function pathPressure(pts, opponents, beta, R, { sum = true, excludeGK = false, 
     if (o.id === excludeId) continue
     const { d, point, frac } = minDistToPath(pts, o)
     const pr = pressure(d, R)
-    all.push({ pr, id: o.id, point, frac, o })
+    all.push({ d, pr, id: o.id, point, frac, o })
     if (sum) z += beta * (betaScale ? betaScale(o) : 1) * pr
     if (!worst || pr > worst.pr) worst = { pr, id: o.id, point, frac, o }
   }
@@ -280,7 +280,10 @@ export function calcPass(action, opponents, prev = null) {
     if (!recv || dd < recv.d) recv = { d: dd, id: o.id, o }
   }
   const laneScale = (o) => defScale(o, DEF_PRIMARY.pass(o))
+  // ── 역할 배정 (이 브랜치) ────────────────────────────────────────────────
   // 두 항 다 음수다 — 더 작은(더 음수인) 쪽이 더 크게 작용한다.
+  // 비교는 B_RECV(원값) 기준으로 한다. 아래 완화(B_RECV_CLEAR)는 "마크맨으로 정해진
+  // 뒤에 통로가 비어 있으면 깎아준다"는 별개 단계라, 역할을 정하는 저울에 섞지 않는다.
   const asRecv = recv ? C.B_RECV * laneScale(recv.o) * pressure(recv.d, C.R_RECV) : 0
   const asLane = recv ? C.B_LANE * laneScale(recv.o) * pressure(minDistToPath(pts, recv.o).d, C.R_LANE) : 0
   const markingRecv = !!recv && asRecv <= asLane
@@ -288,21 +291,32 @@ export function calcPass(action, opponents, prev = null) {
     excludeId: markingRecv ? recv.id : null,
     betaScale: laneScale,
   })
+  // ── 통로 완화 (origin/master) ────────────────────────────────────────────
+  // 도착점 주변에 상대가 있어도 공이 지나가는 중앙 통로가 비어 있으면
+  // 리시버 압박 감점을 완화한다. 반대로 실제 통로에 수비수가 있으면 기존 감점과
+  // 경로 감점을 모두 유지한다.
+  // 역할 배정과 맞물려 정확도가 올라간다 — 레인 쪽으로 센 수비수는 이제 lane.all에
+  // 남아 있으므로, 길을 막고 선 사람이 여기서 통로 차단으로 제대로 잡힌다.
+  const laneBlocked = lane.all.some((e) => e.frac > 0.08 && e.frac < 0.92 && e.d <= C.CLEAR_LANE_R)
   // 레인 쪽으로 셌으면 리시버 항은 0 — 그 수비수는 이미 lane에 들어가 있다.
   const recvPr = markingRecv ? pressure(recv.d, C.R_RECV) : 0
-  const recvZ = markingRecv ? asRecv : 0
+  const recvBeta = laneBlocked ? C.B_RECV : C.B_RECV_CLEAR
+  const recvZ = markingRecv ? recvBeta * laneScale(recv.o) * recvPr : 0
   const shortBonus = C.SHORT_BONUS * Math.max(0, 1 - L / C.SHORT_DIST)
   // 휘어서 늘어난 거리는 발기술로 값이 달라진다 — 잘 감는 선수는 같은 휨을 더 싸게 친다.
   // 직선이면 늘어난 거리가 0이라 계수와 무관하다(앵커는 전부 직선). K.BEND.COST_* 참고.
   const chord = Math.hypot(action.to.x - action.from.x, action.to.y - action.from.y)
   const effL = chord + Math.max(0, L - chord) * bendCostFactor(action.actor)
-  const z = C.Z0 + C.B_LEN * effL + C.B_PASS * (sPass - 0.7) + shortBonus + recvZ + lane.z
+  const rawZ = C.Z0 + C.B_LEN * effL + C.B_PASS * (sPass - 0.7) + shortBonus + recvZ + lane.z
+  const simpleShort = !cross && !header && !laneBlocked && L <= C.SHORT_DIST
+  const shortFloorZ = Math.log(C.SHORT_CLEAR_FLOOR / (1 - C.SHORT_CLEAR_FLOOR))
+  const z = simpleShort ? Math.max(rawZ, shortFloorZ) : rawZ
   // 연출 귀속: 경로 압박자와 리시버 마크맨 중 압박이 큰 쪽
   let worst = lane.worst
   if (recv && recvPr >= ATTRIBUTION_MIN && (!worst || recvPr > worst.pr)) {
     worst = { pr: recvPr, id: recv.id, point: action.to, frac: 1 }
   }
-  return { z, worst, cross, header }
+  return { z, worst, cross, header, laneBlocked, simpleShort }
 }
 
 // --- 드리블: 1v1 (기하 지배) ------------------------------------------------
@@ -377,12 +391,12 @@ export function defenseTimeline(actions, ctx) {
     const before = defs
     // 패스가 떠나는 순간 리시버가 서 있는 자리 — 오프사이드는 도착점이 아니라 이 좌표로 판정한다.
     // (아직 이 액션의 이동을 반영하기 전이므로 atkPos가 곧 "그 순간"의 좌표다.)
-    const receiverAt = a.receiverId ? (atkPos.get(a.receiverId) ?? a.to) : null
+    const receiverAt = a.receiverId ? (a.receiverFrom ?? atkPos.get(a.receiverId) ?? a.to) : null
     // 액터(드리블)·리시버(패스)가 도착점으로 이동
     if (a.type === 'dribble') moveAtk(a.actorId, a.to)
     else if (a.type === 'pass') moveAtk(a.receiverId, a.to)
     // 수비 재배치: 이 액션의 시간 예산만큼 볼 도착점에 반응해 이동
-    defs = advanceDefense(defs, { to: a.to, durSec: actionSeconds(a), attackers: [...atkPos.values()] })
+    defs = advanceDefense(defs, { from: a.from, to: a.to, durSec: actionSeconds(a), attackers: [...atkPos.values()] })
     return { before, after: defs, receiverAt }
   })
 }
