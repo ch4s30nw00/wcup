@@ -140,6 +140,13 @@ export const K = {
     // 지원 런 역할 최소 유지 시간 — 매 프레임 후보가 뒤바뀌며 깜빡이는 것을 막는다
     SUPPORT_HOLD_MS: 1200,
 
+    // 방향 표시 안정화. 공을 막 받은 순간에는 이동/공 시선 판정이 교차하므로
+    // 짧게 마지막 이동 방향을 유지하고, 한 프레임에 돌 수 있는 각도를 제한한다.
+    FACE_MOVE_EPS: 0.008,
+    FACE_MOVE_HOLD_MS: 260,
+    FACE_BALL_EPS: 0.8,
+    FACE_TURN_RAD_S: 4.2,
+
     // 강도는 상황 이름이 아니라 **목표까지 남은 거리**가 정한다.
     // 2m 어긋난 라인은 걸어서 맞추고, 16m 뒤처졌으면 전력으로 따라붙는다 —
     // 사람이 실제로 그렇게 움직인다. INTENT는 "다 왔을 때의 강도"가 되고,
@@ -170,6 +177,7 @@ export const K = {
     // (판정 코드는 건드리지 않는다 — 연출만의 문제다)
     RECOVER_BEHIND: 15, // 공보다 이만큼 뒤면 "따라잡아야 하는" 상태
     RECOVER_AHEAD: 12, // 공보다 이만큼 골문 쪽을 목표로 삼는다 (따라잡히지 않아도 방향이 맞다)
+    RECOVERY_MARK_GOALSIDE: 4, // 복귀조 1명은 볼 소유자의 골사이드까지 붙어 압박한다
 
     // 압박조를 고를 때 공 뒤에 처진 수비수에게 매기는 거리 벌점(m).
     // 압박은 "맞설 수 있는 사람"이 하는 것이고, 공 뒤는 복귀 중이다.
@@ -235,12 +243,15 @@ export const K = {
     B_LEN: -0.0917, // 호 길이 감쇠 /m (곡선은 L이 길어져 자연 페널티)
     B_PASS: 1.5,
     B_RECV: -2.0, // 리시버 압박 (지배 레버)
+    B_RECV_CLEAR: -1.1, // 패스 통로가 열렸으면 단순 근접 수비의 감점을 완화
     R_RECV: 4.0,
     B_LANE: -1.0, // 경로 압박 (수비수당, 보조)
     R_LANE: 3.0,
+    CLEAR_LANE_R: 1.6, // 패스 중앙 구간에서 이 거리 안에 수비수가 있어야 '막힌 통로'
     // 짧은 패스는 실제 축구처럼 안정적이다. 수비 압박은 그대로 적용한다.
     SHORT_DIST: 12,
     SHORT_BONUS: 0.45,
+    SHORT_CLEAR_FLOOR: 0.82, // 경로가 열린 일반 짧은 패스는 최소 82%
     // 로빙을 받은 선수가 곧바로 다시 패스하면 헤더가 일부 반영된다.
     // 비중을 낮춰 일반 패스보다 성공률이 지나치게 낮아지지 않게 한다.
     LOB_HEAD_WEIGHT: 0.25,
@@ -290,6 +301,17 @@ export const K = {
     // 나머지가 자기 상대를 잡는 편이 팀 전체로는 더 낫다.
     // 예전 값 2는 "전원이 한 점을 목표로 해서 몸이 겹치는" 문제를 가린 뚜껑이었다.
     PRESS_N: 3,
+    FORMATION_RECOVERY_DISTANCE: 4,
+    FORMATION_RECOVERY_BOOST: 1.28,
+    RECOVERY_MARK_GOALSIDE: 4,
+    SET_PIECE_X: 102,
+    SET_PIECE_EDGE_Y: 14,
+    SET_PIECE_PRESS_N: 1,
+    SET_PIECE_MOVE_SCALE: 0.45,
+    SET_PIECE_MARK_BLEND: 0.35,
+    FORMATION_X: { DF: 96, MF: 82, FW: 70 },
+    FORMATION_BALL_SHIFT: 0.12,
+    RECOVERY_MOVE_CAP: 36,
     PRESS_R: 26, // 이 거리 안에 있어야 압박 가담
     GOALSIDE: 1.8, // 압박 위치: 볼과 자기 골문 사이 골사이드 오프셋 m
     COVER_DEPTH: 2.6, // 커버는 볼 압박자보다 이만큼씩 뒤에 (단계당)
@@ -310,7 +332,7 @@ export const K = {
   // 오프사이드 (offside.js) — 순수 기하. 계수가 아니라 규칙 상수라 밸런싱 대상이 아니다.
   // EPS: 동일선상 허용 오차 m. 실축 규칙과 같이 "같은 선 = 온사이드"라, 보드 조작의
   //      픽셀 단위 흔들림으로 억울한 오프사이드가 나오지 않게 하는 완충.
-  OFFSIDE: { HALFWAY_X: 60, EPS: 0.15 },
+  OFFSIDE: { HALFWAY_X: 60, EPS: 0.15, PLAYER_RADIUS: 1.4 },
 
   // 시트(페이즈) 설계 UI — 가동범위 동심원 (sheets.js). 판정과 무관한 표시용.
   // 바깥 링 = 전력 100%, 안쪽 링 = 여유 70% (스프린트로 가긴 가는데 받을 준비는 안 되는 거리).
