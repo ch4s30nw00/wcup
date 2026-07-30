@@ -31,6 +31,8 @@
 
 import { samplePath, pathLength, minDistToPath, bendCostFactor } from './geometry.js'
 import { initDefense, advanceDefense } from './defense.js'
+// 차단 지점 도달 가능성 판정에 쓴다 (reachableHit). sheets → defense/geometry/constants 뿐이라 순환 아님.
+import { runSpeedOf } from './sheets.js'
 import { checkOffside, offsideWarnings } from './offside.js'
 import { K, actionSpeed, isLobPass } from './constants.js'
 
@@ -113,6 +115,33 @@ function pathPressure(pts, opponents, beta, R, { sum = true, excludeGK = false, 
   if (!sum && worst) z = beta * (betaScale ? betaScale(worst.o) : 1) * worst.pr
   if (worst && worst.pr < ATTRIBUTION_MIN) worst = null
   return { z, worst, all }
+}
+
+// 차단 지점 — "경로에서 가장 가까운 점"이 아니라 **그가 실제로 닿을 수 있는 가장 이른 점**.
+//
+// 시간을 안 보면, 옆에 서 있던 수비수가 공이 0.25초 만에 지나가는 자리로 순간이동해
+// 끊는 그림이 된다. 2002 이영표 패스에서 디리비오가 그랬다 — 그 지점에 가려면 10.9 m/s가
+// 필요한데 그의 주력은 6.6이고, 실은 그 경로 어디에도 시간 안에 닿지 못하는데도
+// 끊긴 211건 전부가 그의 몫이었다(경로에서 가장 가까운 사람이었기 때문).
+//
+// 어디에도 못 닿으면 null을 돌려준다 → 차단자를 지목하지 않고 "빠진 패스" 연출로 넘어간다.
+// 못 막을 사람이 막은 걸로 그리느니 아무도 못 건드린 게 낫다 — 수비 붕괴가 좌표에서
+// 창발해야지 연출이 메워주면 안 된다(사용자 확정 2026-07-31).
+//
+// **확률은 건드리지 않는다.** 주사위는 이미 굴렸고 여기서 정하는 건 연출 좌표뿐이다.
+function reachableHit(action, defender) {
+  if (!defender) return null
+  const pts = samplePath(action.from, action.ctrl, action.to)
+  const total = pathLength(pts) || 1
+  const ballV = actionSpeed(action)
+  const defV = runSpeedOf(defender)
+  let acc = 0
+  for (let i = 1; i < pts.length; i++) {
+    acc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+    const tDef = Math.hypot(defender.x - pts[i].x, defender.y - pts[i].y) / defV
+    if (tDef <= acc / ballV) return { point: pts[i], frac: acc / total }
+  }
+  return null
 }
 
 // 크로스 기하 판정: 측면에서 MIN_L 이상 날아와 박스 안에 떨어지는 패스 (데이터 요청 §2·3·7)
@@ -314,7 +343,8 @@ export function calcPass(action, opponents, prev = null) {
   // 연출 귀속: 경로 압박자와 리시버 마크맨 중 압박이 큰 쪽
   let worst = lane.worst
   if (recv && recvPr >= ATTRIBUTION_MIN && (!worst || recvPr > worst.pr)) {
-    worst = { pr: recvPr, id: recv.id, point: action.to, frac: 1 }
+    // o를 함께 실어 보낸다 — resolveSequence가 이 수비수의 좌표로 도달 가능성을 재기 때문
+    worst = { pr: recvPr, id: recv.id, point: action.to, frac: 1, o: recv.o }
   }
   return { z, worst, cross, header, laneBlocked, simpleShort }
 }
@@ -474,11 +504,16 @@ export function resolveSequence(actions, ctx) {
             step.interceptorId = save.id
             step.interceptPoint = save.point
             step.interceptFrac = save.frac
-          // 압박 기여가 가장 큰 필드 수비수가 끊은 것으로 (연출 좌표)
+          // 압박 기여가 가장 큰 필드 수비수가 끊은 것으로 (연출 좌표).
+          // 단, 시간 안에 그 경로에 닿을 수 있어야 한다 — 못 닿으면 지목하지 않고
+          // 아무도 못 건드린 패스로 둔다 (reachableHit 주석 참고).
           } else if (worst) {
-            step.interceptorId = worst.id
-            step.interceptPoint = worst.point
-            step.interceptFrac = worst.frac
+            const hit = reachableHit(actions[i], worst.o)
+            if (hit) {
+              step.interceptorId = worst.id
+              step.interceptPoint = hit.point
+              step.interceptFrac = hit.frac
+            }
           }
         }
       }
