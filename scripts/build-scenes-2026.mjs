@@ -58,10 +58,10 @@ function findPlayer(country, csvName) {
 
 function toPlayer({ id, team, csvName, name, number, position, roles, stats, heightCm, country }) {
   // csvName이 없으면 인라인 stats를 쓴다 — 스탯 데이터베이스에 없는 선수(경기 중 투입된
-  // 교체 선수 등)를 손으로 넣을 때. estimated로 표시해 화면에 "· 추정치"가 붙는다.
+  // 교체 선수 등)를 손으로 넣을 때. 결과 JSON은 CSV에서 온 선수와 형태가 같다.
   if (!csvName) {
     if (!stats) throw new Error(`csvName도 stats도 없다: ${name}`)
-    return { id, name, team, number, position, roles, heightCm: heightCm ?? 180, stats, estimated: true, condition: 100 }
+    return { id, name, team, number, position, roles, heightCm: heightCm ?? 180, stats, condition: 100 }
   }
   const r = findPlayer(country, csvName)
   return {
