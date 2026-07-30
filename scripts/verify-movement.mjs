@@ -24,6 +24,7 @@ import { resolveSequence } from '../src/engine/resolve.js'
 import { playSequence } from '../src/engine/playback.js'
 import { midpoint } from '../src/engine/geometry.js'
 import { runSpeedOf, reachRadius, clampToReach, actionDuration } from '../src/engine/sheets.js'
+import { K } from '../src/engine/constants.js'
 
 const players = JSON.parse(readFileSync(new URL('../src/data/players.json', import.meta.url), 'utf-8'))
 const scenario = JSON.parse(readFileSync(new URL('../src/data/scenarios.json', import.meta.url), 'utf-8'))
@@ -68,9 +69,10 @@ function derive(chainActs, runs) {
       at[carrier] = act.to
       return leg
     }
+    const receiverFrom = act.receiverId === 'GOAL' ? null : posOf(act.receiverId)
     applyRunsAt(index)
     const to = act.receiverId === 'GOAL' ? act.to : posOf(act.receiverId)
-    const leg = { type: act.type, actorId: carrier, receiverId: act.receiverId, from: cur, to, ctrl: midpoint(cur, to), index }
+    const leg = { type: act.type, actorId: carrier, receiverId: act.receiverId, receiverFrom, from: cur, to, ctrl: midpoint(cur, to), index }
     if (act.receiverId !== 'GOAL') {
       at[act.receiverId] = to
       carrier = act.receiverId
@@ -100,7 +102,7 @@ function play({ chainActs, runs = [] }) {
     const prev = {}
     const stat = {}
     for (const p of [...home, ...opponents])
-      stat[p.id] = { max: 0, maxAt: 0, jump: 0, jumpAt: 0, moved: 0, stillRun: 0, worstStill: 0, win: [], last: { x: p.x, y: p.y } }
+      stat[p.id] = { max: 0, maxAt: 0, maxTurn: 0, jump: 0, jumpAt: 0, moved: 0, stillRun: 0, worstStill: 0, win: [], last: { x: p.x, y: p.y } }
     let lastEl = 0
     playSequence({
       actions: chain,
@@ -121,6 +123,12 @@ function play({ chainActs, runs = [] }) {
             const d = Math.hypot(p.x - q.x, p.y - q.y)
             const s = stat[id]
             const v = d / dt
+            if (Number.isFinite(p.a) && Number.isFinite(q.a)) {
+              let da = p.a - q.a
+              while (da > Math.PI) da -= 2 * Math.PI
+              while (da < -Math.PI) da += 2 * Math.PI
+              s.maxTurn = Math.max(s.maxTurn, Math.abs(da) / dt)
+            }
             // 지속 속도 — 한 프레임 델타는 프레임 간격 지터에 좌우돼 ±50%씩 튄다.
             // 보는 사람이 "과속"으로 느끼는 것도 순간값이 아니라 이어지는 속도다.
             s.win.push({ t: elapsed, x: p.x, y: p.y })
@@ -148,7 +156,7 @@ function play({ chainActs, runs = [] }) {
               if (s.stillRun > s.worstStill) s.worstStill = s.stillRun
             } else s.stillRun = 0
           }
-          prev[id] = { x: p.x, y: p.y }
+          prev[id] = { x: p.x, y: p.y, a: p.a }
         }
       },
       onDone: () => resolve({ stat, total: lastEl, seed, chain, shooterId }),
@@ -231,6 +239,13 @@ for (const c of CASES) {
     `순간이동 없음 (최대 한 프레임 ${worstJump.jump.toFixed(2)}m)`,
     worstJump.jump <= 1.5,
     worstJump.jump > 1.5 ? `${worstJump.p.name} t=${(worstJump.jumpAt / 1000).toFixed(2)}s` : null,
+  )
+
+  const worstTurn = rows.reduce((a, b) => (b.maxTurn > a.maxTurn ? b : a))
+  chk(
+    `방향 표시가 빙글 돌지 않음 (최대 ${(worstTurn.maxTurn * 180 / Math.PI).toFixed(0)}°/s)`,
+    worstTurn.maxTurn <= K.PLAY.FACE_TURN_RAD_S * 1.05,
+    worstTurn.maxTurn > K.PLAY.FACE_TURN_RAD_S * 1.05 ? worstTurn.p.name : null,
   )
 
   // 3) 석상 — 재생 내내 굳어 있는 선수. 슈터는 골 세리머니에서 제자리에 서므로 제외.

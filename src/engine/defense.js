@@ -65,8 +65,14 @@ export function pressSlot(pt, rank) {
   return { x: pt.x + ux * depth - uy * side * spread, y: pt.y + uy * depth + ux * side * spread }
 }
 
-export function advanceDefense(defs, { to, durSec, attackers = [] }) {
+export function isSetPieceAction({ from } = {}) {
   const C = K.DEF
+  return !!from && from.x >= C.SET_PIECE_X && (from.y <= C.SET_PIECE_EDGE_Y || from.y >= 80 - C.SET_PIECE_EDGE_Y)
+}
+
+export function advanceDefense(defs, { from = null, to, durSec, attackers = [] }) {
+  const C = K.DEF
+  const special = isSetPieceAction({ from })
   const adv = Math.max(0, to.x - 60) // 하프라인 기준 볼 전진량 → 라인 후퇴
 
   // 압박 대열: 볼 도착점에서 PRESS_R 안에 있는 수비수들 (GK 제외), 가까운 순으로 자리를 받는다.
@@ -78,37 +84,78 @@ export function advanceDefense(defs, { to, durSec, attackers = [] }) {
     .map((d) => ({ id: d.id, dist: Math.hypot(d.x - to.x, d.y - to.y) }))
     .filter((e) => e.dist < C.PRESS_R)
     .sort((a, b) => a.dist - b.dist)
-    .slice(0, C.PRESS_N)
+    .slice(0, special ? C.SET_PIECE_PRESS_N : C.PRESS_N)
     .forEach((e, i) => pressRank.set(e.id, i))
 
+  // 공에 붙을 수 있는 기존 압박조가 없으면, 복귀 중인 선수 가운데 공과 가장
+  // 가까운 한 명만 볼 소유자를 맡는다. 나머지는 자기 수비 대형을 회복한다.
+  const recoveryMarkerId = !special && pressRank.size === 0
+    ? defs
+        .filter((d) => d.position !== 'GK')
+        .filter((d) => {
+          const roleFloorX = C.FORMATION_X[d.position] ?? d.anchor.x
+          return d.x < roleFloorX - C.FORMATION_RECOVERY_DISTANCE
+        })
+        .map((d) => ({ id: d.id, dist: Math.hypot(d.x - to.x, d.y - to.y) }))
+        .sort((a, b) => a.dist - b.dist)[0]?.id ?? null
+    : null
+
   return defs.map((d) => {
+    let formationTarget = null
     let target
+    const roleFloorX = C.FORMATION_X[d.position] ?? d.anchor.x
+    const needsDeepRecovery =
+      !special &&
+      d.position !== 'GK' &&
+      d.x < roleFloorX - C.FORMATION_RECOVERY_DISTANCE &&
+      !pressRank.has(d.id)
     if (d.position === 'GK') {
       // GK: 골문 근처에서 볼 y를 따라 슬라이드
       target = { x: C.GK_X, y: clamp(40 + (to.y - 40) * C.GK_TRACK, 35, 45) }
     } else if (pressRank.has(d.id)) {
       // 압박 대열: 0번은 볼에 붙고, 뒤 순번은 좌우로 벌려 커버한다 (pressSlot 참고)
       target = pressSlot(to, pressRank.get(d.id))
+    } else if (d.id === recoveryMarkerId) {
+      target = goalSide(to, C.RECOVERY_MARK_GOALSIDE)
     } else {
       // 마킹(DF·MF만 — FW는 수비 가담 대신 조널): MARK_R 안 최근접 공격수의 골사이드.
       // 없으면 조널(라인 후퇴 + 볼사이드 시프트) — 볼사이드로 쏠린 만큼 반대편이 빈다.
+      formationTarget = {
+        x: special
+          ? d.anchor.x + C.K_LINE * adv * 0.25
+          : Math.max(d.anchor.x + C.K_LINE * adv, roleFloorX + C.FORMATION_BALL_SHIFT * adv),
+        y: d.anchor.y + C.K_SIDE * (to.y - 40) * (special ? 0.25 : 1),
+      }
       let mark = null
-      if (d.position === 'DF' || d.position === 'MF') {
+      if (!needsDeepRecovery && (d.position === 'DF' || d.position === 'MF')) {
         for (const a of attackers) {
           const dd = Math.hypot(a.x - d.x, a.y - d.y)
           if (dd < C.MARK_R && (!mark || dd < mark.dd)) mark = { a, dd }
         }
       }
-      target = mark
-        ? goalSide(mark.a, C.MARK_GOALSIDE)
-        : { x: d.anchor.x + C.K_LINE * adv, y: d.anchor.y + C.K_SIDE * (to.y - 40) }
+      const markTarget = mark ? goalSide(mark.a, C.MARK_GOALSIDE) : null
+      target = markTarget && special
+        ? {
+            x: formationTarget.x + (markTarget.x - formationTarget.x) * C.SET_PIECE_MARK_BLEND,
+            y: formationTarget.y + (markTarget.y - formationTarget.y) * C.SET_PIECE_MARK_BLEND,
+          }
+        : markTarget ?? formationTarget
     }
 
     // 이동 시간 예산 안에서만 목표로 접근 — 여기서 "따라잡지 못한 거리"가 공간이 된다.
     // MOVE_CAP: 아무리 긴 액션이라도 한 액션당 회복 거리는 상한 (공격 우위 유지)
     const tx = clamp(target.x, 1.5, 118.5)
     const ty = clamp(target.y, 1.5, 78.5)
-    const maxMove = Math.min(d.spd * C.EFF * Math.max(durSec, 0.15), C.MOVE_CAP)
+    const formationGap = formationTarget ? Math.hypot(formationTarget.x - d.x, formationTarget.y - d.y) : 0
+    const recoveryBoost = needsDeepRecovery ||
+      (!special && !pressRank.has(d.id) && formationGap > C.FORMATION_RECOVERY_DISTANCE)
+      ? C.FORMATION_RECOVERY_BOOST
+      : 1
+    const moveCap = needsDeepRecovery ? C.RECOVERY_MOVE_CAP : C.MOVE_CAP
+    const maxMove = Math.min(
+      d.spd * C.EFF * recoveryBoost * Math.max(durSec, 0.15),
+      moveCap * (special ? C.SET_PIECE_MOVE_SCALE : 1),
+    )
     const dx = tx - d.x
     const dy = ty - d.y
     const dist = Math.hypot(dx, dy)

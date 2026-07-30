@@ -13,7 +13,7 @@ import { commentaryFor } from './commentary.js'
 import { midpoint, samplePath, pathLength, pointAtLength } from './geometry.js'
 import { K, actionSpeed, isLobPass } from './constants.js'
 import { movementDuration, runSpeedOf } from './sheets.js'
-import { pressSlot } from './defense.js'
+import { pressSlot, isSetPieceAction } from './defense.js'
 
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v))
 // 이동/공 속도 (피치 단위 ≈ m/s) — 판정의 수비 이동 예산(resolve.js)과 공유
@@ -221,7 +221,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
   const jumpCapOf = {}
   for (const p of [...players, ...opponents]) {
     capOf[p.id] = runSpeedOf(p)
-    jumpCapOf[p.id] = Math.max(capOf[p.id], K.SPEED.dribble) * K.PLAY.JUMP_CAP
+    jumpCapOf[p.id] = p.position === 'GK' ? capOf[p.id] * K.PLAY.JUMP_CAP : capOf[p.id]
   }
   // 템포에 따른 급함 배율 — tick 안에서 갱신된다 (아래 tempo 참고)
   const urgencyRef = { v: 1 }
@@ -346,27 +346,44 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
   // 여기에 느린 좌우 스캔을 얹어 "서 있어도 살아 있는" 느낌을 만든다.
   const facePrev = {}
   const faceAng = {}
+  const faceMoveAng = {}
+  const faceMoveUntil = {}
   const updateFace = (id, x, y, ball, dt, sec, gaze) => {
     const prev = facePrev[id]
     facePrev[id] = { x, y }
-    const moving = prev && Math.hypot(x - prev.x, y - prev.y) > 0.03
+    const moveDist = prev ? Math.hypot(x - prev.x, y - prev.y) : 0
+    if (prev && moveDist > K.PLAY.FACE_MOVE_EPS) {
+      faceMoveAng[id] = Math.atan2(y - prev.y, x - prev.x)
+      faceMoveUntil[id] = sec + K.PLAY.FACE_MOVE_HOLD_MS / 1000
+    }
+    const moving = faceMoveAng[id] != null && sec <= (faceMoveUntil[id] ?? 0)
     let target
     let scan = 0
     if (moving) {
-      target = Math.atan2(y - prev.y, x - prev.x)
+      target = faceMoveAng[id]
     } else {
       const look = gaze ?? ball
       if (!look) return faceAng[id] ?? 0
-      target = Math.atan2(look.y - y, look.x - x)
+      const lookDist = Math.hypot(look.x - x, look.y - y)
+      // 공이 발밑에 있을 때 atan2(0, 0)을 방향으로 쓰면 수신 순간마다
+      // 0도와 직전 진행 방향을 오가게 된다. 이때는 마지막 방향을 유지한다.
+      target = lookDist < K.PLAY.FACE_BALL_EPS
+        ? (faceAng[id] ?? faceMoveAng[id] ?? 0)
+        : Math.atan2(look.y - y, look.x - x)
       // 서 있는 동안만 훑어본다 — 달리면서 고개를 흔들면 어지럽다.
       // 선수마다 위상이 달라(noiseOf의 p1) 전원이 같이 흔들리지 않는다.
-      scan = ((K.PLAY.SCAN_DEG * Math.PI) / 180) * Math.sin(2 * Math.PI * K.PLAY.SCAN_HZ * sec + noiseOf[id].p1)
+      if (lookDist >= K.PLAY.FACE_BALL_EPS) {
+        scan = ((K.PLAY.SCAN_DEG * Math.PI) / 180) * Math.sin(2 * Math.PI * K.PLAY.SCAN_HZ * sec + noiseOf[id].p1)
+      }
     }
     let cur = faceAng[id] ?? target
     let d = target + scan - cur
     while (d > Math.PI) d -= 2 * Math.PI
     while (d < -Math.PI) d += 2 * Math.PI
-    cur += d * Math.min(1, dt * 9)
+    const maxTurn = K.PLAY.FACE_TURN_RAD_S * dt
+    cur += clamp(d, -maxTurn, maxTurn)
+    while (cur > Math.PI) cur -= 2 * Math.PI
+    while (cur < -Math.PI) cur += 2 * Math.PI
     faceAng[id] = cur
     return cur
   }
@@ -518,6 +535,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     for (const leg of legs) {
       if (el >= leg.start && el <= leg.start + leg.dur) legNow = leg
     }
+    const setPiece = isSetPieceAction(legNow ?? {})
     // 슛은 라인을 끌어올리지 않는다 — 공이 골문으로 날아간다고 팀 전체가 골라인까지
     // 밀고 올라가지는 않는다. 슛 중에는 "찬 자리"를 기준으로 대형을 유지한다.
     // (이걸 안 빼면 전원이 골문 앞까지 갔다가 세리머니하러 되돌아와 유턴이 된다)
@@ -579,7 +597,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     // 수비수가 판정 좌표(액션 도착점)로 미리 달려가 서 있게 된다 —
     // 달로트가 손흥민을 견제하지 않고 드리블 도착점에 먼저 가 기다리던 문제.
     const pressers = new Map() // id → 압박 대열 순번 (0 = 볼에 붙는 사람)
-    if (mode === 'live') {
+    if (mode === 'live' && !setPiece) {
       const cands = opponents
         .filter((o) => o.position !== 'GK' && !scripted.has(o.id))
         .map((o) => {
@@ -591,6 +609,19 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         .slice(0, K.DEF.PRESS_N)
       cands.forEach((c, i) => pressers.set(c.id, i))
     }
+
+    // 이미 공에 붙는 압박조가 없을 때만, 깊게 처진 복귀조 중 가장 가까운 한 명을
+    // 볼 소유자 마커로 지정한다. 나머지 선수는 수비 대형 복귀를 계속한다.
+    const recoveryMarkerId = mode === 'live' && !setPiece && pressers.size === 0
+      ? opponents
+          .filter((o) => o.position !== 'GK' && !scripted.has(o.id))
+          .filter((o) => o.x < ballAim.x - K.PLAY.RECOVER_BEHIND)
+          .map((o) => ({
+            id: o.id,
+            d: Math.hypot(sim[o.id].x - ballSteer.x, sim[o.id].y - ballSteer.y),
+          }))
+          .sort((a, b) => a.d - b.d)[0]?.id ?? null
+      : null
 
     // 지원 런: 공과 가까운 자유 아군 2명이 공보다 앞 공간으로 침투해 패스 옵션을 만든다.
     // 판정에 안 쓰이는 순수 연출이라 자유롭게 뛴다. 히스테리시스(-4m 보정)로 역할 깜빡임 방지.
@@ -720,6 +751,7 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       if (scripted.has(o.id)) continue
       let target
       let spd = paceOf(o.id, K.PLAY.INTENT.SHAPE)
+      const waypoint = defWaypoint?.[o.id]
       if (mode === 'goal') {
         target = { x: o.x + 2, y: o.y } // 낙담 — 느릿하게 제자리 쪽
         spd = paceOf(o.id, K.PLAY.INTENT.DEJECT)
@@ -735,24 +767,35 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         // 달리기가 아니라 몸을 던지는 동작이라 주력 상한을 넘어도 어색하지 않다.
         target = { x: 117.6, y: clamp(shotLeg.to.y, 35, 45) }
         spd = capOf[o.id] * K.PLAY.INTENT.GK_DIVE
-      } else if (pressers.has(o.id)) {
+      } else if (!waypoint && pressers.has(o.id)) {
         // 판정(defense.js)과 같은 자리 배분 — 0번은 볼에 붙고 뒤 순번은 좌우로 벌려 커버한다.
         // 전원이 한 점을 노리면 화면에서 몸이 겹친다(예전 문제).
         target = pressSlot(ballSteer, pressers.get(o.id))
         spd = paceOf(o.id, K.PLAY.INTENT.PRESS)
-      } else if (o.position !== 'GK' && o.x < ballAim.x - K.PLAY.RECOVER_BEHIND) {
+      } else if (!setPiece && o.position !== 'GK' && o.x < ballAim.x - K.PLAY.RECOVER_BEHIND) {
         // 공보다 한참 뒤에 처진 선수 — 자기 골문 쪽으로 전력 복귀한다.
         // 코너킥 뒤 역습이면 수비진 전원이 여기 걸린다. 라인 추종 계수로는
         // "공이 전진한 만큼"밖에 못 돌아와 서 있는 것처럼 보였고(실측 0.9~4.4m),
         // 판정 좌표는 70m 떨어진 상대를 마킹하느라 제자리였다.
         // 목표까지 못 따라잡아도 방향과 속도가 맞으면 화면은 "쫓아가는 복귀"가 된다.
-        target = {
-          x: Math.min(118.5, ballAim.x + K.PLAY.RECOVER_AHEAD),
-          y: clamp(40 + (o.y - 40) * 0.6, 4, 76),
-        }
-        spd = paceTo(o.id, target, K.PLAY.INTENT.RECOVER)
-      } else if (defWaypoint?.[o.id]) {
-        const wp = defWaypoint[o.id]
+        const marksCarrier = o.id === recoveryMarkerId
+        target = marksCarrier
+          ? {
+              x: Math.min(118.5, ballAim.x + K.PLAY.RECOVERY_MARK_GOALSIDE),
+              y: clamp(ballAim.y, 4, 76),
+            }
+          : {
+              x: Math.min(118.5, ballAim.x + K.PLAY.RECOVER_AHEAD),
+              // 단순 중앙 복귀 대신 볼 쪽으로 약간 좁혀 커버 대형을 만든다.
+              y: clamp((40 + (o.y - 40) * 0.6) * 0.65 + ballAim.y * 0.35, 4, 76),
+            }
+        spd = paceTo(
+          o.id,
+          target,
+          marksCarrier ? K.PLAY.INTENT.PRESS : K.PLAY.INTENT.RECOVER,
+        )
+      } else if (waypoint) {
+        const wp = waypoint
         const dwp = Math.hypot(sim[o.id].x - wp.x, sim[o.id].y - wp.y)
         if (dwp > 1.6) {
           // 판정과 같은 수비 이동: 엔진이 계산한 좌표로 급히 복귀.
@@ -815,6 +858,10 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         if (d > cap && d > 0) {
           s.x = q.x + (dx / d) * cap
           s.y = q.y + (dy / d) * cap
+        }
+        if (dt > 0.0001) {
+          s.vx = (s.x - q.x) / dt
+          s.vy = (s.y - q.y) / dt
         }
       }
       lastRender[id] = { x: s.x, y: s.y }
