@@ -28,7 +28,7 @@ function positionsWriter() {
         req.on('data', (c) => (body += c))
         req.on('end', () => {
           try {
-            const { matchId, positions } = JSON.parse(body)
+            const { matchId, positions, ballOwnerId } = JSON.parse(body)
             if (!matchId || !positions || typeof positions !== 'object') throw new Error('matchId/positions 누락')
 
             const store = read('./src/data/positions.json')
@@ -37,8 +37,10 @@ function positionsWriter() {
             const known = Object.keys(store.positions[matchId]).sort().join()
             const incoming = Object.keys(positions).sort().join()
             if (known !== incoming) throw new Error('선수 명단이 원본과 다르다 — 저장을 거부한다')
+            if (ballOwnerId && !positions[ballOwnerId]) throw new Error('공 소유자가 온필드 명단에 없다')
 
             store.positions[matchId] = positions
+            store.ballOwners = { ...(store.ballOwners ?? {}), ...(ballOwnerId ? { [matchId]: ballOwnerId } : {}) }
             write('./src/data/positions.json', store)
 
             // 화면이 읽는 쪽도 같이. 경기마다 파일이 다르다 — 손으로 쓴 과거 명경기는
@@ -51,17 +53,19 @@ function positionsWriter() {
             if (SOLO_FILE[matchId]) {
               const scn = read(SOLO_FILE[matchId])
               scn.moments[0].positions = positions
+              if (ballOwnerId) scn.moments[0].ball = ballOwnerId
               write(SOLO_FILE[matchId], scn)
             } else {
               const scenes = read('./src/data/scenes-2026.json')
               const m = scenes.matches.find((x) => x.match_id === matchId)
               if (!m) throw new Error(`scenes-2026.json에 없는 경기: ${matchId}`)
               m.moments[0].positions = positions
+              if (ballOwnerId) m.moments[0].ball = ballOwnerId
               write('./src/data/scenes-2026.json', scenes)
             }
 
             res.setHeader('content-type', 'application/json')
-            res.end(JSON.stringify({ ok: true, matchId, count: Object.keys(positions).length }))
+            res.end(JSON.stringify({ ok: true, matchId, count: Object.keys(positions).length, ballOwnerId }))
           } catch (e) {
             res.statusCode = 400
             res.setHeader('content-type', 'application/json')
