@@ -261,12 +261,15 @@ const players = [
 // 골문을 향해 공격한다. y가 클수록 공격 방향 기준 오른쪽. 크로스가 성립하려면
 // 올리는 지점이 |y-40|≥18, 받는 지점이 x≥102여야 한다(K.CROSS).
 // 각 맵의 키 = 그 시점에 실제로 그라운드에 있던 선수(교체·퇴장 반영).
-const POSITIONS = JSON.parse(readFileSync(new URL('../src/data/positions.json', import.meta.url), 'utf-8')).positions
+const POSITION_STORE = JSON.parse(readFileSync(new URL('../src/data/positions.json', import.meta.url), 'utf-8'))
+const POSITIONS = POSITION_STORE.positions
+const BALL_OWNERS = POSITION_STORE.ballOwners ?? {}
 const posOf = (matchId) => {
   const p = POSITIONS[matchId]
   if (!p) throw new Error(`positions.json에 좌표가 없다: ${matchId}`)
   return p
 }
+const ballOf = (matchId, fallback) => BALL_OWNERS[matchId] ?? fallback
 
 const scenes = {
   _generator: 'scripts/build-scenes-2026.mjs — CSV가 갱신되면 재실행할 것',
@@ -290,7 +293,7 @@ const scenes = {
           // 국내 보도가 확인해 주는 건 "황인범의 측면 크로스를 쇄도하던 오현규가 왼발로 밀어 넣었다"까지다.
           // 좌우 어느 쪽 측면인지는 기사에 없어 캡션에서도 특정하지 않는다.
           objective: '오현규에게 크로스를 배달하라',
-          ball: 'k26_06',
+          ball: ballOf('kor_cze_2026_g1', 'k26_06'),
           positions: posOf('kor_cze_2026_g1'),
           easterEgg: {
             passerId: 'k26_06',
@@ -320,7 +323,7 @@ const scenes = {
           score: [0, 0],
           situation: '90+1분. 0-0, 연장이 눈앞. 85분에 들어온 교체 선수 둘이 마지막 기회를 만든다.',
           objective: '메리노를 골키퍼와 1대1로 만들어라',
-          ball: 'esp_08',
+          ball: ballOf('por_esp_2026_r16', 'esp_08'),
           positions: posOf('por_esp_2026_r16'),
           easterEgg: {
             passerId: 'esp_07',
@@ -351,7 +354,7 @@ const scenes = {
           situation:
             '79분. 5회 우승국 브라질과 28년 만에 월드컵으로 돌아온 노르웨이가 0-0으로 맞서 있다. 후반에 투입된 셸데루프가 왼쪽을 흔들기 시작했고, 홀란은 이 대회에서만 벌써 다섯 골을 넣었다.',
           objective: '홀란의 머리를 향해 왼쪽에서 띄워라',
-          ball: 'nor_21',
+          ball: ballOf('bra_nor_2026_r16', 'nor_21'),
           positions: posOf('bra_nor_2026_r16'),
           easterEgg: {
             passerId: 'nor_21',
@@ -380,7 +383,7 @@ const scenes = {
           situation:
             '85분, 0-1. 55분 로저스의 크로스를 고든이 뒷문에서 밀어넣은 뒤로 잉글랜드는 열한 명을 다 내려 세웠다. 81분에 탈리아피코를 빼고 라우타로까지 넣은 총공격 — 왼쪽에서 데 파울이 공을 잡았고, 박스 앞에 엔소 페르난데스가 혼자 서 있다.',
           objective: '엔소에게 중거리 슛 각을 열어줘라',
-          ball: 'arg_07',
+          ball: ballOf('eng_arg_2026_sf', 'arg_07'),
           positions: posOf('eng_arg_2026_sf'),
           easterEgg: {
             passerId: 'arg_10',
@@ -413,7 +416,7 @@ const scenes = {
           // 이 시점에 아르헨티나가 10명인 이유. verify.mjs가 "양 팀 11명" 검사를
           // 이 값만큼 깎아서 한다 — 좌표를 빠뜨린 것과 구분하기 위해 명시한다.
           sentOff: ['arg_24'],
-          ball: 'esp_19',
+          ball: ballOf('arg_esp_2026_final', 'esp_19'),
           positions: posOf('arg_esp_2026_final'),
           easterEgg: {
             passerId: 'esp_17',
