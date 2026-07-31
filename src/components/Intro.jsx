@@ -1,6 +1,7 @@
 // 인트로(타이틀) 화면과 경기 선택 화면.
 // 화면 전환 상태는 App이 들고, 여기는 표시와 콜백만 담당한다.
 import { MATCHES } from '../data/matches'
+import { teamCode } from '../data/kits'
 
 // 연장(90 초과)은 "90+x"가 아니라 실제 분을 그대로 쓴다 — 모먼트가 minuteLabel을 주면 그걸 우선한다.
 const displayMinute = (m) => (m > 90 ? `90+${m - 90}′` : `${m}′`)
@@ -82,7 +83,9 @@ export function MatchSelect({ matchId, onPick, onBack, onTutorial }) {
                 </div>
                 <div className="match-title">{m.title}</div>
                 <div className="match-score">
-                  {m.home} <b>{moment.score[0]} : {moment.score[1]}</b> {m.away}
+                  {/* 팀 코드는 화면용으로 다듬어 쓴다 — 원본은 같은 나라의 대회를 가르려고
+                      연도를 붙이고 있어(KOR26·KOR02), 그대로 내보내면 스코어보드에 그게 뜬다. */}
+                  {teamCode(m.home)} <b>{moment.score[0]} : {moment.score[1]}</b> {teamCode(m.away)}
                 </div>
                 <p className="match-desc">{moment.situation}</p>
                 <div className="match-objective">🎯 {moment.objective}</div>

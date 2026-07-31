@@ -53,7 +53,7 @@ export const TEAM_NAME = {
   ENG: '잉글랜드',
   BRA: '브라질',
   NOR: '노르웨이',
-  CZE: '체키아',
+  CZE: '체코',
 }
 
 // 화면용 3글자 코드 — 뒤에 붙은 대회 연도를 떼면 FIFA 표기와 같아진다 (KOR26 → KOR).
