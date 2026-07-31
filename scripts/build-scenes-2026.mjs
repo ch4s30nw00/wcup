@@ -327,9 +327,12 @@ const scenes = {
             scorerId: 'esp_06',
             title: '그날, 진짜로 있었던 일',
             caption:
-              '2026년 7월 6일 댈러스. 85분에 함께 들어온 파비안 루이스와 메리노가 90+1분에 경기를 끝냈다. 빠르게 처리한 프리킥을 파비안 루이스가 페란 토레스에게 붙였고, 토레스의 스루패스, 디오구 코스타와의 1대1, 그리고 좌하단 구석. 호날두의 마지막 월드컵 경기였다.',
+              '짧게 내준 공이 파비안 루이스에서 로드리에게 돌아갔고, 로드리의 원터치가 멈춰 선 포르투갈 미드필드를 단번에 넘겨 페란 토레스에게 닿았다. 토레스가 백라인 사이로 찔러주자 투입 6분 된 메리노가 달려들어 논스톱으로, 낮게 포스트 안쪽으로 밀어 넣었다. 포르투갈 0:1 스페인 — 스페인은 2010년 우승 이후 첫 8강에 올랐고, 호날두는 여섯 번의 월드컵과 27경기를 그렇게 끝냈다.',
             images: [],
             video: { youtubeId: 'dN-d4TH-6Go', start: 133, credit: 'KBS News' },
+            // 로드리를 거친 4터치다. 아래 자동 계산은 ball·passer·scorer 셋뿐이라
+            // 3명까지밖에 못 만든다 — 경유자가 있는 장면은 여기에 직접 적는다.
+            sequence: ['esp_08', 'esp_16', 'esp_07', 'esp_06'],
           },
         },
       ],
@@ -497,6 +500,8 @@ const keep = existing.filter((p) => !teams.has(p.team))
 // 생성기가 모르는 필드는 재생성 때 그대로 사라진다.
 // 이스터에그 판정용 필드 (App.jsx eggMatched 참고):
 //   sequence — 공을 주고받은 선수 순서. ball==passer면 [ball, scorer], 아니면 [ball, passer, scorer].
+//              재료가 셋뿐이라 3명이 한계다. 그 사이를 거쳐 간 선수가 있으면(포르투갈-스페인의
+//              로드리) 장면 정의에 직접 적고, 여기서는 건드리지 않는다.
 //   shot     — 마지막 슛 위치 기준점 + 타원 허용 반경(rx·ry).
 //              값은 egg-shots.json이 원본이다 (positions.json과 같은 자리) — 여기 박아두면
 //              개발 모드에서 마커를 끌어 고친 값이 재생성 때 되돌아간다.
@@ -505,7 +510,7 @@ for (const s of scenes.matches) {
   const m = s.moments[0]
   const e = m.easterEgg
   if (!e) continue
-  e.sequence = m.ball === e.passerId ? [m.ball, e.scorerId] : [m.ball, e.passerId, e.scorerId]
+  e.sequence ??= m.ball === e.passerId ? [m.ball, e.scorerId] : [m.ball, e.passerId, e.scorerId]
   // note는 사람이 읽는 메모라 화면 데이터로 내보내지 않는다
   const { note: _note, ...shot } = EGG_SHOT[s.match_id] ?? { x: 108, y: 42, rx: 12, ry: 8 }
   e.shot = shot
