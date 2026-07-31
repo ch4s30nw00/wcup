@@ -14,6 +14,7 @@ import { isMuted, setMuted, resumeAudio, whistle, goalRoar, startMurmur, stopMur
 import { decodeShare, shareUrl } from './engine/share'
 import { isReplayMatch, eggRadii } from './engine/replay'
 import { buildMatch, findMatch, DEFAULT_MATCH_ID } from './data/matches'
+import { teamName } from './data/kits'
 import './App.css'
 
 // --- 공유 링크 해석 ---
@@ -532,6 +533,8 @@ function App() {
       byId,
       ballOwnerId: moment.ball,
       seed: playSeed,
+      // 중계 멘트가 쓸 공격 팀 이름 — 멘트에 팀을 박아 두면 다른 경기에서 새어 나온다
+      teamName: teamName(scenario.home),
       onFrame: setFrame,
       onDone: () => setPhase('done'),
     })
