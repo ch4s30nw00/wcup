@@ -299,6 +299,7 @@ const scenes = {
             caption:
               '2026년 6월 11일 과달라하라. 동점골의 주인공 황인범이 이번엔 측면에서 크로스를 올렸고, 쇄도하던 오현규가 왼발로 밀어 넣었다. 손흥민 대신 들어와 11분 만에 터뜨린 생애 첫 월드컵 골이었다. 대한민국 2:1 체코 — 한국이 월드컵 조별리그 첫 경기를 이긴 건 16년 만이자 통산 네 번째였다.',
             images: [],
+            video: { youtubeId: 'Bj1CFtGUOvc', start: 129, credit: 'KBS News' },
           },
         },
       ],
@@ -328,6 +329,7 @@ const scenes = {
             caption:
               '2026년 7월 6일 댈러스. 85분에 함께 들어온 파비안 루이스와 메리노가 90+1분에 경기를 끝냈다. 빠르게 처리한 프리킥을 파비안 루이스가 페란 토레스에게 붙였고, 토레스의 스루패스, 디오구 코스타와의 1대1, 그리고 좌하단 구석. 호날두의 마지막 월드컵 경기였다.',
             images: [],
+            video: { youtubeId: 'dN-d4TH-6Go', start: 133, credit: 'KBS News' },
           },
         },
       ],
@@ -355,6 +357,7 @@ const scenes = {
             caption:
               '2026년 7월 5일 뉴저지. 셸데루프가 왼쪽에서 띄운 크로스를 홀란이 가브리에우 마갈량이스를 밀어내고 솟아올라 아래로 찍어 넣었다. 알리송이 몸을 던졌지만 닿지 않은 79분 선제골. 홀란은 90분에 다닐루 산투스의 다리 사이로 한 골을 더 넣었고 — 이번에도 셸데루프의 어시스트였다 — 네이마르의 90+10분 페널티는 이미 늦었다. 브라질 1:2 노르웨이, 노르웨이는 28년 만에 돌아온 월드컵에서 사상 첫 8강에 올랐다.',
             images: [],
+            video: { youtubeId: 'A7DaVMZpeXg', start: 122, credit: 'KBS News' },
           },
         },
       ],
@@ -490,6 +493,8 @@ const root = new URL('../src/data/', import.meta.url)
 const teams = new Set(players.map((p) => p.team))
 const existing = JSON.parse(readFileSync(new URL('players.json', root), 'utf-8'))
 const keep = existing.filter((p) => !teams.has(p.team))
+// video는 위 장면 정의에 직접 넣어 뒀다 — scenes-2026.json은 통째로 다시 쓰이므로
+// 생성기가 모르는 필드는 재생성 때 그대로 사라진다.
 // 이스터에그 판정용 필드 (App.jsx eggMatched 참고):
 //   sequence — 공을 주고받은 선수 순서. ball==passer면 [ball, scorer], 아니면 [ball, passer, scorer].
 //   shot     — 마지막 슛 위치 기준점 + 타원 허용 반경(rx·ry).
