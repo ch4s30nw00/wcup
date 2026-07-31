@@ -643,5 +643,37 @@ console.log('[재현 판정] 실제 데이터 — egg-shots.json이 원본인가
   }
 }
 
+console.log('[재현 판정] 실제 데이터 — sequence가 재현 가능한 순서인가')
+// sequence는 손으로 적는 값이다 (생성기의 자동 계산은 ball·passer·scorer 셋뿐이라
+// 3명이 한계라, 경유자가 있는 장면은 장면 정의에 직접 적는다). 오타가 나도 빌드와
+// 린트는 통과하고, 그 이스터에그만 조용히 재현 불가능해진다 — 그걸 여기서 잡는다.
+// 규칙은 전부 isReplayMatch/touchOrder가 실제로 요구하는 것들이다.
+{
+  const load = (f) => JSON.parse(readFileSync(new URL(f, import.meta.url), 'utf-8'))
+  const players = load('../src/data/players.json')
+  const byId = Object.fromEntries(players.map((p) => [p.id, p]))
+  const scns = [load('../src/data/scenarios.json'), load('../src/data/kor_ita_2002.json'), ...load('../src/data/scenes-2026.json').matches]
+
+  for (const scn of scns) {
+    const moment = scn.moments[0]
+    const seq = moment.easterEgg?.sequence
+    // sequence가 없는 장면은 구 방식(passer/scorer) 폴백이라 검사 대상이 아니다.
+    if (!seq) continue
+    const { passerId, scorerId } = moment.easterEgg
+    const id = `${scn.match_id}`
+
+    // chain의 첫 액터는 공을 가진 선수다. 여기가 어긋나면 무슨 수를 써도 매칭되지 않는다.
+    checkDir(`${id}: sequence가 공 소유자(${moment.ball})로 시작`, seq[0] === moment.ball, seq[0] === moment.ball ? '' : seq[0])
+    // touchOrder가 같은 선수의 연속 액션을 하나로 접으므로, 연속 중복은 길이가 영영 안 맞는다.
+    const dup = seq.findIndex((p, i) => i > 0 && p === seq[i - 1])
+    checkDir(`${id}: 연속 중복 없음`, dup === -1, dup === -1 ? '' : `${dup}번째 ${seq[dup]}`)
+    checkDir(`${id}: 마지막이 득점자(${scorerId})`, seq.at(-1) === scorerId, seq.at(-1) === scorerId ? '' : seq.at(-1))
+    checkDir(`${id}: 패서(${passerId})가 순서에 포함`, seq.includes(passerId))
+    // 유령 id는 판정을 막을 뿐 아니라 화면의 "재현 순서" 힌트에도 그대로 노출된다.
+    const ghost = seq.filter((p) => !byId[p] || moment.positions?.[p] == null)
+    checkDir(`${id}: ${seq.length}명 전원 온필드 실존`, ghost.length === 0, ghost.join(', '))
+  }
+}
+
 console.log(fails === 0 ? '\n모든 검증 통과 ✅' : `\n${fails}건 실패 ❌`)
 process.exit(fails === 0 ? 0 : 1)
