@@ -92,31 +92,55 @@ src/
 
 ### 선수 데이터 (`src/data/players.json`)
 
-**v2.1부터 데이터담당 CSV(1~20 스케일, 16스탯 + 키)가 정식 반영됐습니다.** 항목 예시:
+선수 209명, 16스탯(1~20 스케일) + 키. 항목 예시:
 
 ```json
 {
   "id": "kor_07", "name": "손흥민", "team": "KOR", "number": 7,
   "position": "FW", "roles": ["LW", "ST"], "heightCm": 183,
+  "overall": 85,
   "stats": {
-    "flair": 17, "finishing": 16, "dribbling": 11, "longshots": 16,
-    "crossing": 12, "passing": 12, "heading": 5, "strength": 10,
-    "acceleration": 15, "pace": 15, "jumping": 10, "balance": 12,
-    "marking": 5, "tackle": 6, "positioning": 7, "anticipation": 15
+    "flair": 16, "finishing": 15, "dribbling": 17, "longshots": 14,
+    "crossing": 18, "passing": 14, "heading": 10, "strength": 10,
+    "acceleration": 19, "pace": 17, "jumping": 11, "balance": 16,
+    "marking": 7, "tackle": 8, "positioning": 12, "anticipation": 13
   },
-  "overall": 85, "condition": 100
+  "condition": 100
 }
 ```
 
-- 스탯 키 ↔ CSV 헤더: 개인기=flair · 골결=finishing · 드리블=dribbling · 중거리=longshots ·
-  크로스=crossing · 패스=passing · 헤더=heading · 몸싸움=strength · 가속도=acceleration ·
-  주력=pace · 점프거리=jumping · 균형감각=balance · 일대일마크=marking · 태클=tackle ·
-  수비위치선정=positioning · 예측력=anticipation. `norm()`은 부록 A대로 `v/20` 어댑터로 교체됨.
-- 스탯 원본은 데이터담당 CSV(`worldcup_2026_stats.csv`)입니다. 출처를 구분하는 필드는
-  두지 않습니다 — 모든 선수가 같은 형태입니다.
-  다만 2026 명단에 없는 2022 출전 선수(권경원·김진수·정우영·페페·안토니우 실바·
-  윌리암 카르발류·주앙 마리우·오르타)와 CSV에 없는 교체 선수는 손으로 넣은 추정치라,
-  데이터담당이 확정값으로 교체해 주세요.
+#### 능력치는 어떻게 만들었나
+
+**전부 직접 산출합니다. 외부 능력치 데이터베이스를 가져다 쓰지 않습니다.**
+능력치는 사실이 아니라 평가라서, 남의 평가표를 옮겨 적으면 그건 남의 저작물입니다.
+
+산출기는 [`scripts/build-stats.mjs`](scripts/build-stats.mjs)이고 입력은 셋뿐입니다:
+
+| 입력 | 정체 |
+|---|---|
+| `roles[0]` | 역할 — 공식 라인업에서 나오는 사실 |
+| `overall` | 이 선수가 대략 어느 급인가 — **우리가 매긴 한 자리 숫자** (71~88) |
+| `heightCm` | 신장 — 사실 |
+
+```
+능력치 = 기준값(역할) + 기울기(역할, 능력치) × (overall − 76) + 신장보정
+```
+
+역할 원형은 8개(GK·CB·FB·DM·CM·AM·W·ST). 기준값과 기울기는 2002 이탈리아전·2018 독일전
+66명을 손으로 만들 때 쓴 방식(포지션 템플릿 + 종합력 스케일)을 그 66명에 최소제곱으로
+역산해 표로 고정한 것입니다. 그래서 그 두 경기는 재산출해도 평균 0.5 이내로 재현됩니다.
+기울기가 능력치마다 다른 이유는 축구 상식 그대로입니다 — 잘하는 공격수는 결정력이 크게
+오르지만 태클은 거의 그대로입니다.
+
+`overall`은 사람이 `players.json`에 직접 적습니다. 2026 대회 선수의 팀 기준선은 실제
+대회 성적(스페인 우승 · 아르헨티나 준우승 · 잉글랜드 4강 · 노르웨이의 브라질 격파)을
+따랐고, 개인차는 우리 판단입니다. 값을 고치고 `npm run stats`를 돌리면 16스탯이 다시
+계산됩니다.
+
+- 스탯 키: flair(개인기) · finishing(골결) · dribbling · longshots(중거리) · crossing ·
+  passing · heading · strength(몸싸움) · acceleration · pace(주력) · jumping(점프거리) ·
+  balance(균형감각) · marking(일대일 마크) · tackle · positioning(수비위치선정) ·
+  anticipation(예측력). `norm()`은 부록 A대로 `v/20` 어댑터입니다.
 - `team`은 scenarios.json의 `home`/`away`와 매칭돼 자동으로 스쿼드가 갈립니다.
 - 배열 순서 = formations.json 슬롯 순서 (GK → DF → MF → FW). 단, moment에
   `positions`가 있으면 좌표·온필드 명단 모두 positions가 우선합니다 (아래 경기 데이터
@@ -160,7 +184,7 @@ v2 산식 위에 데이터담당 요청사항과 수비 이동을 얹은 업데�
 
 | 변경 | 내용 | 파일 |
 |---|---|---|
-| FM 1~20 이관 | `norm(v)=0.3+0.7·v/20` 어댑터 교체, players.json 16스탯 | resolve.js, players.json |
+| 16스탯 1~20 스케일 | `norm(v)=0.3+0.7·v/20` 어댑터 교체, players.json 16스탯 | resolve.js, players.json |
 | 발 슛 | S_eff = **골결**(finishing) 단독 ("발로 찰 땐 골결") | resolve.js `calcShot` |
 | 중거리 | 거리 감쇠 완화: `B_DIST × (1 − 0.5·(norm(중거리)−0.7))` | `K.SHOT.LS_RELIEF` |
 | 크로스 | 측면→박스 18m+ 패스는 **크로스 스탯** + 예측력 보정 | `K.CROSS`, `calcPass` |
@@ -206,7 +230,7 @@ P = clamp( σ(z) ),  σ(z) = 1/(1+e^−z),  clamp = [0.02, 0.97]
 
 - **`norm(v) = 0.3 + 0.7·(v/100)`** — 스탯 0~100 → [0.3, 1.0]. 하한 0.3은 "저능력
   선수도 최소 기여"라는 게임디자인 floor(문헌 근거 아님, 설계 선택 — 보고서 부록 B).
-  FM 1~20 데이터로 바뀌면 이 줄만 `v/20`으로 교체.
+  1~20 스케일에서는 이 줄이 `v/20`이다.
 - **전역 clamp(0.02, 0.97)** — 어떤 판정도 0%·100%가 없다. 기적과 실수의 여지.
 - **결정론** — `mulberry32(seed)` 단일 난수열을 판정 순서대로 소비. 같은 전술+같은
   시드 = 항상 같은 결과 (`?seed=` 링크 재현). **판정 순서를 바꾸는 리팩토링 금지.**
@@ -407,7 +431,7 @@ const opponents = onPitch(awaySquad).map((p, i) => ({ ...p, x: 120 - (slots[i]?.
 자세히 있고, 여기선 코드 구조만:
 
 - **`mulberry32(seed)`**: 같은 시드면 항상 같은 난수열. URL `?seed=` 재현의 핵심.
-- **`norm()`**: 능력치 0~100 → [0.3, 1.0] 어댑터. FM 1~20 데이터로 바뀌면 이 한 줄만 교체.
+- **`norm()`**: 능력치 → [0.3, 1.0] 어댑터. 스케일이 바뀌면 이 한 줄만 교체.
 - **확률 계산 3형제** — 셋 다 같은 골격: 항들을 로그오즈 `z`에 더하고 σ(z) → clamp.
   - `calcShot`: 절편 + 거리 + 포스트 사잇각 + 스킬 + Σ블로커 압박 (GK 제외)
   - `calcPass`: 절편 + 호 길이 + 스킬 + **리시버 압박(지배)** + Σ경로 압박
