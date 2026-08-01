@@ -260,22 +260,25 @@ const players = [
 // 골문을 향해 공격한다. y가 클수록 공격 방향 기준 오른쪽. 크로스가 성립하려면
 // 올리는 지점이 |y-40|≥18, 받는 지점이 x≥102여야 한다(K.CROSS).
 // 각 맵의 키 = 그 시점에 실제로 그라운드에 있던 선수(교체·퇴장 반영).
-const POSITIONS = JSON.parse(readFileSync(new URL('../src/data/positions.json', import.meta.url), 'utf-8')).positions
+const POSITION_STORE = JSON.parse(readFileSync(new URL('../src/data/positions.json', import.meta.url), 'utf-8'))
+const POSITIONS = POSITION_STORE.positions
+const BALL_OWNERS = POSITION_STORE.ballOwners ?? {}
 const posOf = (matchId) => {
   const p = POSITIONS[matchId]
   if (!p) throw new Error(`positions.json에 좌표가 없다: ${matchId}`)
   return p
 }
+const ballOf = (matchId, fallback) => BALL_OWNERS[matchId] ?? fallback
 
 const scenes = {
   _generator: 'scripts/build-scenes-2026.mjs — CSV가 갱신되면 재실행할 것',
   matches: [
     {
       match_id: 'kor_cze_2026_g1',
-      title: '2026 북중미 월드컵 A조 1차전 — 대한민국 vs 체키아',
+      title: '2026 북중미 월드컵 A조 1차전 — 대한민국 vs 체코',
       home: 'KOR26',
       away: 'CZE',
-      actual: '대한민국 2 : 1 체키아 (2026-06-11, 과달라하라)',
+      actual: '대한민국 2 : 1 체코 (2026-06-11, 과달라하라)',
       // 그날 중계에서 한국은 화면 오른쪽에서 왼쪽으로 공격했다. 좌표는 엔진 규칙대로
       // (홈이 x=120으로 공격) 두고, 보드를 그릴 때만 좌우를 뒤집어 중계 화면과 맞춘다.
       viewFlipX: true,
@@ -285,19 +288,20 @@ const scenes = {
           minute: 80,
           score: [1, 1],
           situation:
-            '80분. 59분 크레이치의 헤더로 끌려가다 67분 황인범이 슛 페이크로 두 명을 벗겨내며 따라붙었다. 69분에 손흥민 대신 들어온 오현규가 최전방에 있다. 이 대회 한국의 유일한 승리가 여기서 나온다.',
-          // 출처(알자지라)가 확인해 주는 건 "오른쪽에서 올라온 크로스"까지다.
-          // 머리로 마무리했다는 근거는 없으므로 마무리 방식은 열어둔다.
+            '80분. 59분 크레이치에게 먼저 실점해 끌려가다, 67분 이강인의 도움을 받은 황인범이 동점을 만들었다. 69분에 손흥민 대신 들어온 오현규가 최전방에 있다 — 생애 첫 월드컵, 투입 11분째다.',
+          // 국내 보도가 확인해 주는 건 "황인범의 측면 크로스를 쇄도하던 오현규가 왼발로 밀어 넣었다"까지다.
+          // 좌우 어느 쪽 측면인지는 기사에 없어 캡션에서도 특정하지 않는다.
           objective: '오현규에게 크로스를 배달하라',
-          ball: 'k26_06',
+          ball: ballOf('kor_cze_2026_g1', 'k26_06'),
           positions: posOf('kor_cze_2026_g1'),
           easterEgg: {
             passerId: 'k26_06',
             scorerId: 'k26_18',
             title: '그날, 진짜로 있었던 일',
             caption:
-              '2026년 6월 11일 과달라하라. 동점골의 주인공 황인범이 이번엔 오른쪽에서 크로스를 올렸고, 교체 투입된 오현규가 80분에 역전골을 넣었다. 대한민국 2:1 체키아 — 이 대회 유일한 승리이자 유일한 역전이었다.',
+              '2026년 6월 11일 과달라하라. 동점골의 주인공 황인범이 이번엔 측면에서 크로스를 올렸고, 쇄도하던 오현규가 왼발로 밀어 넣었다. 손흥민 대신 들어와 11분 만에 터뜨린 생애 첫 월드컵 골이었다. 대한민국 2:1 체코 — 한국이 월드컵 조별리그 첫 경기를 이긴 건 16년 만이자 통산 네 번째였다.',
             images: [],
+            video: { youtubeId: 'Bj1CFtGUOvc', start: 129, credit: 'KBS News' },
           },
         },
       ],
@@ -318,15 +322,19 @@ const scenes = {
           score: [0, 0],
           situation: '90+1분. 0-0, 연장이 눈앞. 85분에 들어온 교체 선수 둘이 마지막 기회를 만든다.',
           objective: '메리노를 골키퍼와 1대1로 만들어라',
-          ball: 'esp_08',
+          ball: ballOf('por_esp_2026_r16', 'esp_08'),
           positions: posOf('por_esp_2026_r16'),
           easterEgg: {
             passerId: 'esp_07',
             scorerId: 'esp_06',
             title: '그날, 진짜로 있었던 일',
             caption:
-              '2026년 7월 6일 댈러스. 85분에 함께 들어온 파비안 루이스와 메리노가 90+1분에 경기를 끝냈다. 빠르게 처리한 프리킥을 파비안 루이스가 페란 토레스에게 붙였고, 토레스의 스루패스, 디오구 코스타와의 1대1, 그리고 좌하단 구석. 호날두의 마지막 월드컵 경기였다.',
+              '짧게 내준 공이 파비안 루이스에서 로드리에게 돌아갔고, 로드리의 원터치가 멈춰 선 포르투갈 미드필드를 단번에 넘겨 페란 토레스에게 닿았다. 토레스가 백라인 사이로 찔러주자 투입 6분 된 메리노가 달려들어 논스톱으로, 낮게 포스트 안쪽으로 밀어 넣었다. 포르투갈 0:1 스페인 — 스페인은 2010년 우승 이후 첫 8강에 올랐고, 호날두는 여섯 번의 월드컵과 27경기를 그렇게 끝냈다.',
             images: [],
+            video: { youtubeId: 'dN-d4TH-6Go', start: 133, credit: 'KBS News' },
+            // 로드리를 거친 4터치다. 아래 자동 계산은 ball·passer·scorer 셋뿐이라
+            // 3명까지밖에 못 만든다 — 경유자가 있는 장면은 여기에 직접 적는다.
+            sequence: ['esp_08', 'esp_16', 'esp_07', 'esp_06'],
           },
         },
       ],
@@ -342,17 +350,19 @@ const scenes = {
           id: 'm79_haaland',
           minute: 79,
           score: [0, 0],
-          situation: '79분. 0-0 팽팽한 균형. 하프타임에 들어온 셸데루프가 왼쪽을 허문다.',
-          objective: '홀란의 머리에 크로스를 배달하라',
-          ball: 'nor_21',
+          situation:
+            '79분. 5회 우승국 브라질과 28년 만에 월드컵으로 돌아온 노르웨이가 0-0으로 맞서 있다. 후반에 투입된 셸데루프가 왼쪽을 흔들기 시작했고, 홀란은 이 대회에서만 벌써 다섯 골을 넣었다.',
+          objective: '홀란의 머리를 향해 왼쪽에서 띄워라',
+          ball: ballOf('bra_nor_2026_r16', 'nor_21'),
           positions: posOf('bra_nor_2026_r16'),
           easterEgg: {
             passerId: 'nor_21',
             scorerId: 'nor_09',
             title: '그날, 진짜로 있었던 일',
             caption:
-              '2026년 7월 5일 뉴저지. 셸데루프가 왼쪽에서 태클을 제치고 올린 크로스를, 홀란이 가브리에우 마갈량이스 위로 솟아올라 알리송의 골문에 꽂았다. 노르웨이는 사상 첫 월드컵 8강에 올랐다.',
+              '2026년 7월 5일 뉴저지. 셸데루프가 왼쪽에서 띄운 크로스를 홀란이 가브리에우 마갈량이스를 밀어내고 솟아올라 아래로 찍어 넣었다. 알리송이 몸을 던졌지만 닿지 않은 79분 선제골. 홀란은 90분에 다닐루 산투스의 다리 사이로 한 골을 더 넣었고 — 이번에도 셸데루프의 어시스트였다 — 네이마르의 90+10분 페널티는 이미 늦었다. 브라질 1:2 노르웨이, 노르웨이는 28년 만에 돌아온 월드컵에서 사상 첫 8강에 올랐다.',
             images: [],
+            video: { youtubeId: 'A7DaVMZpeXg', start: 122, credit: 'KBS News' },
           },
         },
       ],
@@ -372,7 +382,7 @@ const scenes = {
           situation:
             '85분, 0-1. 55분 로저스의 크로스를 고든이 뒷문에서 밀어넣은 뒤로 잉글랜드는 열한 명을 다 내려 세웠다. 81분에 탈리아피코를 빼고 라우타로까지 넣은 총공격 — 왼쪽에서 데 파울이 공을 잡았고, 박스 앞에 엔소 페르난데스가 혼자 서 있다.',
           objective: '엔소에게 중거리 슛 각을 열어줘라',
-          ball: 'arg_07',
+          ball: ballOf('eng_arg_2026_sf', 'arg_07'),
           positions: posOf('eng_arg_2026_sf'),
           easterEgg: {
             passerId: 'arg_10',
@@ -405,7 +415,7 @@ const scenes = {
           // 이 시점에 아르헨티나가 10명인 이유. verify.mjs가 "양 팀 11명" 검사를
           // 이 값만큼 깎아서 한다 — 좌표를 빠뜨린 것과 구분하기 위해 명시한다.
           sentOff: ['arg_24'],
-          ball: 'esp_19',
+          ball: ballOf('arg_esp_2026_final', 'esp_19'),
           positions: posOf('arg_esp_2026_final'),
           easterEgg: {
             passerId: 'esp_17',
@@ -488,8 +498,12 @@ const root = new URL('../src/data/', import.meta.url)
 const teams = new Set(players.map((p) => p.team))
 const existing = JSON.parse(readFileSync(new URL('players.json', root), 'utf-8'))
 const keep = existing.filter((p) => !teams.has(p.team))
+// video는 위 장면 정의에 직접 넣어 뒀다 — scenes-2026.json은 통째로 다시 쓰이므로
+// 생성기가 모르는 필드는 재생성 때 그대로 사라진다.
 // 이스터에그 판정용 필드 (App.jsx eggMatched 참고):
 //   sequence — 공을 주고받은 선수 순서. ball==passer면 [ball, scorer], 아니면 [ball, passer, scorer].
+//              재료가 셋뿐이라 3명이 한계다. 그 사이를 거쳐 간 선수가 있으면(포르투갈-스페인의
+//              로드리) 장면 정의에 직접 적고, 여기서는 건드리지 않는다.
 //   shot     — 마지막 슛 위치 기준점 + 타원 허용 반경(rx·ry).
 //              값은 egg-shots.json이 원본이다 (positions.json과 같은 자리) — 여기 박아두면
 //              개발 모드에서 마커를 끌어 고친 값이 재생성 때 되돌아간다.
@@ -498,7 +512,7 @@ for (const s of scenes.matches) {
   const m = s.moments[0]
   const e = m.easterEgg
   if (!e) continue
-  e.sequence = m.ball === e.passerId ? [m.ball, e.scorerId] : [m.ball, e.passerId, e.scorerId]
+  e.sequence ??= m.ball === e.passerId ? [m.ball, e.scorerId] : [m.ball, e.passerId, e.scorerId]
   // note는 사람이 읽는 메모라 화면 데이터로 내보내지 않는다
   const { note: _note, ...shot } = EGG_SHOT[s.match_id] ?? { x: 108, y: 42, rx: 12, ry: 8 }
   e.shot = shot

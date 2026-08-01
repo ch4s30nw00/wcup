@@ -14,6 +14,7 @@ import { isMuted, setMuted, resumeAudio, whistle, goalRoar, startMurmur, stopMur
 import { decodeShare, shareUrl } from './engine/share'
 import { isReplayMatch, eggRadii } from './engine/replay'
 import { buildMatch, findMatch, DEFAULT_MATCH_ID } from './data/matches'
+import { teamName } from './data/kits'
 import './App.css'
 
 // --- 공유 링크 해석 ---
@@ -98,6 +99,7 @@ function App() {
   // editPos = 아직 저장 안 한 좌표 (id → {x,y}). null이면 데이터 원본 그대로.
   const [editMode, setEditMode] = useState(false)
   const [editPos, setEditPos] = useState(null)
+  const [editBallOwner, setEditBallOwner] = useState(null)
   const [saveMsg, setSaveMsg] = useState(null)
   // 재현 구역 검증 표시 (개발 전용) — 경기 영상과 좌표를 대조하는 용도
   const [showEggZone, setShowEggZone] = useState(false)
@@ -130,6 +132,7 @@ function App() {
       byId: Object.fromEntries([...nextHome, ...nextOpp].map((p) => [p.id, p])),
     }
   }, [matchId, editPos])
+  const startBallOwnerId = editBallOwner ?? moment.ball
   // 공 전개 체인 (순서 있는 액션 리스트) — 같은 선수가 여러 번 드리블/수신 가능
   // { type:'dribble', to, ctrl } | { type:'pass'|'shot', receiverId, to(슛만), ctrl }
   const [chainActs, setChainActs] = useState(SHARED?.chainActs ?? [])
@@ -190,7 +193,7 @@ function App() {
     const snaps = []
     const carrierAt = []
     const snapshot = () => Object.fromEntries(basePlayers.map((p) => [p.id, posOf(p.id)]))
-    let carrier = moment.ball
+    let carrier = startBallOwnerId
     const chain = chainActs.map((act, index) => {
       snaps.push(snapshot())
       carrierAt.push(carrier)
@@ -242,10 +245,10 @@ function App() {
     const planPos = {}
     for (const p of basePlayers) planPos[p.id] = posOf(p.id)
     return { chain, runLegs: Object.values(runLegMap), planPos, carrierId: carrier, snaps, carrierAt }
-  }, [chainActs, runs, basePlayers, basePos, byId, moment])
+  }, [chainActs, runs, basePlayers, basePos, byId, startBallOwnerId])
 
   const shotTaken = chainActs.some((a) => a.type === 'shot')
-  const ballPlanPos = chain.length ? chain[chain.length - 1].to : basePos(moment.ball)
+  const ballPlanPos = chain.length ? chain[chain.length - 1].to : basePos(startBallOwnerId)
 
   // 오프사이드 경고 (하이브리드 (a) 단계) — 설계는 막지 않고 빨간 점멸로만 알린다.
   // 실행 시의 확정 실패 판정과 같은 함수·같은 좌표를 쓴다 (engine/offside.js).
@@ -559,8 +562,10 @@ function App() {
       players: basePlayers,
       opponents,
       byId,
-      ballOwnerId: moment.ball,
+      ballOwnerId: startBallOwnerId,
       seed: playSeed,
+      // 중계 멘트가 쓸 공격 팀 이름 — 멘트에 팀을 박아 두면 다른 경기에서 새어 나온다
+      teamName: teamName(scenario.home),
       onFrame: setFrame,
       onDone: () => setPhase('done'),
     })
@@ -619,6 +624,7 @@ function App() {
       setMatchId(id)
       // 편집 중이던 좌표는 그 경기 것이다 — 경기가 바뀌면 같이 버린다
       setEditPos(null)
+      setEditBallOwner(null)
       setEditMode(false)
       setSaveMsg(null)
     }
@@ -644,6 +650,7 @@ function App() {
       setMatchId(DEFAULT_MATCH_ID)
       // 편집 중이던 좌표는 그 경기 것이다 — 경기가 바뀌면 같이 버린다 (pickMatch와 같은 이유)
       setEditPos(null)
+      setEditBallOwner(null)
       setEditMode(false)
       setSaveMsg(null)
     }
@@ -664,6 +671,18 @@ function App() {
   function moveForEdit(id, pt) {
     const snap = (v) => Math.round(v * 2) / 2
     setEditPos((prev) => ({ ...(prev ?? {}), [id]: { x: snap(pt.x), y: snap(pt.y) } }))
+  }
+
+  function moveBallForEdit(playerId) {
+    if (!byId[playerId] || !basePlayers.some((p) => p.id === playerId)) return
+    // 시작 소유자가 바뀌면 기존 액션의 첫 배우가 달라진다. 옛 전개를 억지로 이어 붙이지
+    // 않고 빈 계획으로 돌려 새 위치에서 바로 설계할 수 있게 한다.
+    setEditBallOwner(playerId)
+    setChainActs([])
+    setRuns([])
+    setViewAt(null)
+    setSelectedId(playerId)
+    setSaveMsg(`시작 공 위치: ${byId[playerId].name}`)
   }
 
   // ── 재현 구역 조정 (개발 전용) ─────────────────────────────────────
@@ -704,12 +723,12 @@ function App() {
       const res = await fetch('/__positions', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ matchId, positions }),
+        body: JSON.stringify({ matchId, positions, ballOwnerId: startBallOwnerId }),
       })
       const out = await res.json()
       // 서버가 positions.json과 화면이 읽는 파일을 둘 다 고쳤다. editPos는 그대로 둔다 —
       // 지우면 HMR이 돌아오기 전 한 프레임 동안 옛 좌표가 보인다.
-      setSaveMsg(out.ok ? `저장됨 (${out.count}명)` : `실패: ${out.error}`)
+      setSaveMsg(out.ok ? `저장됨 (${out.count}명 · 공: ${byId[startBallOwnerId].name})` : `실패: ${out.error}`)
     } catch (e) {
       setSaveMsg(`실패: ${e.message} — dev 서버에서만 저장됩니다`)
     }
@@ -735,7 +754,7 @@ function App() {
         matchId={matchId}
         scenario={scenario}
         moment={moment}
-        carrier={byId[moment.ball]}
+        carrier={byId[startBallOwnerId]}
         onDone={() => setScreen('board')}
       />
     )
@@ -831,6 +850,7 @@ function App() {
               interactive={phase === 'plan' && !isViewingPast && !editMode}
               editMode={editMode}
               onEditMove={moveForEdit}
+              onEditBallOwner={moveBallForEdit}
               defRadius={DEF_RADIUS}
               offsideIds={offsideIds}
               offsideFx={phase !== 'plan' ? frame?.fx : null}
@@ -898,18 +918,27 @@ function App() {
               </button>
               {editMode && (
                 <>
-                  <button className="ctrl" onClick={savePositions} disabled={!editPos}>
+                  <button className="ctrl" onClick={savePositions} disabled={!editPos && !editBallOwner}>
                     저장
                   </button>
-                  <button className="ctrl" onClick={() => setEditPos(null)} disabled={!editPos}>
+                  <button
+                    className="ctrl"
+                    onClick={() => {
+                      setEditPos(null)
+                      setEditBallOwner(null)
+                      setSaveMsg(null)
+                    }}
+                    disabled={!editPos && !editBallOwner}
+                  >
                     되돌리기
                   </button>
                   <span className="edit-hint">
                     {saveMsg ?? (
                       <>
-                        양 팀 아무나 끌어서 옮기세요. 저장하면{' '}
+                        선수는 끌어서 옮기고, 공은 공격 선수 가까이에 놓으세요. 저장하면{' '}
                         <code>src/data/positions.json</code>에 기록됩니다.
                         {editPos && ` · ${Object.keys(editPos).length}명 수정됨`}
+                        {editBallOwner && ` · 시작 공: ${byId[startBallOwnerId].name}`}
                       </>
                     )}
                   </span>
@@ -1069,7 +1098,7 @@ function App() {
               )}
             </h2>
             {chain.length === 0 && runLegs.length === 0 ? (
-              <p className="muted">공이나 선수를 드래그해 전개를 설계하세요. 공은 지금 {byId[moment.ball].name}에게 있습니다.</p>
+              <p className="muted">공이나 선수를 드래그해 전개를 설계하세요. 공은 지금 {byId[startBallOwnerId].name}에게 있습니다.</p>
             ) : (
               <ul className="actions-list">
                 {/* 행을 누르면 그 액션까지만 반영한 보드를 본다 — 액션 하나가 곧 한 시점이다.

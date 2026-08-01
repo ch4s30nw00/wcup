@@ -24,7 +24,7 @@ const ease = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t < 0.5 ? 2 * t * t : 1 - (-2 * t
 const ROW_K_HOME = { GK: 0.08, DF: 0.42, MF: 0.65, FW: 0.85 } // 공 전진량을 얼마나 따라 올라가나
 const ROW_K_OPP = { GK: 0.05, DF: 0.3, MF: 0.48, FW: 0.58 } // 공 전진 시 얼마나 내려앉나
 
-export function playSequence({ actions, result, runLegs, players, opponents, byId, ballOwnerId, seed, onFrame, onDone }) {
+export function playSequence({ actions, result, runLegs, players, opponents, byId, ballOwnerId, seed, teamName, onFrame, onDone }) {
   const basePos = (id) => ({ x: byId[id].x, y: byId[id].y })
   const failIndex = result.steps.findIndex((s) => s.success === false)
   const failStep = failIndex === -1 ? null : result.steps[failIndex]
@@ -309,6 +309,9 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
       a: byId[leg.actorId].name,
       b: leg.receiverId && leg.receiverId !== 'GOAL' ? byId[leg.receiverId].name : undefined,
       d: leg.step.interceptorId ? byId[leg.step.interceptorId].name : undefined,
+      // 공격 팀 이름. 엔진은 data/kits.js를 참조하지 않는 규칙이라(그 층을 깨지 않는다)
+      // 화면에서 만든 문자열을 그대로 받는다.
+      team: teamName,
     }
     captions.push({ t: leg.start, text: commentaryFor(leg.type, names, rngC) })
     if (leg.step.offside) {

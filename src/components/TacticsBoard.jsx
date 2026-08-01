@@ -81,6 +81,7 @@ export default function TacticsBoard({
   // 장면 좌표를 중계 화면 보고 맞추는 용도라, 실제 게임 조작과는 완전히 분리한다.
   editMode,
   onEditMove, // (playerId, {x, y})
+  onEditBallOwner, // (playerId) — 편집 중 공을 가까이 놓은 공격 선수를 새 시작 소유자로 지정
 }) {
   const [homeKit, awayKit] = kitsFor(matchId)
   // 튜토리얼이 가리키는 메뉴 항목. 패스 계열은 두 창에 걸쳐 있다 —
@@ -88,7 +89,7 @@ export default function TacticsBoard({
   const MAIN_MENU_OF = { dribble: 'dribble', shot: 'shot', pass: 'pass-select', lob: 'pass-select', through: 'pass-select' }
   const tutMainMenuKey = tutFocus?.action ? MAIN_MENU_OF[tutFocus.action] : null
   const svgRef = useRef(null)
-  const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'rhandle'|'chandle', key, startX, startY, moved }
+  const dragRef = useRef(null) // { kind: 'run'|'dribble'|'ball'|'editBall'|'rhandle'|'chandle', key, startX, startY, moved }
   const [ballDrag, setBallDrag] = useState(null)
   const [dragging, setDragging] = useState(false)
   // 공 소유자 탭 → 액션 메뉴. mode는 메뉴에서 고른 뒤 "대상을 찍는" 단계.
@@ -121,6 +122,15 @@ export default function TacticsBoard({
   const baseOf = Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }]))
   const homePos = (p) => (displayHome ? (displayHome[p.id] ?? baseOf[p.id]) : planPos[p.id])
   const oppPos = (o) => (displayOpp ? (displayOpp[o.id] ?? { x: o.x, y: o.y }) : { x: o.x, y: o.y })
+  const nearestBallOwner = (pt, maxDistance = 8) => {
+    let best = null
+    for (const p of players) {
+      const pos = homePos(p)
+      const distance = Math.hypot(pos.x - pt.x, pos.y - pt.y)
+      if (distance <= maxDistance && (!best || distance < best.distance)) best = { id: p.id, pos, distance }
+    }
+    return best
+  }
 
   // 바라보는 방향 (도 단위) — 재생 중엔 playback이 넣어준 각도(pos.a), 계획 중엔
   // 공 방향을 본다. 공 소유자는 공이 발밑이라 방향이 무의미 → 상대 골문을 본다.
@@ -175,8 +185,9 @@ export default function TacticsBoard({
       dragRef.current = { kind, key, startX: e.clientX, startY: e.clientY, moved: false }
       return
     }
-    // 편집 모드는 interactive를 끈 채로 돌아간다 — 'edit'만 통과시킨다
-    if (kind === 'edit' ? !editMode : !interactive) return
+    // 편집 모드는 interactive를 끈 채로 돌아간다 — 선수와 시작 공 편집만 통과시킨다.
+    const editorDrag = kind === 'edit' || kind === 'editBall'
+    if (editorDrag ? !editMode : !interactive) return
     e.stopPropagation()
     e.target.setPointerCapture(e.pointerId)
     dragRef.current = { kind, key, startX: e.clientX, startY: e.clientY, moved: false }
@@ -197,6 +208,7 @@ export default function TacticsBoard({
     const pt = toPitch(e)
     if (d.kind === 'eggshot') onEggShotMove(pt)
     else if (d.kind === 'edit') onEditMove(d.key, pt)
+    else if (d.kind === 'editBall') setBallDrag(pt)
     else if (d.kind === 'run') {
       // 공 액션이 없는 슬롯에서는 런을 못 그린다 — 끌어도 유령 경로가 남지 않게
       // 여기서 막는다. 탭(선수 선택·패스 대상 지정)은 endDrag가 그대로 처리한다.
@@ -221,6 +233,13 @@ export default function TacticsBoard({
     if (d.kind === 'aim') {
       // 조준을 놓는 순간 슛 확정 — 골문 안 y로 클램프된 좌표를 그대로 넘긴다
       return commitShotAt(e)
+    }
+    if (d.kind === 'editBall') {
+      setBallDrag(null)
+      if (!d.moved) return
+      const owner = nearestBallOwner(toPitch(e))
+      if (owner) onEditBallOwner(owner.id)
+      return
     }
     if (d.kind === 'run') {
       // 패스 조준 중이면 동료 탭이 곧 패스 대상 선택
@@ -312,6 +331,14 @@ export default function TacticsBoard({
   const ballHeight = clamp(ballPos?.height ?? 0, 0, 1)
   // 높이 떠 있는 로빙 공은 카메라 쪽으로 가까워진 것처럼 더 크게 보인다.
   const ballRadius = 0.95 * (1 + ballHeight * 0.6)
+  const editBallCandidate = editMode && ballDrag ? nearestBallOwner(ballDrag) : null
+  const renderedBall = editMode && ballDrag
+    ? (editBallCandidate
+        ? { x: editBallCandidate.pos.x + BALL_OFFSET.x, y: editBallCandidate.pos.y + BALL_OFFSET.y }
+        : ballDrag)
+    : ballPos
+      ? { x: ballPos.x + BALL_OFFSET.x, y: ballPos.y + BALL_OFFSET.y }
+      : null
 
   return (
     <svg
@@ -668,7 +695,7 @@ export default function TacticsBoard({
       )}
 
       {/* 패스 드래그 미리보기 */}
-      {ballDrag && (
+      {ballDrag && !editMode && (
         <g pointerEvents="none">
           <line
             x1={ballPos.x + BALL_OFFSET.x}
@@ -681,6 +708,33 @@ export default function TacticsBoard({
             opacity="0.8"
           />
           <circle cx={ballDrag.x} cy={ballDrag.y} r="0.95" fill="#fff" stroke="#10141c" strokeWidth="0.25" opacity="0.7" />
+        </g>
+      )}
+
+      {/* 시작 공 편집 미리보기 — 공격 선수 8m 안에 들어오면 그 선수에게 스냅된다. */}
+      {editMode && editBallCandidate && (
+        <g pointerEvents="none">
+          <circle
+            cx={editBallCandidate.pos.x}
+            cy={editBallCandidate.pos.y}
+            r={DOT_R + 1.4}
+            fill="none"
+            stroke="#ffd23e"
+            strokeWidth="0.45"
+            strokeDasharray="1.2 0.8"
+          />
+          <text
+            x={editBallCandidate.pos.x}
+            y={editBallCandidate.pos.y - DOT_R - 2.1}
+            textAnchor="middle"
+            fontSize="1.8"
+            fill="#ffd23e"
+            stroke="#10141c"
+            strokeWidth="0.3"
+            paintOrder="stroke"
+          >
+            시작 소유자
+          </text>
         </g>
       )}
 
@@ -701,11 +755,11 @@ export default function TacticsBoard({
       )}
 
       {/* 공 — 드래그하면 패스/슛. 소유자 원에 가려지지 않게 발밑으로 살짝 오프셋 */}
-      {ballPos && (
+      {renderedBall && (
         <g
           className="ball"
-          transform={`translate(${ballPos.x + BALL_OFFSET.x}, ${ballPos.y + BALL_OFFSET.y})`}
-          onPointerDown={(e) => !shotTaken && startDrag(e, 'ball')}
+          transform={`translate(${renderedBall.x}, ${renderedBall.y})`}
+          onPointerDown={(e) => (editMode || !shotTaken) && startDrag(e, editMode ? 'editBall' : 'ball')}
         >
           <circle r={HIT.ball} fill="transparent" />
           {tutFocus?.ball && (

@@ -1966,13 +1966,13 @@
     ],
     "heightCm": 195,
     "stats": {
-      "flair": 14,
-      "finishing": 18,
-      "dribbling": 14,
-      "longshots": 13,
+      "flair": 18,
+      "finishing": 20,
+      "dribbling": 18,
+      "longshots": 18,
       "crossing": 10,
       "passing": 13,
-      "heading": 15,
+      "heading": 19,
       "strength": 17,
       "acceleration": 17,
       "pace": 19,
@@ -2188,10 +2188,10 @@
       "pace": 10,
       "jumping": 15,
       "balance": 15,
-      "marking": 14,
-      "tackle": 17,
-      "positioning": 14,
-      "anticipation": 17
+      "marking": 9,
+      "tackle": 11,
+      "positioning": 8,
+      "anticipation": 10
     },
     "condition": 100
   },
