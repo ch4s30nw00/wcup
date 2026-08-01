@@ -332,13 +332,49 @@ export default function TacticsBoard({
   // 높이 떠 있는 로빙 공은 카메라 쪽으로 가까워진 것처럼 더 크게 보인다.
   const ballRadius = 0.95 * (1 + ballHeight * 0.6)
   const editBallCandidate = editMode && ballDrag ? nearestBallOwner(ballDrag) : null
+
+  // 공을 어디에 그릴 것인가.
+  //
+  // BALL_OFFSET은 **계획 화면 전용 장치**다. 손가락으로 드리블(선수를 잡는다)과
+  // 패스(공을 잡는다)를 갈라내려고 공을 소유자에게서 대각선으로 띄워 둔 것이다.
+  // 그런데 이 오프셋이 조건 없이 ballPos 전체에 적용되고 있었다 — 재생 중에도.
+  // 그래서 비행 중인 공이 그려진 궤적에서 1.8m 옆으로 나란히 날아가고, 뺏긴 뒤에는
+  // 선수 원(반지름 1.4m) 바깥 대각선에 붙어 "좌측 상단에 딱 붙은" 그림이 됐다
+  // (viewFlipX 경기에서는 x가 뒤집혀 화면상 좌측 상단).
+  //
+  // 재생에서는 아무것도 터치하지 않으므로 오프셋이 필요 없다. 대신 공을 선수 원
+  // 한가운데 넣으면 공이 사라져 보이니, 소유 중일 때만 **그 선수가 보는 방향으로**
+  // 반지름만큼 내보낸다 — 발 앞에 둔 공이 된다. 비행 중에는 궤적 그대로 그린다.
+  const playing = !!displayHome || !!displayOpp
+  const ballCarrierPos = (() => {
+    if (!playing || !ballPos) return null
+    let best = null
+    for (const p of players) {
+      const q = homePos(p)
+      const d = Math.hypot(q.x - ballPos.x, q.y - ballPos.y)
+      if (d < 0.4 && (!best || d < best.d)) best = { d, q, id: p.id, opponent: false }
+    }
+    for (const o of opponents) {
+      const q = oppPos(o)
+      const d = Math.hypot(q.x - ballPos.x, q.y - ballPos.y)
+      if (d < 0.4 && (!best || d < best.d)) best = { d, q, id: o.id, opponent: true }
+    }
+    return best
+  })()
   const renderedBall = editMode && ballDrag
     ? (editBallCandidate
         ? { x: editBallCandidate.pos.x + BALL_OFFSET.x, y: editBallCandidate.pos.y + BALL_OFFSET.y }
         : ballDrag)
-    : ballPos
-      ? { x: ballPos.x + BALL_OFFSET.x, y: ballPos.y + BALL_OFFSET.y }
-      : null
+    : !ballPos
+      ? null
+      : playing
+        ? (ballCarrierPos
+            ? (() => {
+                const rad = (facingDeg(ballCarrierPos.q, ballCarrierPos.id, ballCarrierPos.opponent) * Math.PI) / 180
+                return { x: ballPos.x + Math.cos(rad) * DOT_R, y: ballPos.y + Math.sin(rad) * DOT_R }
+              })()
+            : ballPos) // 비행 중 — 그려진 궤적 그대로
+        : { x: ballPos.x + BALL_OFFSET.x, y: ballPos.y + BALL_OFFSET.y }
 
   return (
     <svg
