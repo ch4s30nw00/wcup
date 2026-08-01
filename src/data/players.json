@@ -27,7 +27,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "overall": 79,
     "condition": 100
   },
@@ -59,7 +58,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "overall": 73,
     "condition": 100
   },
@@ -91,7 +89,6 @@
       "positioning": 16,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "overall": 84,
     "condition": 100
   },
@@ -123,7 +120,6 @@
       "positioning": 13,
       "anticipation": 12
     },
-    "statSource": "estimate",
     "overall": 72,
     "condition": 100
   },
@@ -155,7 +151,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "estimate",
     "overall": 75,
     "condition": 100
   },
@@ -188,7 +183,6 @@
       "positioning": 14,
       "anticipation": 13
     },
-    "statSource": "estimate",
     "overall": 75,
     "condition": 100
   },
@@ -221,7 +215,6 @@
       "positioning": 12,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "overall": 78,
     "condition": 100
   },
@@ -254,7 +247,6 @@
       "positioning": 8,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "overall": 80,
     "condition": 100
   },
@@ -288,7 +280,6 @@
       "positioning": 11,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "overall": 77,
     "condition": 100
   },
@@ -321,7 +312,6 @@
       "positioning": 7,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "overall": 85,
     "condition": 100
   },
@@ -353,7 +343,6 @@
       "positioning": 7,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "overall": 76,
     "condition": 100
   },
@@ -386,7 +375,6 @@
       "positioning": 9,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "overall": 78,
     "condition": 100
   },
@@ -418,7 +406,6 @@
       "positioning": 12,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "overall": 82,
     "condition": 100
   },
@@ -450,7 +437,6 @@
       "positioning": 14,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "overall": 79,
     "condition": 100
   },
@@ -482,7 +468,6 @@
       "positioning": 16,
       "anticipation": 16
     },
-    "statSource": "estimate",
     "overall": 80,
     "condition": 100
   },
@@ -514,7 +499,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "estimate",
     "overall": 76,
     "condition": 100
   },
@@ -547,7 +531,6 @@
       "positioning": 11,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "overall": 84,
     "condition": 100
   },
@@ -579,7 +562,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "estimate",
     "overall": 77,
     "condition": 100
   },
@@ -612,7 +594,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "overall": 81,
     "condition": 100
   },
@@ -645,7 +626,6 @@
       "positioning": 11,
       "anticipation": 13
     },
-    "statSource": "estimate",
     "overall": 78,
     "condition": 100
   },
@@ -678,7 +658,6 @@
       "positioning": 15,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "overall": 80,
     "condition": 100
   },
@@ -711,7 +690,6 @@
       "positioning": 9,
       "anticipation": 12
     },
-    "statSource": "estimate",
     "overall": 77,
     "condition": 100
   },
@@ -744,7 +722,6 @@
       "positioning": 4,
       "anticipation": 18
     },
-    "statSource": "fm26",
     "overall": 85,
     "condition": 100
   },
@@ -776,7 +753,6 @@
       "positioning": 15,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -807,7 +783,6 @@
       "positioning": 11,
       "anticipation": 11
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -838,7 +813,6 @@
       "positioning": 15,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -869,7 +843,6 @@
       "positioning": 16,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -900,7 +873,6 @@
       "positioning": 8,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -931,7 +903,6 @@
       "positioning": 17,
       "anticipation": 17
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -962,7 +933,6 @@
       "positioning": 14,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -993,7 +963,6 @@
       "positioning": 7,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1024,7 +993,6 @@
       "positioning": 14,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1055,7 +1023,6 @@
       "positioning": 7,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1086,7 +1053,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1117,7 +1083,6 @@
       "positioning": 15,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1148,7 +1113,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1179,7 +1143,6 @@
       "positioning": 15,
       "anticipation": 17
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1210,7 +1173,6 @@
       "positioning": 12,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1241,7 +1203,6 @@
       "positioning": 10,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1272,7 +1233,6 @@
       "positioning": 12,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1303,7 +1263,6 @@
       "positioning": 14,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1334,7 +1293,6 @@
       "positioning": 17,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1365,7 +1323,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1396,7 +1353,6 @@
       "positioning": 12,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1427,7 +1383,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1458,7 +1413,6 @@
       "positioning": 13,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1489,7 +1443,6 @@
       "positioning": 4,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1520,7 +1473,6 @@
       "positioning": 7,
       "anticipation": 17
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1551,7 +1503,6 @@
       "positioning": 9,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1582,7 +1533,6 @@
       "positioning": 4,
       "anticipation": 18
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1613,7 +1563,6 @@
       "positioning": 11,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1644,7 +1593,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1675,7 +1623,6 @@
       "positioning": 15,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1706,7 +1653,6 @@
       "positioning": 6,
       "anticipation": 9
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1737,7 +1683,6 @@
       "positioning": 6,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1768,7 +1713,6 @@
       "positioning": 13,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1799,7 +1743,6 @@
       "positioning": 16,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1830,7 +1773,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1861,7 +1803,6 @@
       "positioning": 15,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1892,7 +1833,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1923,7 +1863,6 @@
       "positioning": 10,
       "anticipation": 18
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1954,7 +1893,6 @@
       "positioning": 17,
       "anticipation": 17
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -1985,7 +1923,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2016,7 +1953,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2047,7 +1983,6 @@
       "positioning": 7,
       "anticipation": 19
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2078,7 +2013,6 @@
       "positioning": 7,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2109,7 +2043,6 @@
       "positioning": 18,
       "anticipation": 17
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2140,7 +2073,6 @@
       "positioning": 16,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2171,7 +2103,6 @@
       "positioning": 16,
       "anticipation": 17
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2202,7 +2133,6 @@
       "positioning": 15,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2233,7 +2163,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2264,7 +2193,6 @@
       "positioning": 8,
       "anticipation": 10
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2295,7 +2223,6 @@
       "positioning": 16,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2326,7 +2253,6 @@
       "positioning": 9,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2357,7 +2283,6 @@
       "positioning": 13,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2388,7 +2313,6 @@
       "positioning": 6,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2419,7 +2343,6 @@
       "positioning": 4,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2450,7 +2373,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "manual",
     "condition": 100
   },
   {
@@ -2481,7 +2403,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2512,7 +2433,6 @@
       "positioning": 12,
       "anticipation": 11
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2543,7 +2463,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2574,7 +2493,6 @@
       "positioning": 16,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2605,7 +2523,6 @@
       "positioning": 12,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2636,7 +2553,6 @@
       "positioning": 7,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2667,7 +2583,6 @@
       "positioning": 13,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2698,7 +2613,6 @@
       "positioning": 7,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2729,7 +2643,6 @@
       "positioning": 9,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2760,7 +2673,6 @@
       "positioning": 12,
       "anticipation": 10
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2791,7 +2703,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2822,7 +2733,6 @@
       "positioning": 9,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2853,7 +2763,6 @@
       "positioning": 8,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2884,7 +2793,6 @@
       "positioning": 10,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2915,7 +2823,6 @@
       "positioning": 13,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2946,7 +2853,6 @@
       "positioning": 11,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -2977,7 +2883,6 @@
       "positioning": 11,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3008,7 +2913,6 @@
       "positioning": 6,
       "anticipation": 10
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3039,7 +2943,6 @@
       "positioning": 13,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3070,7 +2973,6 @@
       "positioning": 14,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3101,7 +3003,6 @@
       "positioning": 13,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3132,7 +3033,6 @@
       "positioning": 11,
       "anticipation": 10
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3163,7 +3063,6 @@
       "positioning": 12,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3194,7 +3093,6 @@
       "positioning": 7,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3225,7 +3123,6 @@
       "positioning": 11,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3256,7 +3153,6 @@
       "positioning": 11,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3287,7 +3183,6 @@
       "positioning": 13,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3318,7 +3213,6 @@
       "positioning": 15,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3349,7 +3243,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3380,7 +3273,6 @@
       "positioning": 14,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3411,7 +3303,6 @@
       "positioning": 14,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3442,7 +3333,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3473,7 +3363,6 @@
       "positioning": 16,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3504,7 +3393,6 @@
       "positioning": 15,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3535,7 +3423,6 @@
       "positioning": 13,
       "anticipation": 12
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3566,7 +3453,6 @@
       "positioning": 8,
       "anticipation": 18
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3597,7 +3483,6 @@
       "positioning": 12,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3628,7 +3513,6 @@
       "positioning": 16,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3659,7 +3543,6 @@
       "positioning": 9,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3690,7 +3573,6 @@
       "positioning": 12,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3721,7 +3603,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3752,7 +3633,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3783,7 +3663,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3814,7 +3693,6 @@
       "positioning": 15,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3845,7 +3723,6 @@
       "positioning": 10,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3876,7 +3753,6 @@
       "positioning": 8,
       "anticipation": 16
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3907,7 +3783,6 @@
       "positioning": 5,
       "anticipation": 17
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3938,7 +3813,6 @@
       "positioning": 16,
       "anticipation": 18
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -3969,7 +3843,6 @@
       "positioning": 6,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -4000,7 +3873,6 @@
       "positioning": 7,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -4031,7 +3903,6 @@
       "positioning": 13,
       "anticipation": 18
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -4062,7 +3933,6 @@
       "positioning": 14,
       "anticipation": 17
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -4093,7 +3963,6 @@
       "positioning": 7,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -4124,7 +3993,6 @@
       "positioning": 12,
       "anticipation": 15
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -4155,7 +4023,6 @@
       "positioning": 10,
       "anticipation": 14
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -4186,7 +4053,6 @@
       "positioning": 14,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -4217,7 +4083,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "fm26",
     "condition": 100
   },
   {
@@ -4248,7 +4113,6 @@
       "positioning": 15,
       "anticipation": 15
     },
-    "statSource": "estimated",
     "overall": 78,
     "condition": 100
   },
@@ -4280,7 +4144,6 @@
       "positioning": 11,
       "anticipation": 11
     },
-    "statSource": "estimated",
     "overall": 73,
     "condition": 100
   },
@@ -4312,7 +4175,6 @@
       "positioning": 11,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 73,
     "condition": 100
   },
@@ -4344,7 +4206,6 @@
       "positioning": 14,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 76,
     "condition": 100
   },
@@ -4376,7 +4237,6 @@
       "positioning": 11,
       "anticipation": 11
     },
-    "statSource": "estimated",
     "overall": 73,
     "condition": 100
   },
@@ -4408,7 +4268,6 @@
       "positioning": 11,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 76,
     "condition": 100
   },
@@ -4440,7 +4299,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 73,
     "condition": 100
   },
@@ -4472,7 +4330,6 @@
       "positioning": 13,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 74,
     "condition": 100
   },
@@ -4504,7 +4361,6 @@
       "positioning": 9,
       "anticipation": 10
     },
-    "statSource": "estimated",
     "overall": 72,
     "condition": 100
   },
@@ -4536,7 +4392,6 @@
       "positioning": 11,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 74,
     "condition": 100
   },
@@ -4568,7 +4423,6 @@
       "positioning": 11,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 83,
     "condition": 100
   },
@@ -4600,7 +4454,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 74,
     "condition": 100
   },
@@ -4632,7 +4485,6 @@
       "positioning": 11,
       "anticipation": 11
     },
-    "statSource": "estimated",
     "overall": 73,
     "condition": 100
   },
@@ -4664,7 +4516,6 @@
       "positioning": 10,
       "anticipation": 10
     },
-    "statSource": "estimated",
     "overall": 72,
     "condition": 100
   },
@@ -4696,7 +4547,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 73,
     "condition": 100
   },
@@ -4728,7 +4578,6 @@
       "positioning": 9,
       "anticipation": 10
     },
-    "statSource": "estimated",
     "overall": 71,
     "condition": 100
   },
@@ -4760,7 +4609,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 78,
     "condition": 100
   },
@@ -4792,7 +4640,6 @@
       "positioning": 10,
       "anticipation": 10
     },
-    "statSource": "estimated",
     "overall": 72,
     "condition": 100
   },
@@ -4824,7 +4671,6 @@
       "positioning": 14,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 75,
     "condition": 100
   },
@@ -4856,7 +4702,6 @@
       "positioning": 15,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 76,
     "condition": 100
   },
@@ -4888,7 +4733,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 75,
     "condition": 100
   },
@@ -4920,7 +4764,6 @@
       "positioning": 16,
       "anticipation": 15
     },
-    "statSource": "estimated",
     "overall": 80,
     "condition": 100
   },
@@ -4952,7 +4795,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 74,
     "condition": 100
   },
@@ -4984,7 +4826,6 @@
       "positioning": 11,
       "anticipation": 11
     },
-    "statSource": "estimated",
     "overall": 77,
     "condition": 100
   },
@@ -5016,7 +4857,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 77,
     "condition": 100
   },
@@ -5048,7 +4888,6 @@
       "positioning": 13,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 75,
     "condition": 100
   },
@@ -5080,7 +4919,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 79,
     "condition": 100
   },
@@ -5112,7 +4950,6 @@
       "positioning": 12,
       "anticipation": 15
     },
-    "statSource": "estimated",
     "overall": 80,
     "condition": 100
   },
@@ -5144,7 +4981,6 @@
       "positioning": 15,
       "anticipation": 16
     },
-    "statSource": "estimated",
     "overall": 79,
     "condition": 100
   },
@@ -5176,7 +5012,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 75,
     "condition": 100
   },
@@ -5208,7 +5043,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 76,
     "condition": 100
   },
@@ -5240,7 +5074,6 @@
       "positioning": 10,
       "anticipation": 11
     },
-    "statSource": "estimated",
     "overall": 75,
     "condition": 100
   },
@@ -5272,7 +5105,6 @@
       "positioning": 10,
       "anticipation": 10
     },
-    "statSource": "estimated",
     "overall": 72,
     "condition": 100
   },
@@ -5304,7 +5136,6 @@
       "positioning": 18,
       "anticipation": 18
     },
-    "statSource": "estimated",
     "overall": 86,
     "condition": 100
   },
@@ -5336,7 +5167,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 78,
     "condition": 100
   },
@@ -5368,7 +5198,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 76,
     "condition": 100
   },
@@ -5400,7 +5229,6 @@
       "positioning": 18,
       "anticipation": 17
     },
-    "statSource": "estimated",
     "overall": 85,
     "condition": 100
   },
@@ -5432,7 +5260,6 @@
       "positioning": 11,
       "anticipation": 11
     },
-    "statSource": "estimated",
     "overall": 76,
     "condition": 100
   },
@@ -5464,7 +5291,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 80,
     "condition": 100
   },
@@ -5496,7 +5322,6 @@
       "positioning": 11,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 77,
     "condition": 100
   },
@@ -5528,7 +5353,6 @@
       "positioning": 13,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 76,
     "condition": 100
   },
@@ -5560,7 +5384,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 84,
     "condition": 100
   },
@@ -5592,7 +5415,6 @@
       "positioning": 16,
       "anticipation": 18
     },
-    "statSource": "estimated",
     "overall": 84,
     "condition": 100
   },
@@ -5624,7 +5446,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 83,
     "condition": 100
   },
@@ -5656,7 +5477,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 78,
     "condition": 100
   },
@@ -5688,7 +5508,6 @@
       "positioning": 11,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 74,
     "condition": 100
   },
@@ -5720,7 +5539,6 @@
       "positioning": 17,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 83,
     "condition": 100
   },
@@ -5752,7 +5570,6 @@
       "positioning": 15,
       "anticipation": 16
     },
-    "statSource": "estimated",
     "overall": 79,
     "condition": 100
   },
@@ -5784,7 +5601,6 @@
       "positioning": 15,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 78,
     "condition": 100
   },
@@ -5816,7 +5632,6 @@
       "positioning": 18,
       "anticipation": 18
     },
-    "statSource": "estimated",
     "overall": 88,
     "condition": 100
   },
@@ -5848,7 +5663,6 @@
       "positioning": 12,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 83,
     "condition": 100
   },
@@ -5880,7 +5694,6 @@
       "positioning": 17,
       "anticipation": 16
     },
-    "statSource": "estimated",
     "overall": 84,
     "condition": 100
   },
@@ -5912,7 +5725,6 @@
       "positioning": 14,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 80,
     "condition": 100
   },
@@ -5944,7 +5756,6 @@
       "positioning": 12,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 78,
     "condition": 100
   },
@@ -5976,7 +5787,6 @@
       "positioning": 15,
       "anticipation": 15
     },
-    "statSource": "estimated",
     "overall": 79,
     "condition": 100
   },
@@ -6008,7 +5818,6 @@
       "positioning": 13,
       "anticipation": 15
     },
-    "statSource": "estimated",
     "overall": 86,
     "condition": 100
   },
@@ -6040,7 +5849,6 @@
       "positioning": 12,
       "anticipation": 15
     },
-    "statSource": "estimated",
     "overall": 81,
     "condition": 100
   },
@@ -6072,7 +5880,6 @@
       "positioning": 12,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 83,
     "condition": 100
   },
@@ -6104,7 +5911,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 84,
     "condition": 100
   },
@@ -6136,7 +5942,6 @@
       "positioning": 15,
       "anticipation": 16
     },
-    "statSource": "estimated",
     "overall": 80,
     "condition": 100
   },
@@ -6168,7 +5973,6 @@
       "positioning": 14,
       "anticipation": 15
     },
-    "statSource": "estimated",
     "overall": 78,
     "condition": 100
   },
@@ -6200,7 +6004,6 @@
       "positioning": 16,
       "anticipation": 16
     },
-    "statSource": "estimated",
     "overall": 82,
     "condition": 100
   },
@@ -6232,7 +6035,6 @@
       "positioning": 11,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 79,
     "condition": 100
   },
@@ -6264,7 +6066,6 @@
       "positioning": 12,
       "anticipation": 15
     },
-    "statSource": "estimated",
     "overall": 82,
     "condition": 100
   },
@@ -6296,7 +6097,6 @@
       "positioning": 11,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 80,
     "condition": 100
   },
@@ -6328,7 +6128,6 @@
       "positioning": 13,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 76,
     "condition": 100
   },
@@ -6360,7 +6159,6 @@
       "positioning": 13,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 74,
     "condition": 100
   },
@@ -6392,7 +6190,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 75,
     "condition": 100
   },
@@ -6424,7 +6221,6 @@
       "positioning": 14,
       "anticipation": 12
     },
-    "statSource": "estimated",
     "overall": 74,
     "condition": 100
   },
@@ -6456,7 +6252,6 @@
       "positioning": 14,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 80,
     "condition": 100
   },
@@ -6488,7 +6283,6 @@
       "positioning": 14,
       "anticipation": 15
     },
-    "statSource": "estimated",
     "overall": 78,
     "condition": 100
   },
@@ -6520,7 +6314,6 @@
       "positioning": 13,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 85,
     "condition": 100
   },
@@ -6552,7 +6345,6 @@
       "positioning": 12,
       "anticipation": 13
     },
-    "statSource": "estimated",
     "overall": 84,
     "condition": 100
   },
@@ -6584,7 +6376,6 @@
       "positioning": 12,
       "anticipation": 14
     },
-    "statSource": "estimated",
     "overall": 79,
     "condition": 100
   }

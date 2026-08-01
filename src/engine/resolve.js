@@ -29,8 +29,10 @@
 //
 // 보류 항: PK 특례 0.76 (PK 상황 미도입) · 컨디션/체력 스케일
 
-import { samplePath, pathLength, minDistToPath } from './geometry.js'
+import { samplePath, pathLength, minDistToPath, bendCostFactor } from './geometry.js'
 import { initDefense, advanceDefense } from './defense.js'
+// 차단 지점 도달 가능성 판정에 쓴다 (reachableHit). sheets → defense/geometry/constants 뿐이라 순환 아님.
+import { runSpeedOf } from './sheets.js'
 import { checkOffside, offsideWarnings } from './offside.js'
 import { K, actionSpeed, isLobPass } from './constants.js'
 
@@ -115,6 +117,33 @@ function pathPressure(pts, opponents, beta, R, { sum = true, excludeGK = false, 
   return { z, worst, all }
 }
 
+// 차단 지점 — "경로에서 가장 가까운 점"이 아니라 **그가 실제로 닿을 수 있는 가장 이른 점**.
+//
+// 시간을 안 보면, 옆에 서 있던 수비수가 공이 0.25초 만에 지나가는 자리로 순간이동해
+// 끊는 그림이 된다. 2002 이영표 패스에서 디리비오가 그랬다 — 그 지점에 가려면 10.9 m/s가
+// 필요한데 그의 주력은 6.6이고, 실은 그 경로 어디에도 시간 안에 닿지 못하는데도
+// 끊긴 211건 전부가 그의 몫이었다(경로에서 가장 가까운 사람이었기 때문).
+//
+// 어디에도 못 닿으면 null을 돌려준다 → 차단자를 지목하지 않고 "빠진 패스" 연출로 넘어간다.
+// 못 막을 사람이 막은 걸로 그리느니 아무도 못 건드린 게 낫다 — 수비 붕괴가 좌표에서
+// 창발해야지 연출이 메워주면 안 된다(사용자 확정 2026-07-31).
+//
+// **확률은 건드리지 않는다.** 주사위는 이미 굴렸고 여기서 정하는 건 연출 좌표뿐이다.
+function reachableHit(action, defender) {
+  if (!defender) return null
+  const pts = samplePath(action.from, action.ctrl, action.to)
+  const total = pathLength(pts) || 1
+  const ballV = actionSpeed(action)
+  const defV = runSpeedOf(defender)
+  let acc = 0
+  for (let i = 1; i < pts.length; i++) {
+    acc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+    const tDef = Math.hypot(defender.x - pts[i].x, defender.y - pts[i].y) / defV
+    if (tDef <= acc / ballV) return { point: pts[i], frac: acc / total }
+  }
+  return null
+}
+
 // 크로스 기하 판정: 측면에서 MIN_L 이상 날아와 박스 안에 떨어지는 패스 (데이터 요청 §2·3·7)
 function isCrossGeometry(action) {
   const C = K.CROSS
@@ -171,12 +200,22 @@ export function calcShot(action, opponents, prev = null) {
   // "크게 휘려 그려서 블로커만 피하고 xG는 직선 슛 그대로"가 성립해버린다.
   // 호 길이가 현보다 길어진 만큼을 거리에 더해 그 공짜를 없앤다.
   // (곡률 자체는 geometry.clampCtrl이 이미 상한을 씌운 상태 — 여기선 남은 휨의 값을 매긴다)
-  const bendExtra = Math.max(0, pathLength(pts) - Math.hypot(action.to.x - from.x, action.to.y - from.y))
+  const bendExtra =
+    Math.max(0, pathLength(pts) - Math.hypot(action.to.x - from.x, action.to.y - from.y)) *
+    bendCostFactor(action.actor)
   const block = pathPressure(pts, opponents, C.B_BLOCK, C.R_BLOCK, {
     excludeGK: true,
     betaScale: (o) => defScale(o, DEF_PRIMARY.shot(o)),
   })
   let z = C.B0 + C.B_DIST * lsFactor * (D + bendExtra) + C.B_ANG * theta + C.B_SKILL * (sEff - C.SEFF0) + block.z
+
+  // 조준 — 골문 안 어디를 노렸는가. 0 = 정중앙, 1 = 포스트 바로 옆.
+  // 구석은 키퍼가 못 닿지만 빗나가기도 쉽다. 그 차이를 마무리 스탯이 가른다 —
+  // 중립 스탯에서는 정확히 0이라 "구석 조준 = 공짜 보너스"가 되지 않는다 (K.SHOT.AIM_GAIN 참고).
+  // 조준은 게임에서 실제로 쥐어 준 조작(슛 재조준)인데 확률에는 아무 영향이 없었다.
+  const halfGoal = Math.abs(K.GOAL.postA - K.GOAL.postB) / 2
+  const aim = action.to ? Math.min(1, Math.abs(action.to.y - K.GOAL.y) / halfGoal) : 0
+  z += C.AIM_GAIN * (header ? C.AIM_HEADER : 1) * aim * (sEff - C.SEFF0)
 
   // 일반 xG는 평균 골키퍼를 이미 포함한다. 다만 슈터와 GK만 남은 1대1은
   // 공간·각도 우위가 크므로 별도 보너스를 준다. 슛길 중간에 필드 수비수가 있으면
@@ -253,33 +292,59 @@ export function calcPass(action, opponents, prev = null) {
 
   // 리시버 압박: 도착점 최근접 수비수. 이 수비수는 경로(lane) 합산에서 제외 — 이중계상 방지
   // (보고서 검증표 0.34/0.47/0.70이 리시버 항 단독 기준).
+  //
+  // 다만 "도착점 최근접"이 곧 "리시버 마크맨"은 아니다. 근처에 수비수가 하나뿐이면,
+  // 리시버에서 한참 떨어진 채 **패스 길 한복판에 서 있는** 수비수도 최근접이 된다.
+  // 그러면 레인 합산에서 빠진 데다 리시버 압박도 거의 0이라 통째로 사라졌다 —
+  // 측정: 경로상 거리 0m인 수비수가 성공률을 65.5%→63.5%로 2%p밖에 못 깎았고,
+  // 차단자로 지목되지도 않았다(worst=undefined). 리시버 옆에 한 명만 더 세우면
+  // 같은 수비수가 레인으로 돌아와 12.8%가 됐다.
+  //
+  // 그래서 두 역할 중 **실제로 더 크게 작용하는 쪽으로 한 번만** 센다. 이중계상 방지라는
+  // 원래 목적은 그대로고(여전히 한 번만 센다), 어느 쪽으로 셀지만 고정 대신 비교로 정한다.
+  // 앵커(리시버 뒤 0.5/2/8m)는 전부 리시버 항이 더 커서 그대로 유지된다.
   let recv = null
   for (const o of opponents) {
     const dd = Math.hypot(o.x - action.to.x, o.y - action.to.y)
     if (!recv || dd < recv.d) recv = { d: dd, id: o.id, o }
   }
   const laneScale = (o) => defScale(o, DEF_PRIMARY.pass(o))
-  const lane = pathPressure(pts, opponents, C.B_LANE, C.R_LANE, { excludeId: recv?.id, betaScale: laneScale })
+  // ── 역할 배정 (이 브랜치) ────────────────────────────────────────────────
+  // 두 항 다 음수다 — 더 작은(더 음수인) 쪽이 더 크게 작용한다.
+  // 비교는 B_RECV(원값) 기준으로 한다. 아래 완화(B_RECV_CLEAR)는 "마크맨으로 정해진
+  // 뒤에 통로가 비어 있으면 깎아준다"는 별개 단계라, 역할을 정하는 저울에 섞지 않는다.
+  const asRecv = recv ? C.B_RECV * laneScale(recv.o) * pressure(recv.d, C.R_RECV) : 0
+  const asLane = recv ? C.B_LANE * laneScale(recv.o) * pressure(minDistToPath(pts, recv.o).d, C.R_LANE) : 0
+  const markingRecv = !!recv && asRecv <= asLane
+  const lane = pathPressure(pts, opponents, C.B_LANE, C.R_LANE, {
+    excludeId: markingRecv ? recv.id : null,
+    betaScale: laneScale,
+  })
+  // ── 통로 완화 (origin/master) ────────────────────────────────────────────
   // 도착점 주변에 상대가 있어도 공이 지나가는 중앙 통로가 비어 있으면
   // 리시버 압박 감점을 완화한다. 반대로 실제 통로에 수비수가 있으면 기존 감점과
   // 경로 감점을 모두 유지한다.
-  const laneBlocked = lane.all.some((e) =>
-    e.frac > 0.08 &&
-    e.frac < 0.92 &&
-    e.d <= C.CLEAR_LANE_R
-  )
-  const recvPr = recv ? pressure(recv.d, C.R_RECV) : 0
+  // 역할 배정과 맞물려 정확도가 올라간다 — 레인 쪽으로 센 수비수는 이제 lane.all에
+  // 남아 있으므로, 길을 막고 선 사람이 여기서 통로 차단으로 제대로 잡힌다.
+  const laneBlocked = lane.all.some((e) => e.frac > 0.08 && e.frac < 0.92 && e.d <= C.CLEAR_LANE_R)
+  // 레인 쪽으로 셌으면 리시버 항은 0 — 그 수비수는 이미 lane에 들어가 있다.
+  const recvPr = markingRecv ? pressure(recv.d, C.R_RECV) : 0
   const recvBeta = laneBlocked ? C.B_RECV : C.B_RECV_CLEAR
-  const recvZ = recv ? recvBeta * laneScale(recv.o) * recvPr : 0
+  const recvZ = markingRecv ? recvBeta * laneScale(recv.o) * recvPr : 0
   const shortBonus = C.SHORT_BONUS * Math.max(0, 1 - L / C.SHORT_DIST)
-  const rawZ = C.Z0 + C.B_LEN * L + C.B_PASS * (sPass - 0.7) + shortBonus + recvZ + lane.z
+  // 휘어서 늘어난 거리는 발기술로 값이 달라진다 — 잘 감는 선수는 같은 휨을 더 싸게 친다.
+  // 직선이면 늘어난 거리가 0이라 계수와 무관하다(앵커는 전부 직선). K.BEND.COST_* 참고.
+  const chord = Math.hypot(action.to.x - action.from.x, action.to.y - action.from.y)
+  const effL = chord + Math.max(0, L - chord) * bendCostFactor(action.actor)
+  const rawZ = C.Z0 + C.B_LEN * effL + C.B_PASS * (sPass - 0.7) + shortBonus + recvZ + lane.z
   const simpleShort = !cross && !header && !laneBlocked && L <= C.SHORT_DIST
   const shortFloorZ = Math.log(C.SHORT_CLEAR_FLOOR / (1 - C.SHORT_CLEAR_FLOOR))
   const z = simpleShort ? Math.max(rawZ, shortFloorZ) : rawZ
   // 연출 귀속: 경로 압박자와 리시버 마크맨 중 압박이 큰 쪽
   let worst = lane.worst
   if (recv && recvPr >= ATTRIBUTION_MIN && (!worst || recvPr > worst.pr)) {
-    worst = { pr: recvPr, id: recv.id, point: action.to, frac: 1 }
+    // o를 함께 실어 보낸다 — resolveSequence가 이 수비수의 좌표로 도달 가능성을 재기 때문
+    worst = { pr: recvPr, id: recv.id, point: action.to, frac: 1, o: recv.o }
   }
   return { z, worst, cross, header, laneBlocked, simpleShort }
 }
@@ -318,13 +383,25 @@ export function calcDribble(action, opponents) {
   if (def.worst) z += C.B_BODY * def.worst.pr * (bodyOf(action.actor) - bodyOf(def.worst.o))
   // press = 이 드리블에 걸린 수비 압박의 크기. 0이면 뺏을 사람이 없다는 뜻이라
   // 경합 게이트가 실패 확률을 0으로 만든다 (probOf 참고).
-  // def.z는 최근접 1명의 B_DEF·defScale·e^(−d/R) 이므로 항상 ≤ 0 — 부호만 뒤집는다.
-  // A defender outside the actual 1v1 contest range cannot make a dribble
-  // fail.  `pathPressure` removes that defender from `worst`; use the same
-  // cutoff for the contest gate instead of leaving a tiny random failure.
   // 경합 게이트의 press에도 포위를 반영한다 — 둘러싸였으면 압박이 큰 게 맞다.
-  // worst가 없으면(아무도 안 붙었으면) 포위도 없으므로 0 그대로다.
-  return { z, worst: def.worst, press: def.worst ? -(def.z + surroundZ) : 0 }
+  //
+  // **지목 문턱(ATTRIBUTION_MIN)을 여기 쓰지 않는다.** 그 값은 원래 "누가 끊었는지
+  // 화면에 지목할 사람"을 고르는 기준인데, 예전에는 def.worst(= 문턱을 넘은 수비수)가
+  // 없으면 press를 통째로 0으로 만들어 확률까지 좌우했다. 그래서 수비수가 경로에서
+  // 5m면 82.5%, 6m면 갑자기 100%가 되는 계단이 생겼고, 41m 드리블처럼 최근접이
+  // 6.4m(기여 0.119 < 0.15)인 액션은 아무도 못 뺏는 것으로 판정돼 100%가 나왔다 —
+  // 화면에서는 달로트가 3.5m까지 붙는데도.
+  //
+  // 지목은 def.worst 그대로 두고(연출 규칙은 안 바뀐다), press만 연속으로 만든다.
+  // 최근접 수비수의 기여를 문턱 없이 그대로 쓰므로 멀수록 매끄럽게 0으로 수렴한다.
+  // 드리블 앵커 4개는 전부 문턱 위(간격 0.5~5m)라 값이 바뀌지 않는다.
+  // 바닥값(PRESS_FLOOR)은 빼기만 하고 자르지 않는다 — 멀면 정확히 0에 닿되 계단은 없다.
+  const nearest = def.all[0]
+  const nearPr = nearest ? Math.max(0, nearest.pr - C.PRESS_FLOOR) : 0
+  const pressRaw = nearest
+    ? -(C.B_DEF * defScale(nearest.o, DEF_PRIMARY.dribble(nearest.o)) * nearPr + surroundZ)
+    : 0
+  return { z, worst: def.worst, press: Math.max(0, pressRaw) }
 }
 
 const LABEL = { pass: '패스', dribble: '드리블', shot: '슛' }
@@ -439,11 +516,16 @@ export function resolveSequence(actions, ctx) {
             step.interceptorId = save.id
             step.interceptPoint = save.point
             step.interceptFrac = save.frac
-          // 압박 기여가 가장 큰 필드 수비수가 끊은 것으로 (연출 좌표)
+          // 압박 기여가 가장 큰 필드 수비수가 끊은 것으로 (연출 좌표).
+          // 단, 시간 안에 그 경로에 닿을 수 있어야 한다 — 못 닿으면 지목하지 않고
+          // 아무도 못 건드린 패스로 둔다 (reachableHit 주석 참고).
           } else if (worst) {
-            step.interceptorId = worst.id
-            step.interceptPoint = worst.point
-            step.interceptFrac = worst.frac
+            const hit = reachableHit(actions[i], worst.o)
+            if (hit) {
+              step.interceptorId = worst.id
+              step.interceptPoint = hit.point
+              step.interceptFrac = hit.frac
+            }
           }
         }
       }

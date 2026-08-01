@@ -544,6 +544,30 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
     // (이걸 안 빼면 전원이 골문 앞까지 갔다가 세리머니하러 되돌아와 유턴이 된다)
     const ballAim = legNow ? (legNow.type === 'shot' ? legNow.from : legNow.to) : ballSteer
 
+    // 압박 목표 — "지금 공이 있는 자리"가 아니라 **따라잡을 수 있는 가장 이른 자리**.
+    //
+    // 현재 위치만 겨냥하면 매 프레임 목표가 공을 따라 밀려나서, 수비수가 유도탄처럼
+    // 뒤꽁무니를 그리며 쫓아간다. 실제 수비는 공이 갈 길을 보고 **각을 질러** 가로막는다.
+    // 남은 경로를 훑어 "내가 공보다 먼저(또는 같이) 닿을 수 있는" 첫 지점을 고른다 —
+    // 못 따라잡으면 도착점을 향하는데, 그게 추격선 중에서는 가장 각이 좋은 선이다.
+    const interceptAim = (id, fallback) => {
+      // 슛은 0.3초 만에 끝나 각을 잴 여지가 없다 — 그냥 공을 본다.
+      if (!legNow || legNow.type === 'shot' || !legNow.pts) return fallback
+      const spd = capOf[id]
+      const s = sim[id]
+      if (!spd || !s) return fallback
+      const total = legNow.len || 1
+      let acc = 0
+      for (let i = 1; i < legNow.pts.length; i++) {
+        const p = legNow.pts[i]
+        acc += Math.hypot(p.x - legNow.pts[i - 1].x, p.y - legNow.pts[i - 1].y)
+        const ballMs = legNow.start + legNow.dur * (acc / total) - el
+        if (ballMs < 0) continue // 공이 이미 지나간 지점
+        if ((Math.hypot(p.x - s.x, p.y - s.y) / spd) * 1000 <= ballMs) return p
+      }
+      return legNow.to
+    }
+
     // 공 전개가 끝나면 전진량을 그 시점 값으로 얼린다.
     // 공은 소유자를 따라가고, 소유자는 팀 셰이프를 따라가고, 셰이프는 다시 공을 따라간다 —
     // 이 고리가 살아 있으면 체인이 끝난 뒤 팀 전체가 뒤로 흘러내린다(측정 47m 후퇴).
@@ -770,10 +794,16 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
         // 달리기가 아니라 몸을 던지는 동작이라 주력 상한을 넘어도 어색하지 않다.
         target = { x: 117.6, y: clamp(shotLeg.to.y, 35, 45) }
         spd = capOf[o.id] * K.PLAY.INTENT.GK_DIVE
-      } else if (!waypoint && pressers.has(o.id)) {
+      } else if (pressers.has(o.id)) {
         // 판정(defense.js)과 같은 자리 배분 — 0번은 볼에 붙고 뒤 순번은 좌우로 벌려 커버한다.
         // 전원이 한 점을 노리면 화면에서 몸이 겹친다(예전 문제).
-        target = pressSlot(ballSteer, pressers.get(o.id))
+        //
+        // 이 분기는 판정 좌표(waypoint)가 있든 없든 최우선이다. 한때 `!waypoint &&`가
+        // 붙어 있었는데, 실전에서는 waypoint가 항상 있으므로 압박 분기가 통째로 죽었다.
+        // 그러면 공 뒤에 처진 선수가 전부 아래 복귀 분기로 떨어져 공보다 **앞쪽**으로
+        // 달려가 버린다 — 역습에서 아무도 볼 소유자에게 안 붙는 그림이 그것이다
+        // (2022 손흥민 35m 드리블: 5초 뒤에도 최근접 4.9m, 예전엔 2초에 1.4m).
+        target = pressSlot(interceptAim(o.id, ballSteer), pressers.get(o.id))
         spd = paceOf(o.id, K.PLAY.INTENT.PRESS)
       } else if (!setPiece && o.position !== 'GK' && o.x < ballAim.x - K.PLAY.RECOVER_BEHIND) {
         // 공보다 한참 뒤에 처진 선수 — 자기 골문 쪽으로 전력 복귀한다.

@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "verify": "node scripts/verify.mjs && node scripts/verify-playback.mjs && node scripts/verify-movement.mjs",
-    "scenes": "node scripts/build-scenes-2026.mjs 터치라인_엔진_v2/worldcup_2026_fm26_name_match_corrected.csv",
+    "scenes": "node scripts/build-scenes-2026.mjs 터치라인_엔진_v2/worldcup_2026_stats.csv",
     "picker": "node scripts/build-coord-picker.mjs"
   },
   "dependencies": {

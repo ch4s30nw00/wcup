@@ -2,7 +2,7 @@
 //   node scripts/build-scenes-2026.mjs <CSV경로>
 //
 // 왜 스크립트인가: 선수 스탯은 데이터담당의 CSV(터치라인_엔진_v2/
-// worldcup_2026_fm26_name_match_corrected.csv)가 원본이다. 손으로 옮겨 적으면
+// worldcup_2026_stats.csv)가 원본이다. 손으로 옮겨 적으면
 // CSV가 갱신될 때마다 어긋나므로, 매핑 규칙만 여기 두고 결과 JSON은 재생성한다.
 //
 // ⚠️ 좌표는 "실측"이 아니다. 중계 영상 기준의 정확한 좌표는 공개 소스에 없어서,
@@ -57,11 +57,11 @@ function findPlayer(country, csvName) {
 }
 
 function toPlayer({ id, team, csvName, name, number, position, roles, stats, heightCm, country }) {
-  // csvName이 없으면 인라인 stats를 쓴다 — CSV 데이터베이스에 없는 선수(경기 중 투입된
-  // 교체 선수 등)를 임의 스탯으로 넣을 때. statSource로 fm26과 구분한다.
+  // csvName이 없으면 인라인 stats를 쓴다 — 스탯 데이터베이스에 없는 선수(경기 중 투입된
+  // 교체 선수 등)를 손으로 넣을 때. 결과 JSON은 CSV에서 온 선수와 형태가 같다.
   if (!csvName) {
     if (!stats) throw new Error(`csvName도 stats도 없다: ${name}`)
-    return { id, name, team, number, position, roles, heightCm: heightCm ?? 180, stats, statSource: 'manual', condition: 100 }
+    return { id, name, team, number, position, roles, heightCm: heightCm ?? 180, stats, condition: 100 }
   }
   const r = findPlayer(country, csvName)
   return {
@@ -73,7 +73,6 @@ function toPlayer({ id, team, csvName, name, number, position, roles, stats, hei
     roles,
     heightCm: Number(r['키(cm)']),
     stats: Object.fromEntries(Object.entries(STAT_COL).map(([k, col]) => [k, Number(r[col])])),
-    statSource: 'fm26',
     condition: 100,
   }
 }

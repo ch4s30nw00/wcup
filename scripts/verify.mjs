@@ -190,14 +190,26 @@ console.log('\n[경합 게이트] 드리블 — 압박이 없으면 실패도 �
   const drib = (defs, L = 6) => probOf(calcDribble(act('dribble', { x: 40, y: 40 }, { x: 40 + L, y: 40 }), defs))
   checkDir(`수비수 0명 · 6m → ${(drib([]) * 100).toFixed(1)}% (= 100%)`, drib([]) === 1)
   checkDir(`수비수 0명 · 25m 장거리도 100% (${(drib([], 25) * 100).toFixed(1)}%)`, drib([], 25) === 1)
-  // 멀리 있는 수비수는 사실상 없는 것과 같다 (연속적으로 1에 수렴 — 임계 점프 없음)
-  const farExact = drib([defAt(40, 70)])
-  checkDir('far defender outside contest range means certain dribble success', farExact === 1)
-  // Preserve the historical continuous-probability smoke check below.
-  const far = Math.min(farExact, 1 - Number.EPSILON)
+  // 정말 먼 수비수는 없는 것과 같다 — PRESS_FLOOR(≈14m) 밖은 압박이 **정확히 0**이다.
+  checkDir(`30m 밖 수비수 → 100% (뺏을 사람이 없다)`, drib([defAt(40, 70)]) === 1)
+  checkDir(`16m 밖 수비수 → 100%`, drib([defAt(43, 56)]) === 1)
+
+  // 8m는 "없는 것과 같은" 거리가 아니다.
+  //
+  // 예전에는 ATTRIBUTION_MIN(0.15 ≈ 5.7m)으로 잘라서 그보다 멀면 무조건 100%였다.
+  // 그 결과 41m 드리블처럼 최근접이 6.4m인 액션이 100%로 판정됐는데, 화면에서는
+  // 수비수가 3.5m까지 붙어 있었다 — 판정과 연출이 서로 다른 말을 했다.
+  // 이제 압박은 거리에 따라 연속으로 줄어들고 PRESS_FLOOR에서 0에 닿는다.
   const outOfContest = drib([defAt(43, 48)])
-  checkDir('8m defender outside contest range means certain dribble success', outOfContest === 1)
-  checkDir(`30m 밖 수비수 → ${(far * 100).toFixed(2)}% (> 99%)`, far > 0.99 && far < 1)
+  checkDir(
+    `8m 옆 수비수 → ${(outOfContest * 100).toFixed(1)}% (높지만 확정은 아님)`,
+    outOfContest > 0.9 && outOfContest < 1,
+  )
+
+  // 절벽이 없어야 한다 — 예전에는 5m 82.5% → 6m 100%로 1m 사이에 17.5%p가 튀었다.
+  const cliff = [3, 4, 5, 6, 7, 8, 9, 10].map((g) => drib([defAt(43, 40 + g)]))
+  const maxStep = Math.max(...cliff.slice(1).map((v, i) => v - cliff[i]))
+  checkDir(`3~10m 구간에 절벽 없음 (최대 단차 ${(maxStep * 100).toFixed(1)}%p < 8%p)`, maxStep < 0.08)
   // 근접 수비는 기존과 동일하게 막는다 (사용자: "근처에 있으면 막히는 것도 맞고")
   const near = drib([defAt(43, 40.5)])
   checkDir(`간격 0.5m 근접 수비 → ${(near * 100).toFixed(1)}% (기존 49%대 유지)`, Math.abs(near - 0.49) < 0.02)
@@ -507,7 +519,13 @@ console.log('\n[스모크] 실제 데이터로 resolveSequence (손흥민 드리
   res.steps.forEach((s, i) => console.log(`    ${i + 1}. ${s.type} p=${(s.p * 100).toFixed(0)}%${s.header ? ' (헤더)' : ''}${s.cross ? ' (크로스)' : ''}`))
   console.log(`    outcome=${res.outcome} pTotal=${(res.pTotal * 100).toFixed(1)}%`)
   checkDir('스텝별 defPos 스냅샷 존재', res.steps.every((s) => s.defPos && Object.keys(s.defPos).length === opponents.length))
-  checkDir('확률이 유효 범위', res.steps.every((s) => s.p >= K.P_MIN && s.p <= K.P_MAX))
+  // 드리블만 상한이 다르다. probOf의 경합 게이트가 "붙은 수비수가 없으면 실패도 없다"를
+  // 보장하므로 무압박 드리블은 p=1.0이 정상이다 — P_MAX(0.97)로 깎으면 그 요구가 깨진다.
+  // 예전엔 손흥민 경로에 수비수가 우연히 걸려 있어 이 구분 없이도 통과했다.
+  checkDir(
+    '확률이 유효 범위',
+    res.steps.every((s) => s.p >= K.P_MIN && s.p <= (s.type === 'dribble' ? 1 : K.P_MAX)),
+  )
 }
 
 // ── 4b. 경기 데이터 무결성 — 경기 선택 화면에 뜨는 모든 경기 ─────────

@@ -14,7 +14,7 @@ globalThis.cancelAnimationFrame = (id) => clearTimeout(id)
 import { readFileSync } from 'node:fs'
 import { resolveSequence } from '../src/engine/resolve.js'
 import { playSequence } from '../src/engine/playback.js'
-import { midpoint, samplePath, minDistToPath } from '../src/engine/geometry.js'
+import { midpoint, samplePath, minDistToPath, pathLength } from '../src/engine/geometry.js'
 import { actionDuration, runSpeedOf, throughPassSpeed, throughTarget } from '../src/engine/sheets.js'
 import { K } from '../src/engine/constants.js'
 
@@ -306,6 +306,63 @@ console.log('\n[through-pass receiver] receiver runs to the same point as the ba
     chk(`through receiver moves (${runDistance.toFixed(2)}m)`, runDistance > 0.1)
     chk(`through receiver is at the ball endpoint (${receiverGap.toFixed(2)}m)`, receiverGap <= 0.25)
   }
+}
+
+// --- 차단자가 그 자리에 실제로 닿을 수 있는가 --------------------------------
+// 있었던 버그: 차단 지점을 "경로에서 가장 가까운 점"으로만 잡아서, 옆에 서 있던 수비수가
+// 공이 0.25초 만에 지나가는 자리로 순간이동해 끊는 그림이 됐다. 2002 이영표 패스에서
+// 디리비오가 그랬다 — 필요 속도 10.9 m/s, 그의 주력은 6.6. 끊긴 211건이 전부 그의 몫이었다.
+// 확률은 그대로 두고 연출 좌표만 고쳤으므로, 검사도 "지목된 사람이 시간 안에 갈 수 있나"만 본다.
+console.log('\n[차단자] 지목된 수비수가 그 지점에 시간 안에 닿을 수 있는가')
+{
+  const scn2002 = JSON.parse(readFileSync(new URL('../src/data/kor_ita_2002.json', import.meta.url), 'utf-8'))
+  const p02 = scn2002.moments[0].positions
+  const g02 = (id) => ({ ...players.find((p) => p.id === id), ...p02[id] })
+  const ids02 = Object.keys(p02)
+  const home02 = ids02.filter((i) => i.startsWith('kor')).map(g02)
+  const opp02 = ids02.filter((i) => i.startsWith('ita')).map(g02)
+  const lee = g02('kor02_14'), young = g02('kor02_10')
+  const mk = (from, to, actor, actorId, receiverId) => ({
+    type: 'pass', actorId, receiverId, actor, from, to, ctrl: midpoint(from, to),
+  })
+  // 두 장면·여러 체인을 함께 돌린다. 한 장면만 보면 그 장면에서 지목이 사라졌을 때
+  // 표본 0으로 공회전한다 (실제로 2002는 이 수정 뒤 지목이 0건이 된다).
+  const SCENES = [
+    {
+      name: '2002',
+      home: home02, opp: opp02,
+      chain: [
+        mk({ x: lee.x, y: lee.y }, { x: young.x, y: young.y }, lee, 'kor02_14', 'kor02_10'),
+        mk({ x: young.x, y: young.y }, { x: 108, y: 44 }, young, 'kor02_10', 'kor02_19'),
+      ],
+    },
+    { name: '2022 짧은 패스 2회', home, opp: opponents, chain: build(CASES[0].acts) },
+    { name: '2022 연속 3패스', home, opp: opponents, chain: build(CASES[3].acts) },
+  ]
+  let checked = 0
+  let impossible = 0
+  let worstNeed = 0
+  let worstWho = ''
+  for (const sc of SCENES) {
+    for (let seed = 1; seed <= 400; seed++) {
+      const r = resolveSequence(sc.chain, { opponents: sc.opp, players: sc.home, seed })
+      const fi = r.steps.findIndex((s) => s.success === false)
+      if (fi < 0 || !r.steps[fi].interceptorId) continue
+      const s = r.steps[fi]
+      // 판정에 쓰인 좌표 = 직전 스텝이 끝난 시점 (첫 액션이면 장면 좌표)
+      const who = sc.opp.find((o) => o.id === s.interceptorId)
+      const at = (fi > 0 ? r.steps[fi - 1].defPos?.[s.interceptorId] : null) ?? who
+      const along = pathLength(samplePath(sc.chain[fi].from, sc.chain[fi].ctrl, sc.chain[fi].to)) * s.interceptFrac
+      const tBall = along / K.SPEED.pass
+      const need = Math.hypot(at.x - s.interceptPoint.x, at.y - s.interceptPoint.y)
+      const needSpeed = tBall > 0 ? need / tBall : Infinity
+      checked++
+      if (needSpeed > runSpeedOf(who) + 1e-6) impossible++
+      if (needSpeed > worstNeed) { worstNeed = needSpeed; worstWho = `${sc.name} ${who.name} ${needSpeed.toFixed(1)} m/s (주력 ${runSpeedOf(who).toFixed(1)})` }
+    }
+  }
+  chk(`표본이 있는가 (지목 ${checked}건)`, checked >= 20)
+  chk(`도달 불가 ${impossible}건 — 최대 요구 ${worstWho || '-'}`, impossible === 0)
 }
 
 process.exit(fails === 0 ? 0 : 1)

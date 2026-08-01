@@ -103,6 +103,20 @@ function App() {
   const [saveMsg, setSaveMsg] = useState(null)
   // 재현 구역 검증 표시 (개발 전용) — 경기 영상과 좌표를 대조하는 용도
   const [showEggZone, setShowEggZone] = useState(false)
+  // 실측 유령 (개발 전용) — StatsBomb이 기록한 그 순간의 실제 좌표를 겹쳐 본다.
+  // ghostSet = 보고 있는 프레임 id, null이면 끔.
+  // ghostMirror = y를 뒤집어 볼 것인가. 우리 보드와 StatsBomb의 y 방향이 같은지가
+  // 아직 확정이 아니라, 켜고 꺼 보며 어느 쪽이 영상과 맞는지 사람이 정하게 둔다.
+  const [ghostSet, setGhostSet] = useState(null)
+  const [ghostMirror, setGhostMirror] = useState(true)
+  // 유령 좌표는 개발 도구 데이터다. 정적 import를 쓰면 8KB가 배포 번들에 그대로 실려서,
+  // "편집 모드는 프로덕션에 통째로 안 들어간다"는 규칙이 깨진다 — 지연 로딩으로 떼어낸다.
+  // 프로덕션 빌드에서는 EDITABLE이 false로 접혀 아래 import()가 통째로 죽은 코드가 된다.
+  const [ghostsData, setGhostsData] = useState(null)
+  useEffect(() => {
+    if (!EDITABLE) return
+    import('./data/ghosts.json').then((m) => setGhostsData(m.default))
+  }, [])
   const { scenario, moment, basePlayers, opponents, byId, playerIds: PLAYER_IDS } = useMemo(() => {
     const m = buildMatch(findMatch(matchId))
     if (!editPos) return m
@@ -215,7 +229,8 @@ function App() {
         receiverId: act.receiverId,
         from: cur,
         to,
-        ctrl: clampCtrl(cur, to, act.ctrl, act.type),
+        // 휨 상한은 차는 사람의 발기술에 달렸다 — 크로스·발재간이 좋을수록 더 감긴다
+        ctrl: clampCtrl(cur, to, act.ctrl, act.type, byId[carrier]),
         index,
       }
       if (act.receiverId !== 'GOAL') {
@@ -331,6 +346,19 @@ function App() {
     () => isReplayMatch({ egg, chain, outcome: result?.outcome, shot: shot0 }),
     [egg, result, chain, shot0],
   )
+
+  // 이 경기에 실측 유령이 있는가 (StatsBomb 공개 데이터가 있는 경기만 — scripts/build-ghosts.mjs)
+  // ?? [] 를 그대로 쓰면 매 렌더 새 배열이라 아래 useMemo가 계속 다시 돈다.
+  const ghostSets = useMemo(() => ghostsData?.matches[matchId]?.sets ?? [], [ghostsData, matchId])
+  const ghostPoints = useMemo(() => {
+    if (!ghostSet) return null
+    const set = ghostSets.find((s) => s.id === ghostSet)
+    if (!set) return null
+    // 저장된 좌표는 StatsBomb 원본이다. 뒤집기는 여기서만 한다 — 원본을 건드리지 않아야
+    // 나중에 방향이 확정됐을 때 데이터를 다시 뽑지 않아도 된다.
+    const conv = (p) => ({ ...p, y: ghostMirror ? 80 - p.y : p.y })
+    return [...set.named, ...set.anon].map(conv)
+  }, [ghostSet, ghostSets, ghostMirror])
 
   // --- 오프볼 런 지시 ---
   //
@@ -467,7 +495,8 @@ function App() {
   const setChainHandle = (i, h) => {
     const leg = chain[i]
     if (!leg) return
-    const ctrl = ctrlFromHandle(leg.from, leg.to, clampHandle(leg.from, leg.to, h, leg.type))
+    // 끌 수 있는 한계도 같은 상한을 쓴다 — 화면에서 잡히는 폭과 판정이 어긋나면 안 된다
+    const ctrl = ctrlFromHandle(leg.from, leg.to, clampHandle(leg.from, leg.to, h, leg.type, byId[leg.actorId]))
     setChainActs((cs) => cs.map((c, idx) => (idx === i ? { ...c, ctrl } : c)))
   }
   // 체인이므로 그 뒤도 함께 삭제. 그 액션에 딸린 오프볼 런도 같이 지운다 —
@@ -813,6 +842,7 @@ function App() {
                   : null
               }
               onEggShotMove={EDITABLE && showEggZone && shot0 ? moveEggShot : null}
+              ghosts={EDITABLE ? ghostPoints : null}
               ballPos={phase === 'plan' ? ballPlanPos : frame?.ball}
               ballTrail={phase === 'plan' ? null : frame?.ballTrail}
               displayHome={phase === 'plan' ? null : frame?.home}
@@ -924,6 +954,47 @@ function App() {
               >
                 {showEggZone ? '✓ 재현 구역 표시 중' : '🎯 재현 구역'}
               </button>
+            </div>
+          )}
+
+          {/* 실측 유령 — StatsBomb이 기록한 그 순간의 실제 좌표.
+              공개 데이터가 있는 경기에서만 뜬다. 프레임을 골라 겹쳐 보고,
+              선수를 그 위로 끌어다 놓으면 된다. 자동으로 맞춰주지 않는 이유는
+              익명 점이 대부분이라 누가 누구인지는 영상을 본 사람만 알기 때문이다. */}
+          {EDITABLE && editMode && ghostSets.length > 0 && (
+            <div className="edit-row">
+              <span className="edit-hint">👻 실측 유령</span>
+              <button
+                className={`ctrl${ghostSet === null ? ' on' : ''}`}
+                onClick={() => setGhostSet(null)}
+              >
+                끄기
+              </button>
+              {ghostSets.map((s) => (
+                <button
+                  key={s.id}
+                  className={`ctrl${ghostSet === s.id ? ' on' : ''}`}
+                  onClick={() => setGhostSet(s.id)}
+                  title={s.label}
+                >
+                  {s.label}
+                </button>
+              ))}
+              {ghostSet && (
+                <>
+                  <button
+                    className={`ctrl${ghostMirror ? ' on' : ''}`}
+                    onClick={() => setGhostMirror((v) => !v)}
+                    title="우리 보드와 StatsBomb의 y 방향이 같은지 아직 확정이 아니다 — 켜고 꺼서 영상과 맞는 쪽을 고르세요"
+                  >
+                    {ghostMirror ? '✓ y 뒤집기' : 'y 뒤집기'}
+                  </button>
+                  <span className="edit-hint">
+                    금색 = 공 잡은 선수(실측). 이름 없는 점은 아군·상대만 구분됩니다 —
+                    화면에 보인 선수만 기록돼 전원이 있지는 않습니다.
+                  </span>
+                </>
+              )}
             </div>
           )}
           {EDITABLE && showEggZone && shot0 && (
@@ -1083,7 +1154,6 @@ function App() {
                   #{selected.number} {selected.name}{' '}
                   <span className="pos">
                     {selected.position} · {selected.roles.join('/')} · {selected.heightCm}cm
-                    {selected.statSource === 'estimate' ? ' · 추정치' : ''}
                   </span>
                 </div>
                 <dl className="stats">
