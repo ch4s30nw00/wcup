@@ -84,6 +84,17 @@ export default function TacticsBoard({
   onEditBallOwner, // (playerId) — 편집 중 공을 가까이 놓은 공격 선수를 새 시작 소유자로 지정
 }) {
   const [homeKit, awayKit] = kitsFor(matchId)
+
+  // 보드를 좌우 반전해 그릴 때(flipX), 글자는 각자 제자리에서 되뒤집어야 읽힌다.
+  //
+  // 예전에는 CSS `.flip-x text { transform: scaleX(-1); transform-box: fill-box }`로 했는데,
+  // Safari가 <text>에 fill-box를 적용하지 못해 transform-origin이 글자 중심이 아니라
+  // 뷰박스(120×80) 중심으로 잡혔다. 그래서 iOS에서 등번호·메뉴 글자가 보드 반대편으로
+  // 날아가 "글자가 안 보인다"가 됐다. 표준 SVG transform으로 바꿔 브라우저 차이를 없앤다.
+  //
+  //   cx — 그 글자의 x (절대좌표). 부모 <g>가 이미 제자리로 옮겨준 글자는 0.
+  //   translate(2cx) 후 scale(-1,1) → 점 cx가 그대로 cx에 남는다 = 그 자리에서만 뒤집힘.
+  const unflip = (cx = 0) => (flipX ? `translate(${cx * 2}, 0) scale(-1, 1)` : undefined)
   // 튜토리얼이 가리키는 메뉴 항목. 패스 계열은 두 창에 걸쳐 있다 —
   // 메인 메뉴에서는 [패스](종류 선택)를, 열린 종류 창에서는 그 종류 자체를 깜빡인다.
   const MAIN_MENU_OF = { dribble: 'dribble', shot: 'shot', pass: 'pass-select', lob: 'pass-select', through: 'pass-select' }
@@ -471,6 +482,7 @@ export default function TacticsBoard({
               fontWeight="700"
               fill="#ffd23e"
               pointerEvents="none"
+              transform={unflip(shotZone.x)}
             >
               {shotZone.label}
             </text>
@@ -517,6 +529,7 @@ export default function TacticsBoard({
                     fontSize="1.7"
                     fontWeight="600"
                     fill={g.actor ? '#ffd23e' : c}
+                    transform={unflip(g.x)}
                   >
                     {g.name}
                   </text>
@@ -563,8 +576,8 @@ export default function TacticsBoard({
       {offsideFx?.offside && (
         <g pointerEvents="none">
           <rect x={44} y={30} width={32} height={13} rx="2" fill="rgba(16,20,28,0.86)" stroke="#ff3b30" strokeWidth="0.4" />
-          <text x={60} y={36.5} textAnchor="middle" fontSize="4.4">🚩</text>
-          <text x={60} y={41} textAnchor="middle" fontSize="3.2" fontWeight="700" fill="#ff6b5e">오프사이드</text>
+          <text x={60} y={36.5} textAnchor="middle" fontSize="4.4" transform={unflip(60)}>🚩</text>
+          <text x={60} y={41} textAnchor="middle" fontSize="3.2" fontWeight="700" fill="#ff6b5e" transform={unflip(60)}>오프사이드</text>
         </g>
       )}
 
@@ -598,7 +611,7 @@ export default function TacticsBoard({
               markerEnd={LEG_MARKER[leg.type]}
             />
             <circle cx={badge.x} cy={badge.y} r="1.1" fill="#10141c" stroke={color} strokeWidth="0.25" />
-            <text x={badge.x} y={badge.y + 0.6} textAnchor="middle" fontSize="1.7" fontWeight="700" fill={color}>
+            <text x={badge.x} y={badge.y + 0.6} textAnchor="middle" fontSize="1.7" fontWeight="700" fill={color} transform={unflip(badge.x)}>
               {isLobKind(leg.passKind) ? `↟${i + 1}` : i + 1}
             </text>
           </g>
@@ -625,10 +638,10 @@ export default function TacticsBoard({
               transform={`rotate(${facingDeg(pos, o.id, true)})`}
             />
             <circle r={DOT_R} fill={o.position === 'GK' ? awayKit.gk : awayKit.body} stroke={awayKit.ring} strokeWidth="0.28" />
-            <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill={awayKit.num}>
+            <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill={awayKit.num} transform={unflip()}>
               {o.number}
             </text>
-            <text y={DOT_R + 2} textAnchor="middle" fontSize="1.6" fill="#dde4f0" stroke="#1a3a22" strokeWidth="0.25" paintOrder="stroke">
+            <text y={DOT_R + 2} textAnchor="middle" fontSize="1.6" fill="#dde4f0" stroke="#1a3a22" strokeWidth="0.25" paintOrder="stroke" transform={unflip()}>
               {o.name}
             </text>
           </g>
@@ -648,7 +661,7 @@ export default function TacticsBoard({
               pointerEvents="none"
             >
               <circle r={DOT_R} fill="#8892a4" stroke="#c3cad8" strokeWidth="0.35" strokeDasharray="1.1 0.8" />
-              <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill="#e8ecf4">
+              <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill="#e8ecf4" transform={unflip()}>
                 {p.number}
               </text>
             </g>
@@ -681,7 +694,7 @@ export default function TacticsBoard({
             {interactive && offsideIds?.has(p.id) && (
               <g className="offside-warn" pointerEvents="none">
                 <circle r={DOT_R + 1.7} fill="none" stroke="#ff3b30" strokeWidth="0.5" />
-                <text y={-DOT_R - 2.4} textAnchor="middle" fontSize="2.6">🚩</text>
+                <text y={-DOT_R - 2.4} textAnchor="middle" fontSize="2.6" transform={unflip()}>🚩</text>
               </g>
             )}
             {isSelected && <circle r={DOT_R + 0.8} fill="none" stroke="#ffd23e" strokeWidth="0.4" />}
@@ -696,10 +709,10 @@ export default function TacticsBoard({
               transform={`rotate(${facingDeg(pos, p.id)})`}
             />
             <circle r={DOT_R} fill={isGK ? homeKit.gk : homeKit.body} stroke={homeKit.ring} strokeWidth="0.3" />
-            <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill={homeKit.num}>
+            <text y="0.55" textAnchor="middle" fontSize="1.5" fontWeight="700" fill={homeKit.num} transform={unflip()}>
               {p.number}
             </text>
-            <text y={DOT_R + 2} textAnchor="middle" fontSize="1.6" fill="#f0f4f0" stroke="#1a3a22" strokeWidth="0.25" paintOrder="stroke">
+            <text y={DOT_R + 2} textAnchor="middle" fontSize="1.6" fill="#f0f4f0" stroke="#1a3a22" strokeWidth="0.25" paintOrder="stroke" transform={unflip()}>
               {p.name}
             </text>
           </g>
@@ -768,6 +781,7 @@ export default function TacticsBoard({
             stroke="#10141c"
             strokeWidth="0.3"
             paintOrder="stroke"
+            transform={unflip(editBallCandidate.pos.x)}
           >
             시작 소유자
           </text>
@@ -848,7 +862,7 @@ export default function TacticsBoard({
               stroke="#ff6b5e" strokeWidth="0.5" strokeDasharray="1.8 1.1" markerEnd="url(#ah-shot)"
             />
             <circle cx={119} cy={aimY} r="1.1" fill="#ff6b5e" stroke="#10141c" strokeWidth="0.25" />
-            <text x={112} y={GOAL_AIM.hitY0 - 1.2} textAnchor="middle" fontSize="2.4" fill="#ff6b5e">
+            <text x={112} y={GOAL_AIM.hitY0 - 1.2} textAnchor="middle" fontSize="2.4" fill="#ff6b5e" transform={unflip(112)}>
               골문을 겨눠 놓으면 슛
             </text>
           </g>
@@ -869,7 +883,7 @@ export default function TacticsBoard({
             {/* 안내 배너 */}
             <rect x={22} y={2.5} width={76} height={7} rx="1.6" fill="rgba(16,20,28,0.88)"
               stroke={recvOffside ? '#ff3b30' : '#7ee0a8'} strokeWidth="0.3" />
-            <text x={60} y={7.4} textAnchor="middle" fontSize="3" fill={recvOffside ? '#ff6b5e' : '#7ee0a8'}>
+            <text x={60} y={7.4} textAnchor="middle" fontSize="3" fill={recvOffside ? '#ff6b5e' : '#7ee0a8'} transform={unflip(60)}>
               {!throughId
                 ? '스루패스 — 받을 동료를 탭하세요'
                 : recvOffside
@@ -906,7 +920,7 @@ export default function TacticsBoard({
                     <line x1={real.x} y1={real.y} x2={want.x} y2={want.y}
                       stroke="#8892a4" strokeWidth="0.3" strokeDasharray="0.8 0.9" opacity="0.6" />
                     <text x={(real.x + want.x) / 2} y={(real.y + want.y) / 2 - 1.4} textAnchor="middle"
-                      fontSize="2.1" fill="#9aa3b5">
+                      fontSize="2.1" fill="#9aa3b5" transform={unflip((real.x + want.x) / 2)}>
                       여기까진 못 갑니다
                     </text>
                   </>
@@ -959,11 +973,13 @@ export default function TacticsBoard({
                           rx="1.2" fill="none" stroke="#ffd23e" strokeWidth="0.6" pointerEvents="none" />
                       )}
                       <text x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h / 2 - 0.3}
-                        textAnchor="middle" fontSize="2.35" fontWeight="700" fill={it.color} pointerEvents="none">
+                        textAnchor="middle" fontSize="2.35" fontWeight="700" fill={it.color} pointerEvents="none"
+                        transform={unflip(bx + (MENU.w - 0.6) / 2)}>
                         {it.label}
                       </text>
                       <text x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h - 1.7}
-                        textAnchor="middle" fontSize="1.55" fill="#6b7385" pointerEvents="none">
+                        textAnchor="middle" fontSize="1.55" fill="#6b7385" pointerEvents="none"
+                        transform={unflip(bx + (MENU.w - 0.6) / 2)}>
                         {it.hint}
                       </text>
                     </g>
@@ -1030,12 +1046,14 @@ export default function TacticsBoard({
                         x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h / 2 - 0.3}
                         textAnchor="middle" fontSize="2.7" fontWeight="700" fill={it.color}
                         pointerEvents="none"
+                        transform={unflip(bx + (MENU.w - 0.6) / 2)}
                       >
                         {it.label}
                       </text>
                       <text
                         x={bx + (MENU.w - 0.6) / 2} y={by + MENU.h - 1.7}
                         textAnchor="middle" fontSize="1.8" fill="#6b7385" pointerEvents="none"
+                        transform={unflip(bx + (MENU.w - 0.6) / 2)}
                       >
                         {it.disabled ? '슛으로 종료' : it.hint}
                       </text>
