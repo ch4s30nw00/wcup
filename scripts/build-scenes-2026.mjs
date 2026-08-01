@@ -1,80 +1,42 @@
 // scripts/build-scenes-2026.mjs — 2026 월드컵 장면 데이터 생성기 (현재 7경기).
-//   node scripts/build-scenes-2026.mjs <CSV경로>
+//   node scripts/build-scenes-2026.mjs
 //
-// 왜 스크립트인가: 선수 스탯은 데이터담당의 CSV(터치라인_엔진_v2/
-// worldcup_2026_stats.csv)가 원본이다. 손으로 옮겨 적으면
-// CSV가 갱신될 때마다 어긋나므로, 매핑 규칙만 여기 두고 결과 JSON은 재생성한다.
+// 왜 스크립트인가: 라인업·등번호·좌표를 손으로 옮겨 적으면 고칠 때마다 어긋난다.
+// 배치 규칙만 여기 두고 결과 JSON(players.json·scenes-2026.json)은 재생성한다.
 //
 // ⚠️ 좌표는 "실측"이 아니다. 중계 영상 기준의 정확한 좌표는 공개 소스에 없어서,
 // 리서치로 확인한 라인업·포메이션·전개 서술을 바탕으로 배치한 **초안**이다.
 // scenes-2026.json의 review.coordinates 항목에 검수 필요로 표시해 둔다.
 //
-// 이름 매핑은 일부러 **명시 테이블**로 뒀다. CSV는 정식 전체 이름
-// (예: "Mikel MERINO ZAZÓN"), 리서치 출처는 통용명("Merino")을 쓴다.
-// 퍼지 매칭은 동성이인(P. Berg / S. Berge 등)에서 조용히 틀리므로 쓰지 않는다.
+// 능력치는 여기서 만들지 않는다. scripts/build-stats.mjs의 템플릿이 (역할, overall,
+// 신장)만 보고 산출한다 — 그 파일 머리말에 이유를 적어 뒀다. 이 스크립트는 사람이
+// 정하는 값(overall·heightCm)을 기존 players.json에서 그대로 이어받아 넘겨줄 뿐이다.
+// 그래서 재생성해도 능력치가 되살아나거나 뒤집히지 않는다.
+//
+// 이름 테이블(fullName)은 일부러 **명시 테이블**로 뒀다. 출처마다 통용명("Merino")과
+// 정식 전체 이름("Mikel MERINO ZAZÓN")이 갈리는데, 퍼지 매칭은 동성이인
+// (P. Berg / S. Berge 등)에서 조용히 틀리므로 쓰지 않는다.
 
 import { readFileSync, writeFileSync } from 'node:fs'
+import { buildStats } from './build-stats.mjs'
 
-const csvPath = process.argv[2]
-if (!csvPath) {
-  console.error('사용법: node scripts/build-scenes-2026.mjs <CSV경로>')
-  process.exit(1)
-}
+// ── 사람이 정하는 값을 이어받는다 ────────────────────────────────────
+// overall("이 선수가 대략 어느 급인가")과 heightCm(사실)은 사람이 players.json에 적어 둔다.
+// 이 스크립트는 그 둘을 읽어 build-stats.mjs에 넘길 뿐, 스스로 지어내지 않는다.
+// 없으면 조용히 기본값을 채우지 않고 멈춘다 — 추측으로 채운 능력치는 티가 안 나서 위험하다.
+const dataRoot = new URL('../src/data/', import.meta.url)
+const PRIOR = Object.fromEntries(
+  JSON.parse(readFileSync(new URL('players.json', dataRoot), 'utf-8')).map((p) => [p.id, p]),
+)
 
-// ── CSV 로드 ────────────────────────────────────────────────────────
-const raw = readFileSync(csvPath, 'utf-8').replace(/^﻿/, '')
-const lines = raw.trim().split(/\r?\n/)
-const header = lines[0].split(',')
-const rows = lines.slice(1).map((l) => {
-  const c = l.split(',')
-  return Object.fromEntries(header.map((h, i) => [h, c[i]]))
-})
-
-// CSV 한글 컬럼 → players.json 스탯 키 (FM 1~20 그대로)
-const STAT_COL = {
-  flair: '개인기',
-  finishing: '골결',
-  dribbling: '드리블',
-  longshots: '중거리',
-  crossing: '크로스',
-  passing: '패스',
-  heading: '헤더',
-  strength: '몸싸움',
-  acceleration: '가속도',
-  pace: '주력',
-  jumping: '점프거리',
-  balance: '균형감각',
-  marking: '일대일 마크',
-  tackle: '태클',
-  positioning: '수비위치선정',
-  anticipation: '예측력',
-}
-
-function findPlayer(country, csvName) {
-  const hit = rows.find((r) => r['국가'] === country && r['이름'] === csvName)
-  if (!hit) throw new Error(`CSV에 없음: ${country} / ${csvName}`)
-  return hit
-}
-
-function toPlayer({ id, team, csvName, name, number, position, roles, stats, heightCm, country }) {
-  // csvName이 없으면 인라인 stats를 쓴다 — 스탯 데이터베이스에 없는 선수(경기 중 투입된
-  // 교체 선수 등)를 손으로 넣을 때. 결과 JSON은 CSV에서 온 선수와 형태가 같다.
-  if (!csvName) {
-    if (!stats) throw new Error(`csvName도 stats도 없다: ${name}`)
-    return { id, name, team, number, position, roles, heightCm: heightCm ?? 180, stats, condition: 100 }
-  }
-  const r = findPlayer(country, csvName)
-  return {
-    id,
-    name,
-    team,
-    number,
-    position,
-    roles,
-    heightCm: Number(r['키(cm)']),
-    stats: Object.fromEntries(Object.entries(STAT_COL).map(([k, col]) => [k, Number(r[col])])),
-    condition: 100,
-  }
+function toPlayer({ id, team, name, number, position, roles, heightCm, overall }) {
+  const prior = PRIOR[id]
+  const ov = overall ?? prior?.overall
+  const cm = heightCm ?? prior?.heightCm
+  if (ov == null) throw new Error(`${id} (${name}): overall이 없다 — players.json에 적거나 정의에 넣을 것`)
+  if (cm == null) throw new Error(`${id} (${name}): heightCm이 없다 — players.json에 적거나 정의에 넣을 것`)
+  const p = { id, name, team, number, position, roles, heightCm: cm, overall: ov, condition: 100 }
+  return { ...p, stats: buildStats(p) }
 }
 
 // ── 장면 A: 포르투갈 0-1 스페인 (2026-07-06, 16강) ──────────────────
@@ -84,38 +46,38 @@ function toPlayer({ id, team, csvName, name, number, position, roles, stats, hei
 // 배치 근거: 90+1분, 스페인이 이기려 올라와 있고 포르투갈은 내려앉은 상태.
 // 85분 더블 교체(메리노·파비안) 이후의 정확한 포지션 배열은 출처에 없어 4-2-3-1 유지로 가정.
 const ESP = [
-  { id: 'esp_23', csvName: 'Unai SIMÓN MENDIBIL', name: '우나이 시몬', number: 23, position: 'GK', roles: ['GK'] },
-  { id: 'esp_12', csvName: 'Pedro Antonio PORRO SAUCEDA', name: '페드로 포로', number: 12, position: 'DF', roles: ['RB'] },
-  { id: 'esp_22', csvName: 'Pau CUBARSI I PAREDES', name: '파우 쿠바르시', number: 22, position: 'DF', roles: ['CB'] },
-  { id: 'esp_14', csvName: 'Aymeric LAPORTE FEVRE', name: '아이메릭 라포르트', number: 14, position: 'DF', roles: ['CB'] },
-  { id: 'esp_24', csvName: 'Marc CUCURELLA SASETA', name: '마르크 쿠쿠렐라', number: 24, position: 'DF', roles: ['LB'] },
-  { id: 'esp_16', csvName: 'Rodrigo HERNÁNDEZ CASCANTE', name: '로드리', number: 16, position: 'MF', roles: ['DM'] },
-  { id: 'esp_08', csvName: 'Fabian RUIZ PEÑA', name: '파비안 루이스', number: 8, position: 'MF', roles: ['CM'] },
-  { id: 'esp_19', csvName: 'Lamine Yamal NASRAOUI EBANA', name: '라민 야말', number: 19, position: 'FW', roles: ['RW'] },
-  { id: 'esp_06', csvName: 'Mikel MERINO ZAZÓN', name: '미켈 메리노', number: 6, position: 'MF', roles: ['CAM'] },
-  { id: 'esp_07', csvName: 'Ferran TORRES GARCÍA', name: '페란 토레스', number: 7, position: 'FW', roles: ['LW'] },
-  { id: 'esp_21', csvName: 'Mikel OYARZABAL UGARTE', name: '미켈 오야르사발', number: 21, position: 'FW', roles: ['ST'] },
+  { id: 'esp_23', fullName: 'Unai SIMÓN MENDIBIL', name: '우나이 시몬', number: 23, position: 'GK', roles: ['GK'] },
+  { id: 'esp_12', fullName: 'Pedro Antonio PORRO SAUCEDA', name: '페드로 포로', number: 12, position: 'DF', roles: ['RB'] },
+  { id: 'esp_22', fullName: 'Pau CUBARSI I PAREDES', name: '파우 쿠바르시', number: 22, position: 'DF', roles: ['CB'] },
+  { id: 'esp_14', fullName: 'Aymeric LAPORTE FEVRE', name: '아이메릭 라포르트', number: 14, position: 'DF', roles: ['CB'] },
+  { id: 'esp_24', fullName: 'Marc CUCURELLA SASETA', name: '마르크 쿠쿠렐라', number: 24, position: 'DF', roles: ['LB'] },
+  { id: 'esp_16', fullName: 'Rodrigo HERNÁNDEZ CASCANTE', name: '로드리', number: 16, position: 'MF', roles: ['DM'] },
+  { id: 'esp_08', fullName: 'Fabian RUIZ PEÑA', name: '파비안 루이스', number: 8, position: 'MF', roles: ['CM'] },
+  { id: 'esp_19', fullName: 'Lamine Yamal NASRAOUI EBANA', name: '라민 야말', number: 19, position: 'FW', roles: ['RW'] },
+  { id: 'esp_06', fullName: 'Mikel MERINO ZAZÓN', name: '미켈 메리노', number: 6, position: 'MF', roles: ['CAM'] },
+  { id: 'esp_07', fullName: 'Ferran TORRES GARCÍA', name: '페란 토레스', number: 7, position: 'FW', roles: ['LW'] },
+  { id: 'esp_21', fullName: 'Mikel OYARZABAL UGARTE', name: '미켈 오야르사발', number: 21, position: 'FW', roles: ['ST'] },
 ]
 const POR_A = [
-  { id: 'p26_01', csvName: 'Diogo MEIRELES DA COSTA', name: '디오구 코스타', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'p26_05', csvName: 'José Diogo DALOT TEIXEIRA', name: '디오구 달로트', number: 5, position: 'DF', roles: ['RB'] },
-  { id: 'p26_03', csvName: 'Rúben DOS SANTOS GATO ALVES DIAS', name: '후벵 디아스', number: 3, position: 'DF', roles: ['CB'] },
-  { id: 'p26_13', csvName: 'Renato DA PALMA VEIGA', name: '헤나투 베이가', number: 13, position: 'DF', roles: ['CB'] },
-  { id: 'p26_02', csvName: 'Nélson CABRAL SEMEDO', name: '넬송 세메두', number: 2, position: 'DF', roles: ['LB'] },
-  { id: 'p26_15', csvName: 'João Pedro GONÇALVES NEVES', name: '주앙 네베스', number: 15, position: 'MF', roles: ['DM'] },
-  { id: 'p26_10', csvName: 'Bernardo MOTA VEIGA DE CARVALHO E SILVA', name: '베르나르두 실바', number: 10, position: 'MF', roles: ['CM'] },
-  { id: 'p26_17', csvName: 'Rafael Alexandre DA CONCEIÇÃO LEÃO', name: '하파엘 레앙', number: 17, position: 'FW', roles: ['LW'] },
-  { id: 'p26_08', csvName: 'Bruno Miguel BORGES FERNANDES', name: '브루누 페르난드스', number: 8, position: 'MF', roles: ['CAM'] },
-  { id: 'p26_26', csvName: 'Francisco FERNANDES DA CONCEIÇÃO', name: '프란시스쿠 콘세이상', number: 26, position: 'FW', roles: ['RW'] },
-  { id: 'p26_07', csvName: 'Cristiano Ronaldo DOS SANTOS AVEIRO', name: '크리스티아누 호날두', number: 7, position: 'FW', roles: ['ST'] },
+  { id: 'p26_01', fullName: 'Diogo MEIRELES DA COSTA', name: '디오구 코스타', number: 1, position: 'GK', roles: ['GK'] },
+  { id: 'p26_05', fullName: 'José Diogo DALOT TEIXEIRA', name: '디오구 달로트', number: 5, position: 'DF', roles: ['RB'] },
+  { id: 'p26_03', fullName: 'Rúben DOS SANTOS GATO ALVES DIAS', name: '후벵 디아스', number: 3, position: 'DF', roles: ['CB'] },
+  { id: 'p26_13', fullName: 'Renato DA PALMA VEIGA', name: '헤나투 베이가', number: 13, position: 'DF', roles: ['CB'] },
+  { id: 'p26_02', fullName: 'Nélson CABRAL SEMEDO', name: '넬송 세메두', number: 2, position: 'DF', roles: ['LB'] },
+  { id: 'p26_15', fullName: 'João Pedro GONÇALVES NEVES', name: '주앙 네베스', number: 15, position: 'MF', roles: ['DM'] },
+  { id: 'p26_10', fullName: 'Bernardo MOTA VEIGA DE CARVALHO E SILVA', name: '베르나르두 실바', number: 10, position: 'MF', roles: ['CM'] },
+  { id: 'p26_17', fullName: 'Rafael Alexandre DA CONCEIÇÃO LEÃO', name: '하파엘 레앙', number: 17, position: 'FW', roles: ['LW'] },
+  { id: 'p26_08', fullName: 'Bruno Miguel BORGES FERNANDES', name: '브루누 페르난드스', number: 8, position: 'MF', roles: ['CAM'] },
+  { id: 'p26_26', fullName: 'Francisco FERNANDES DA CONCEIÇÃO', name: '프란시스쿠 콘세이상', number: 26, position: 'FW', roles: ['RW'] },
+  { id: 'p26_07', fullName: 'Cristiano Ronaldo DOS SANTOS AVEIRO', name: '크리스티아누 호날두', number: 7, position: 'FW', roles: ['ST'] },
   // 아래 다섯은 90+1분 장면에는 없다 — 이 경기 선발이었다가 교체로 나간 선수들이다.
   // 온필드 명단은 positions가 정하므로 벤치로 남지만, 로스터에 있어야 등번호가 제자리를 지킨다.
   // (이들이 빠져 있던 탓에 20·18·11번이 교체 투입 선수에게 잘못 붙어 있었다.)
-  { id: 'p26_20', csvName: 'João Pedro CAVACO CANCELO', name: '주앙 칸셀루', number: 20, position: 'DF', roles: ['RB'] },
-  { id: 'p26_25', csvName: 'Nuno Alexandre TAVARES MENDES', name: '누누 멘드스', number: 25, position: 'DF', roles: ['LB'] },
-  { id: 'p26_23', csvName: 'Vitor MACHADO FERREIRA', name: '비티냐', number: 23, position: 'MF', roles: ['CM'] },
-  { id: 'p26_18', csvName: 'Pedro LOMBA NETO', name: '페드루 네투', number: 18, position: 'FW', roles: ['RW'] },
-  { id: 'p26_11', csvName: 'João FÉLIX SEQUEIRA', name: '주앙 펠릭스', number: 11, position: 'FW', roles: ['ST'] },
+  { id: 'p26_20', fullName: 'João Pedro CAVACO CANCELO', name: '주앙 칸셀루', number: 20, position: 'DF', roles: ['RB'] },
+  { id: 'p26_25', fullName: 'Nuno Alexandre TAVARES MENDES', name: '누누 멘드스', number: 25, position: 'DF', roles: ['LB'] },
+  { id: 'p26_23', fullName: 'Vitor MACHADO FERREIRA', name: '비티냐', number: 23, position: 'MF', roles: ['CM'] },
+  { id: 'p26_18', fullName: 'Pedro LOMBA NETO', name: '페드루 네투', number: 18, position: 'FW', roles: ['RW'] },
+  { id: 'p26_11', fullName: 'João FÉLIX SEQUEIRA', name: '주앙 펠릭스', number: 11, position: 'FW', roles: ['ST'] },
 ]
 
 // ── 장면 B: 브라질 1-2 노르웨이 (2026-07-05, 16강) ──────────────────
@@ -125,36 +87,33 @@ const POR_A = [
 // 배치 근거: 왼쪽(y<40)에서 크로스가 올라오고 홀란이 박스 안 중앙에서 마주친다.
 // 크로스 판정 기하(K.CROSS: |y-40|≥18, 도착 x≥102)를 만족하도록 셸데루프를 y=14에 뒀다.
 const NOR = [
-  { id: 'nor_01', csvName: 'Ørjan Haskjold NYLAND', name: '외르얀 뉠란', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'nor_14', csvName: 'Fredrik AURSNES', name: '프레드리크 아우르스네스', number: 14, position: 'DF', roles: ['RB'] },
-  { id: 'nor_03', csvName: 'Kristoffer Vassbakk Köpp AJER', name: '크리스토페르 아예르', number: 3, position: 'DF', roles: ['CB'] },
-  { id: 'nor_17', csvName: 'Torbjørn Lysaker HEGGEM', name: '토르비외른 헤겜', number: 17, position: 'DF', roles: ['CB'] },
-  { id: 'nor_05', csvName: 'David Møller WOLFE', name: '다비드 묄레르 볼페', number: 5, position: 'DF', roles: ['LB'] },
-  { id: 'nor_10', csvName: 'Martín ØDEGAARD', name: '마르틴 외데고르', number: 10, position: 'MF', roles: ['CAM'] },
-  { id: 'nor_06', csvName: 'Patrick BERG', name: '파트리크 베르그', number: 6, position: 'MF', roles: ['DM'] },
-  { id: 'nor_08', csvName: 'Sander Gard Bolin BERGE', name: '산데르 베르게', number: 8, position: 'MF', roles: ['CM'] },
-  { id: 'nor_22', csvName: 'Oscar BOBB', name: '오스카르 보브', number: 22, position: 'FW', roles: ['RW'] },
-  { id: 'nor_09', csvName: 'Erling Braut HAALAND', name: '엘링 홀란', number: 9, position: 'FW', roles: ['ST'] },
-  { id: 'nor_21', csvName: 'Andreas Rædergård SCHJELDERUP', name: '안드레아스 셸데루프', number: 21, position: 'FW', roles: ['LW'] },
+  { id: 'nor_01', fullName: 'Ørjan Haskjold NYLAND', name: '외르얀 뉠란', number: 1, position: 'GK', roles: ['GK'] },
+  { id: 'nor_14', fullName: 'Fredrik AURSNES', name: '프레드리크 아우르스네스', number: 14, position: 'DF', roles: ['RB'] },
+  { id: 'nor_03', fullName: 'Kristoffer Vassbakk Köpp AJER', name: '크리스토페르 아예르', number: 3, position: 'DF', roles: ['CB'] },
+  { id: 'nor_17', fullName: 'Torbjørn Lysaker HEGGEM', name: '토르비외른 헤겜', number: 17, position: 'DF', roles: ['CB'] },
+  { id: 'nor_05', fullName: 'David Møller WOLFE', name: '다비드 묄레르 볼페', number: 5, position: 'DF', roles: ['LB'] },
+  { id: 'nor_10', fullName: 'Martín ØDEGAARD', name: '마르틴 외데고르', number: 10, position: 'MF', roles: ['CAM'] },
+  { id: 'nor_06', fullName: 'Patrick BERG', name: '파트리크 베르그', number: 6, position: 'MF', roles: ['DM'] },
+  { id: 'nor_08', fullName: 'Sander Gard Bolin BERGE', name: '산데르 베르게', number: 8, position: 'MF', roles: ['CM'] },
+  { id: 'nor_22', fullName: 'Oscar BOBB', name: '오스카르 보브', number: 22, position: 'FW', roles: ['RW'] },
+  { id: 'nor_09', fullName: 'Erling Braut HAALAND', name: '엘링 홀란', number: 9, position: 'FW', roles: ['ST'] },
+  { id: 'nor_21', fullName: 'Andreas Rædergård SCHJELDERUP', name: '안드레아스 셸데루프', number: 21, position: 'FW', roles: ['LW'] },
 ]
 const BRA = [
-  { id: 'bra_01', csvName: 'Álisson Ramsés BECKER', name: '알리송', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'bra_13', csvName: 'Danilo Luiz DA SILVA', name: '다닐루', number: 13, position: 'DF', roles: ['RB'] },
-  { id: 'bra_04', csvName: 'Marcos AOAS CORREA', name: '마르키뉴스', number: 4, position: 'DF', roles: ['CB'] },
-  { id: 'bra_03', csvName: 'Gabriel DOS SANTOS MAGALHÃES', name: '가브리에우 마갈량이스', number: 3, position: 'DF', roles: ['CB'] },
-  { id: 'bra_16', csvName: 'Douglas DOS SANTOS JUSTINO DE MELO', name: '도글라스 산투스', number: 16, position: 'DF', roles: ['LB'] },
-  { id: 'bra_05', csvName: 'Carlos Henrique CASIMIRO', name: '카제미루', number: 5, position: 'MF', roles: ['DM'] },
-  { id: 'bra_08', csvName: 'Bruno GUIMARÃES RODRIGUEZ MOURA', name: '브루누 기마랑이스', number: 8, position: 'MF', roles: ['CM'] },
-  { id: 'bra_07', csvName: 'Vinicius José PAIXÃO DE OLIVEIRA JÚNIOR', name: '비니시우스 주니오르', number: 7, position: 'FW', roles: ['LW'] },
-  { id: 'bra_18', csvName: 'Danilo DOS SANTOS DE OLIVEIRA', name: '다닐루 산투스', number: 18, position: 'MF', roles: ['CM'] },
-  { id: 'bra_19', csvName: 'Endrick Felipe MOREIRA DE SOUSA PESSOA', name: '엔드리크', number: 19, position: 'FW', roles: ['ST'] },
-  { id: 'bra_10', csvName: 'Neymar DA SILVA SANTOS JÚNIOR', name: '네이마르', number: 10, position: 'FW', roles: ['CAM'] },
-  // 미드필더 에데르송(아탈란타) — 79분 브루누 기마랑이스와 교체 투입. CSV 데이터베이스에는
-  // 동명이인 골키퍼만 있어 스탯은 임의값(수비형 미드필더 기준)으로 넣는다.
-  {
-    id: 'bra_02', name: '에데르송', number: 2, position: 'MF', roles: ['DM'], heightCm: 183,
-    stats: { flair: 11, finishing: 8, dribbling: 12, longshots: 11, crossing: 10, passing: 14, heading: 12, strength: 14, acceleration: 12, pace: 12, jumping: 13, balance: 13, marking: 14, tackle: 15, positioning: 14, anticipation: 14 },
-  },
+  { id: 'bra_01', fullName: 'Álisson Ramsés BECKER', name: '알리송', number: 1, position: 'GK', roles: ['GK'] },
+  { id: 'bra_13', fullName: 'Danilo Luiz DA SILVA', name: '다닐루', number: 13, position: 'DF', roles: ['RB'] },
+  { id: 'bra_04', fullName: 'Marcos AOAS CORREA', name: '마르키뉴스', number: 4, position: 'DF', roles: ['CB'] },
+  { id: 'bra_03', fullName: 'Gabriel DOS SANTOS MAGALHÃES', name: '가브리에우 마갈량이스', number: 3, position: 'DF', roles: ['CB'] },
+  { id: 'bra_16', fullName: 'Douglas DOS SANTOS JUSTINO DE MELO', name: '도글라스 산투스', number: 16, position: 'DF', roles: ['LB'] },
+  { id: 'bra_05', fullName: 'Carlos Henrique CASIMIRO', name: '카제미루', number: 5, position: 'MF', roles: ['DM'] },
+  { id: 'bra_08', fullName: 'Bruno GUIMARÃES RODRIGUEZ MOURA', name: '브루누 기마랑이스', number: 8, position: 'MF', roles: ['CM'] },
+  { id: 'bra_07', fullName: 'Vinicius José PAIXÃO DE OLIVEIRA JÚNIOR', name: '비니시우스 주니오르', number: 7, position: 'FW', roles: ['LW'] },
+  { id: 'bra_18', fullName: 'Danilo DOS SANTOS DE OLIVEIRA', name: '다닐루 산투스', number: 18, position: 'MF', roles: ['CM'] },
+  { id: 'bra_19', fullName: 'Endrick Felipe MOREIRA DE SOUSA PESSOA', name: '엔드리크', number: 19, position: 'FW', roles: ['ST'] },
+  { id: 'bra_10', fullName: 'Neymar DA SILVA SANTOS JÚNIOR', name: '네이마르', number: 10, position: 'FW', roles: ['CAM'] },
+  // 미드필더 에데르송(아탈란타) — 79분 브루누 기마랑이스와 교체 투입.
+  // 동명이인 골키퍼가 있으니 혼동하지 말 것.
+  { id: 'bra_02', fullName: 'Éderson José DOS SANTOS LOURENÇO DA SILVA', name: '에데르송', number: 2, position: 'MF', roles: ['DM'], heightCm: 183 },
 ]
 
 // ── 로스터: 아래 5경기용 ────────────────────────────────────────────
@@ -162,78 +121,78 @@ const BRA = [
 // 등번호도 다르다(예: 이강인 18 → 19). 좌표는 여기 두지 않고 경기별 POS_*에 둔다.
 // 등번호·선발 명단·교체는 ESPN 라인업 페이지와 각국 협회 발표 번호로 확인했다(review.sources).
 const KOR26 = [
-  { id: 'k26_01', csvName: 'Seunggyu KIM', name: '김승규', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'k26_02', csvName: 'Hanbeom LEE', name: '이한범', number: 2, position: 'DF', roles: ['CB'] },
-  { id: 'k26_03', csvName: 'Gihyuk LEE', name: '이기혁', number: 3, position: 'DF', roles: ['CB'] },
-  { id: 'k26_04', csvName: 'Minjae KIM', name: '김민재', number: 4, position: 'DF', roles: ['CB'] },
-  { id: 'k26_06', csvName: 'Inbeom HWANG', name: '황인범', number: 6, position: 'MF', roles: ['CM'] },
-  { id: 'k26_07', csvName: 'Heung Min SON', name: '손흥민', number: 7, position: 'FW', roles: ['LW'] },
-  { id: 'k26_08', csvName: 'Seungho PAIK', name: '백승호', number: 8, position: 'MF', roles: ['CM'] },
-  { id: 'k26_09', csvName: 'Guesung CHO', name: '조규성', number: 9, position: 'FW', roles: ['ST'] },
-  { id: 'k26_11', csvName: 'Hee Chan HWANG', name: '황희찬', number: 11, position: 'FW', roles: ['LW'] },
-  { id: 'k26_13', csvName: 'Taeseok LEE', name: '이태석', number: 13, position: 'DF', roles: ['LB'] },
-  { id: 'k26_15', csvName: 'Moonhwan KIM', name: '김문환', number: 15, position: 'DF', roles: ['RB'] },
-  { id: 'k26_18', csvName: 'Hyeongyu OH', name: '오현규', number: 18, position: 'FW', roles: ['ST'] },
-  { id: 'k26_19', csvName: 'Kangin LEE', name: '이강인', number: 19, position: 'MF', roles: ['CAM'] },
-  { id: 'k26_20', csvName: 'Hyunjun YANG', name: '양현준', number: 20, position: 'FW', roles: ['RW'] },
-  { id: 'k26_22', csvName: 'Youngwoo SEOL', name: '설영우', number: 22, position: 'DF', roles: ['RB'] },
-  { id: 'k26_23', csvName: 'Jens CASTROP', name: '옌스 카스트로프', number: 23, position: 'MF', roles: ['CM'] },
-  { id: 'k26_24', csvName: 'Jingyu KIM', name: '김진규', number: 24, position: 'MF', roles: ['CM'] },
-  { id: 'k26_25', csvName: 'Jisung EOM', name: '엄지성', number: 25, position: 'FW', roles: ['LW'] },
+  { id: 'k26_01', fullName: 'Seunggyu KIM', name: '김승규', number: 1, position: 'GK', roles: ['GK'] },
+  { id: 'k26_02', fullName: 'Hanbeom LEE', name: '이한범', number: 2, position: 'DF', roles: ['CB'] },
+  { id: 'k26_03', fullName: 'Gihyuk LEE', name: '이기혁', number: 3, position: 'DF', roles: ['CB'] },
+  { id: 'k26_04', fullName: 'Minjae KIM', name: '김민재', number: 4, position: 'DF', roles: ['CB'] },
+  { id: 'k26_06', fullName: 'Inbeom HWANG', name: '황인범', number: 6, position: 'MF', roles: ['CM'] },
+  { id: 'k26_07', fullName: 'Heung Min SON', name: '손흥민', number: 7, position: 'FW', roles: ['LW'] },
+  { id: 'k26_08', fullName: 'Seungho PAIK', name: '백승호', number: 8, position: 'MF', roles: ['CM'] },
+  { id: 'k26_09', fullName: 'Guesung CHO', name: '조규성', number: 9, position: 'FW', roles: ['ST'] },
+  { id: 'k26_11', fullName: 'Hee Chan HWANG', name: '황희찬', number: 11, position: 'FW', roles: ['LW'] },
+  { id: 'k26_13', fullName: 'Taeseok LEE', name: '이태석', number: 13, position: 'DF', roles: ['LB'] },
+  { id: 'k26_15', fullName: 'Moonhwan KIM', name: '김문환', number: 15, position: 'DF', roles: ['RB'] },
+  { id: 'k26_18', fullName: 'Hyeongyu OH', name: '오현규', number: 18, position: 'FW', roles: ['ST'] },
+  { id: 'k26_19', fullName: 'Kangin LEE', name: '이강인', number: 19, position: 'MF', roles: ['CAM'] },
+  { id: 'k26_20', fullName: 'Hyunjun YANG', name: '양현준', number: 20, position: 'FW', roles: ['RW'] },
+  { id: 'k26_22', fullName: 'Youngwoo SEOL', name: '설영우', number: 22, position: 'DF', roles: ['RB'] },
+  { id: 'k26_23', fullName: 'Jens CASTROP', name: '옌스 카스트로프', number: 23, position: 'MF', roles: ['CM'] },
+  { id: 'k26_24', fullName: 'Jingyu KIM', name: '김진규', number: 24, position: 'MF', roles: ['CM'] },
+  { id: 'k26_25', fullName: 'Jisung EOM', name: '엄지성', number: 25, position: 'FW', roles: ['LW'] },
 ]
 const CZE = [
-  { id: 'cze_01', csvName: 'Matěj KOVÁŘ', name: '마테이 코바르시', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'cze_04', csvName: 'Robin HRANÁČ', name: '로빈 흐라나치', number: 4, position: 'DF', roles: ['CB'] },
-  { id: 'cze_05', csvName: 'Vladimír COUFAL', name: '블라디미르 초우팔', number: 5, position: 'DF', roles: ['RB'] },
-  { id: 'cze_06', csvName: 'Štěpán CHALOUPEK', name: '슈테판 할로우페크', number: 6, position: 'DF', roles: ['CB'] },
-  { id: 'cze_07', csvName: 'Ladislav KREJČÍ', name: '라디슬라프 크레이치', number: 7, position: 'DF', roles: ['CB'] },
-  { id: 'cze_09', csvName: 'Adam HLOŽEK', name: '아담 흘로제크', number: 9, position: 'FW', roles: ['LW'] },
-  { id: 'cze_18', csvName: 'Michal SADÍLEK', name: '미할 사딜레크', number: 18, position: 'MF', roles: ['CM'] },
-  { id: 'cze_19', csvName: 'Tomáš CHORÝ', name: '토마시 호리', number: 19, position: 'FW', roles: ['ST'] },
-  { id: 'cze_20', csvName: 'Jaroslav ZELENÝ', name: '야로슬라프 젤레니', number: 20, position: 'DF', roles: ['LB'] },
-  { id: 'cze_22', csvName: 'Tomáš SOUČEK', name: '토마시 소우체크', number: 22, position: 'MF', roles: ['DM'] },
-  { id: 'cze_24', csvName: 'Alexandr SOJKA', name: '알렉산드르 소이카', number: 24, position: 'MF', roles: ['CM'] },
+  { id: 'cze_01', fullName: 'Matěj KOVÁŘ', name: '마테이 코바르시', number: 1, position: 'GK', roles: ['GK'] },
+  { id: 'cze_04', fullName: 'Robin HRANÁČ', name: '로빈 흐라나치', number: 4, position: 'DF', roles: ['CB'] },
+  { id: 'cze_05', fullName: 'Vladimír COUFAL', name: '블라디미르 초우팔', number: 5, position: 'DF', roles: ['RB'] },
+  { id: 'cze_06', fullName: 'Štěpán CHALOUPEK', name: '슈테판 할로우페크', number: 6, position: 'DF', roles: ['CB'] },
+  { id: 'cze_07', fullName: 'Ladislav KREJČÍ', name: '라디슬라프 크레이치', number: 7, position: 'DF', roles: ['CB'] },
+  { id: 'cze_09', fullName: 'Adam HLOŽEK', name: '아담 흘로제크', number: 9, position: 'FW', roles: ['LW'] },
+  { id: 'cze_18', fullName: 'Michal SADÍLEK', name: '미할 사딜레크', number: 18, position: 'MF', roles: ['CM'] },
+  { id: 'cze_19', fullName: 'Tomáš CHORÝ', name: '토마시 호리', number: 19, position: 'FW', roles: ['ST'] },
+  { id: 'cze_20', fullName: 'Jaroslav ZELENÝ', name: '야로슬라프 젤레니', number: 20, position: 'DF', roles: ['LB'] },
+  { id: 'cze_22', fullName: 'Tomáš SOUČEK', name: '토마시 소우체크', number: 22, position: 'MF', roles: ['DM'] },
+  { id: 'cze_24', fullName: 'Alexandr SOJKA', name: '알렉산드르 소이카', number: 24, position: 'MF', roles: ['CM'] },
 ]
 const ENG = [
-  { id: 'eng_01', csvName: 'Jordan Lee PICKFORD', name: '조던 픽퍼드', number: 1, position: 'GK', roles: ['GK'] },
-  { id: 'eng_02', csvName: 'Ezri Ngoyo KONSA', name: '에즈리 콘사', number: 2, position: 'DF', roles: ['RB'] },
-  { id: 'eng_03', csvName: "Nico O'REILLY", name: '니코 오라일리', number: 3, position: 'MF', roles: ['CM'] },
-  { id: 'eng_05', csvName: 'John STONES', name: '존 스톤스', number: 5, position: 'DF', roles: ['CB'] },
-  { id: 'eng_06', csvName: 'Addji Keaninkin Marc-Isreal GUEHI', name: '마크 게히', number: 6, position: 'DF', roles: ['CB'] },
-  { id: 'eng_08', csvName: 'Elliot Junior ANDERSON', name: '엘리엇 앤더슨', number: 8, position: 'MF', roles: ['DM'] },
-  { id: 'eng_09', csvName: 'Harry Edward KANE', name: '해리 케인', number: 9, position: 'FW', roles: ['ST'] },
-  { id: 'eng_10', csvName: 'Jude Victor William BELLINGHAM', name: '주드 벨링엄', number: 10, position: 'MF', roles: ['CAM'] },
-  { id: 'eng_15', csvName: 'Daniel Johnson BURN', name: '댄 번', number: 15, position: 'DF', roles: ['LB'] },
-  { id: 'eng_17', csvName: 'Morgan Elliot ROGERS', name: '모건 로저스', number: 17, position: 'MF', roles: ['RW'] },
-  { id: 'eng_25', csvName: 'Diop Tehuti Djed-Hotep SPENCE', name: '제드 스펜스', number: 25, position: 'DF', roles: ['LB'] },
+  { id: 'eng_01', fullName: 'Jordan Lee PICKFORD', name: '조던 픽퍼드', number: 1, position: 'GK', roles: ['GK'] },
+  { id: 'eng_02', fullName: 'Ezri Ngoyo KONSA', name: '에즈리 콘사', number: 2, position: 'DF', roles: ['RB'] },
+  { id: 'eng_03', fullName: "Nico O'REILLY", name: '니코 오라일리', number: 3, position: 'MF', roles: ['CM'] },
+  { id: 'eng_05', fullName: 'John STONES', name: '존 스톤스', number: 5, position: 'DF', roles: ['CB'] },
+  { id: 'eng_06', fullName: 'Addji Keaninkin Marc-Isreal GUEHI', name: '마크 게히', number: 6, position: 'DF', roles: ['CB'] },
+  { id: 'eng_08', fullName: 'Elliot Junior ANDERSON', name: '엘리엇 앤더슨', number: 8, position: 'MF', roles: ['DM'] },
+  { id: 'eng_09', fullName: 'Harry Edward KANE', name: '해리 케인', number: 9, position: 'FW', roles: ['ST'] },
+  { id: 'eng_10', fullName: 'Jude Victor William BELLINGHAM', name: '주드 벨링엄', number: 10, position: 'MF', roles: ['CAM'] },
+  { id: 'eng_15', fullName: 'Daniel Johnson BURN', name: '댄 번', number: 15, position: 'DF', roles: ['LB'] },
+  { id: 'eng_17', fullName: 'Morgan Elliot ROGERS', name: '모건 로저스', number: 17, position: 'MF', roles: ['RW'] },
+  { id: 'eng_25', fullName: 'Diop Tehuti Djed-Hotep SPENCE', name: '제드 스펜스', number: 25, position: 'DF', roles: ['LB'] },
 ]
 const ARG = [
-  { id: 'arg_02', csvName: 'Marcos Nicolás SENESI BARON', name: '마르코스 세네시', number: 2, position: 'DF', roles: ['CB'] },
-  { id: 'arg_03', csvName: 'Nicolás Alejandro TAGLIAFICO', name: '니콜라스 탈리아피코', number: 3, position: 'DF', roles: ['LB'] },
-  { id: 'arg_04', csvName: 'Gonzalo Ariel MONTIEL', name: '곤살로 몬티엘', number: 4, position: 'DF', roles: ['RB'] },
-  { id: 'arg_05', csvName: 'Leandro Daniel PAREDES', name: '레안드로 파레데스', number: 5, position: 'MF', roles: ['DM'] },
-  { id: 'arg_07', csvName: 'Rodrigo Javier DE PAUL', name: '로드리고 데 파울', number: 7, position: 'MF', roles: ['CM'] },
-  { id: 'arg_09', csvName: 'Julián ÁLVAREZ', name: '훌리안 알바레스', number: 9, position: 'FW', roles: ['ST'] },
-  { id: 'arg_10', csvName: 'Lionel Andrés MESSI', name: '리오넬 메시', number: 10, position: 'FW', roles: ['RW'] },
-  { id: 'arg_13', csvName: 'Cristian Gabriel ROMERO', name: '크리스티안 로메로', number: 13, position: 'DF', roles: ['CB'] },
-  { id: 'arg_15', csvName: 'Nicolas Ivan GONZALEZ', name: '니콜라스 곤살레스', number: 15, position: 'FW', roles: ['LW'] },
-  { id: 'arg_17', csvName: 'Giuliano SIMEONE', name: '줄리아노 시메오네', number: 17, position: 'FW', roles: ['RW'] },
-  { id: 'arg_19', csvName: 'Nicolas Hernan Gonzalo OTAMENDI', name: '니콜라스 오타멘디', number: 19, position: 'DF', roles: ['CB'] },
-  { id: 'arg_20', csvName: 'Alexis MAC ALLISTER', name: '알렉시스 맥 알리스터', number: 20, position: 'MF', roles: ['CM'] },
-  { id: 'arg_22', csvName: 'Lautaro Javier MARTÍNEZ', name: '라우타로 마르티네스', number: 22, position: 'FW', roles: ['ST'] },
-  { id: 'arg_23', csvName: 'Damián Emiliano MARTÍNEZ', name: '에밀리아노 마르티네스', number: 23, position: 'GK', roles: ['GK'] },
-  { id: 'arg_24', csvName: 'Enzo Jeremías FERNÁNDEZ', name: '엔소 페르난데스', number: 24, position: 'MF', roles: ['CM'] },
-  { id: 'arg_25', csvName: 'Facundo Axel MEDINA', name: '파쿤도 메디나', number: 25, position: 'DF', roles: ['CB'] },
-  { id: 'arg_26', csvName: 'Nahuel MOLINA LUCERO', name: '나우엘 몰리나', number: 26, position: 'DF', roles: ['RB'] },
+  { id: 'arg_02', fullName: 'Marcos Nicolás SENESI BARON', name: '마르코스 세네시', number: 2, position: 'DF', roles: ['CB'] },
+  { id: 'arg_03', fullName: 'Nicolás Alejandro TAGLIAFICO', name: '니콜라스 탈리아피코', number: 3, position: 'DF', roles: ['LB'] },
+  { id: 'arg_04', fullName: 'Gonzalo Ariel MONTIEL', name: '곤살로 몬티엘', number: 4, position: 'DF', roles: ['RB'] },
+  { id: 'arg_05', fullName: 'Leandro Daniel PAREDES', name: '레안드로 파레데스', number: 5, position: 'MF', roles: ['DM'] },
+  { id: 'arg_07', fullName: 'Rodrigo Javier DE PAUL', name: '로드리고 데 파울', number: 7, position: 'MF', roles: ['CM'] },
+  { id: 'arg_09', fullName: 'Julián ÁLVAREZ', name: '훌리안 알바레스', number: 9, position: 'FW', roles: ['ST'] },
+  { id: 'arg_10', fullName: 'Lionel Andrés MESSI', name: '리오넬 메시', number: 10, position: 'FW', roles: ['RW'] },
+  { id: 'arg_13', fullName: 'Cristian Gabriel ROMERO', name: '크리스티안 로메로', number: 13, position: 'DF', roles: ['CB'] },
+  { id: 'arg_15', fullName: 'Nicolas Ivan GONZALEZ', name: '니콜라스 곤살레스', number: 15, position: 'FW', roles: ['LW'] },
+  { id: 'arg_17', fullName: 'Giuliano SIMEONE', name: '줄리아노 시메오네', number: 17, position: 'FW', roles: ['RW'] },
+  { id: 'arg_19', fullName: 'Nicolas Hernan Gonzalo OTAMENDI', name: '니콜라스 오타멘디', number: 19, position: 'DF', roles: ['CB'] },
+  { id: 'arg_20', fullName: 'Alexis MAC ALLISTER', name: '알렉시스 맥 알리스터', number: 20, position: 'MF', roles: ['CM'] },
+  { id: 'arg_22', fullName: 'Lautaro Javier MARTÍNEZ', name: '라우타로 마르티네스', number: 22, position: 'FW', roles: ['ST'] },
+  { id: 'arg_23', fullName: 'Damián Emiliano MARTÍNEZ', name: '에밀리아노 마르티네스', number: 23, position: 'GK', roles: ['GK'] },
+  { id: 'arg_24', fullName: 'Enzo Jeremías FERNÁNDEZ', name: '엔소 페르난데스', number: 24, position: 'MF', roles: ['CM'] },
+  { id: 'arg_25', fullName: 'Facundo Axel MEDINA', name: '파쿤도 메디나', number: 25, position: 'DF', roles: ['CB'] },
+  { id: 'arg_26', fullName: 'Nahuel MOLINA LUCERO', name: '나우엘 몰리나', number: 26, position: 'DF', roles: ['RB'] },
 ]
 // 결승 106분에 뛰던 스페인 선수 중 16강 로스터(ESP)에 없는 넷.
 const ESP_EXTRA = [
-  { id: 'esp_04', csvName: 'Eric GARCÍA MARTRET', name: '에리크 가르시아', number: 4, position: 'DF', roles: ['CB'] },
-  { id: 'esp_17', csvName: 'Nicholas WILLIAMS ARTHUER', name: '니코 윌리엄스', number: 17, position: 'FW', roles: ['LW'] },
-  { id: 'esp_18', csvName: 'Martin ZUBIMENDI IBAÑEZ', name: '마르틴 수비멘디', number: 18, position: 'MF', roles: ['DM'] },
-  { id: 'esp_20', csvName: 'Pedro GONZÁLEZ LÓPEZ', name: '페드리', number: 20, position: 'MF', roles: ['CM'] },
+  { id: 'esp_04', fullName: 'Eric GARCÍA MARTRET', name: '에리크 가르시아', number: 4, position: 'DF', roles: ['CB'] },
+  { id: 'esp_17', fullName: 'Nicholas WILLIAMS ARTHUER', name: '니코 윌리엄스', number: 17, position: 'FW', roles: ['LW'] },
+  { id: 'esp_18', fullName: 'Martin ZUBIMENDI IBAÑEZ', name: '마르틴 수비멘디', number: 18, position: 'MF', roles: ['DM'] },
+  { id: 'esp_20', fullName: 'Pedro GONZÁLEZ LÓPEZ', name: '페드리', number: 20, position: 'MF', roles: ['CM'] },
   // POR-ESP 85분에 메리노와 교체된 선수 (페드리는 파비안 루이스와 교체, 위에 이미 있다).
-  { id: 'esp_10', csvName: 'Daniel OLMO CARVAJAL', name: '다니 올모', number: 10, position: 'MF', roles: ['CAM'] },
+  { id: 'esp_10', fullName: 'Daniel OLMO CARVAJAL', name: '다니 올모', number: 10, position: 'MF', roles: ['CAM'] },
 ]
 
 const mk = (list, team, country) =>
@@ -271,7 +230,7 @@ const posOf = (matchId) => {
 const ballOf = (matchId, fallback) => BALL_OWNERS[matchId] ?? fallback
 
 const scenes = {
-  _generator: 'scripts/build-scenes-2026.mjs — CSV가 갱신되면 재실행할 것',
+  _generator: 'scripts/build-scenes-2026.mjs — 라인업·좌표를 고치면 재실행할 것',
   matches: [
     {
       match_id: 'kor_cze_2026_g1',
@@ -441,14 +400,14 @@ const scenes = {
       'POR-ESP: 프리킥에서 빠르게 시작된 전개였는지는 ESPN 단독 서술이라 미확인. 현재는 오픈플레이로 배치했다.',
       'POR-ESP: 메리노 슛의 정확한 거리·각도, 85분 더블 교체 후 스페인의 실제 포지션 배열 미확인 (4-2-3-1 유지로 가정).',
       'BRA-NOR: 브라질 선발 11번째 선수 미확인(마르티넬리 추정). 현재 79분 기준 온피치로 다닐루 산투스(bra_18)를 넣었다.',
-      'BRA-NOR: 79분 에데르송↔브루누 기마랑이스 교체가 골 앞인지 뒤인지 미확인. 교체가 골보다 먼저였다고 보고 에데르송(bra_02)을 온필드에 뒀다. 이 에데르송은 미드필더(아탈란타)로, CSV에 없어 스탯은 임의값이다.',
+      'BRA-NOR: 79분 에데르송↔브루누 기마랑이스 교체가 골 앞인지 뒤인지 미확인. 교체가 골보다 먼저였다고 보고 에데르송(bra_02)을 온필드에 뒀다. 이 에데르송은 미드필더(아탈란타)로, 골키퍼 에데르송과 동명이인이다.',
       'BRA-NOR: 홀란 헤더의 박스 안 정확한 지점 미확인.',
       'ESP 등번호 수정: 포로 2→12, 쿠바르시 5→22 (스페인축구협회 발표 번호 기준). 기존 esp_02/esp_05 id도 함께 바뀌었다.',
       'POR26 등번호 수정: 달로트 20→5, 베이가 14→13, 네베스 18→15, 콘세이상 11→26. id도 p26_05/p26_13/p26_15/p26_26으로 함께 바뀌었다. ' +
         '틀린 번호는 모두 이 경기에 선발로 나왔다 교체된 선수의 것이었다 — 20=칸셀루, 18=페드루 네투, 11=주앙 펠릭스. ' +
         'ESPN 라인업과 FPF 발표 번호 두 출처가 일치한다. 그 다섯(칸셀루·누누 멘드스·비티냐·페드루 네투·주앙 펠릭스)과 ' +
         '스페인의 다니 올모(10, 85분 메리노와 교체)를 로스터에 넣어 번호가 다시 밀리지 않게 했다.',
-      'ARG: 결승 102분에 교체 투입된 세네시의 등번호가 출처마다 다르다. 협회 발표 번호 목록에는 2번이 발레르디로 돼 있으나 CSV 로스터·경기 리포트에는 세네시가 있다. 현재 세네시를 2번으로 뒀다.',
+      'ARG: 결승 102분에 교체 투입된 세네시의 등번호가 출처마다 다르다. 협회 발표 번호 목록에는 2번이 발레르디로 돼 있으나 경기 리포트에는 세네시가 있다. 현재 세네시를 2번으로 뒀다.',
       'KOR-CZE: 크로스 지점과 오현규의 마무리 지점은 여전히 미확인이다. 라인업·교체 시각은 ESPN으로 확인했다.',
       'ENG-ARG: 90+2분 결승골 득점자를 라우타로 마르티네스로 뒀다. 일부 요약문이 엔소 페르난데스로 잘못 적고 있으나 Sky·ESPN 헤드라인은 라우타로다.',
       'ENG-ARG: 85분 장면 좌표는 84:46 "De Paul control" 프레임(105×68m)을 120×80으로 환산해 넣었다. 다음 두 값만 프레임에서 오지 않았다 — ' +

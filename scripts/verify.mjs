@@ -17,7 +17,7 @@ import { K } from '../src/engine/constants.js'
 import { readFileSync } from 'node:fs'
 
 const sigmoid = (z) => 1 / (1 + Math.exp(-z))
-// 스탯 중립값: norm(v) = 0.70 이 되는 FM 값 (= 검증 앵커의 "스킬 중립")
+// 스탯 중립값: norm(v) = 0.70 이 되는 스탯 값 (= 검증 앵커의 "스킬 중립")
 const MIDFM = ((K.STAT.MID - K.STAT_FLOOR) * K.STAT.FM_MAX) / (1 - K.STAT_FLOOR)
 const STAT_KEYS = ['flair','finishing','dribbling','longshots','crossing','passing','heading','strength','acceleration','pace','jumping','balance','marking','tackle','positioning','anticipation']
 const neutral = (over = {}) => ({

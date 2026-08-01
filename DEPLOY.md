@@ -1,6 +1,6 @@
 # 배포 가이드
 
-> **현재 배포 주소: https://touchline-beige.vercel.app**
+> **현재 배포 주소: https://touchline-gules.vercel.app**
 > (Vercel 프로젝트명 `touchline` · `touchline.vercel.app`은 전 세계에서 이미 선점되어 접미사가 붙었습니다)
 
 터치라인은 **정적 사이트**입니다. 서버·DB·백엔드가 없고, `npm run build`가 만드는 `dist/`
