@@ -202,11 +202,9 @@ header h1 .sub {
 .tactics-board.flip-x {
   transform: scaleX(-1);
 }
-.tactics-board.flip-x text {
-  transform: scaleX(-1);
-  transform-box: fill-box;
-  transform-origin: center;
-}
+/* 글자 되뒤집기는 CSS가 아니라 SVG transform으로 한다 (TacticsBoard의 unflip 참고).
+   여기서 transform-box: fill-box를 쓰던 시절, Safari가 <text>에 그걸 적용하지 못해
+   글자가 보드 반대편으로 날아갔다 — iOS에서 등번호·메뉴 글자가 통째로 안 보였다. */
 
 /* 재생 연출: 셰이크 래퍼 + 골 플래시 + 슬로모션 비네트 */
 .board-wrap {
