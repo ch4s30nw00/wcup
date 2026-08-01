@@ -383,13 +383,25 @@ export function calcDribble(action, opponents) {
   if (def.worst) z += C.B_BODY * def.worst.pr * (bodyOf(action.actor) - bodyOf(def.worst.o))
   // press = 이 드리블에 걸린 수비 압박의 크기. 0이면 뺏을 사람이 없다는 뜻이라
   // 경합 게이트가 실패 확률을 0으로 만든다 (probOf 참고).
-  // def.z는 최근접 1명의 B_DEF·defScale·e^(−d/R) 이므로 항상 ≤ 0 — 부호만 뒤집는다.
-  // A defender outside the actual 1v1 contest range cannot make a dribble
-  // fail.  `pathPressure` removes that defender from `worst`; use the same
-  // cutoff for the contest gate instead of leaving a tiny random failure.
   // 경합 게이트의 press에도 포위를 반영한다 — 둘러싸였으면 압박이 큰 게 맞다.
-  // worst가 없으면(아무도 안 붙었으면) 포위도 없으므로 0 그대로다.
-  return { z, worst: def.worst, press: def.worst ? -(def.z + surroundZ) : 0 }
+  //
+  // **지목 문턱(ATTRIBUTION_MIN)을 여기 쓰지 않는다.** 그 값은 원래 "누가 끊었는지
+  // 화면에 지목할 사람"을 고르는 기준인데, 예전에는 def.worst(= 문턱을 넘은 수비수)가
+  // 없으면 press를 통째로 0으로 만들어 확률까지 좌우했다. 그래서 수비수가 경로에서
+  // 5m면 82.5%, 6m면 갑자기 100%가 되는 계단이 생겼고, 41m 드리블처럼 최근접이
+  // 6.4m(기여 0.119 < 0.15)인 액션은 아무도 못 뺏는 것으로 판정돼 100%가 나왔다 —
+  // 화면에서는 달로트가 3.5m까지 붙는데도.
+  //
+  // 지목은 def.worst 그대로 두고(연출 규칙은 안 바뀐다), press만 연속으로 만든다.
+  // 최근접 수비수의 기여를 문턱 없이 그대로 쓰므로 멀수록 매끄럽게 0으로 수렴한다.
+  // 드리블 앵커 4개는 전부 문턱 위(간격 0.5~5m)라 값이 바뀌지 않는다.
+  // 바닥값(PRESS_FLOOR)은 빼기만 하고 자르지 않는다 — 멀면 정확히 0에 닿되 계단은 없다.
+  const nearest = def.all[0]
+  const nearPr = nearest ? Math.max(0, nearest.pr - C.PRESS_FLOOR) : 0
+  const pressRaw = nearest
+    ? -(C.B_DEF * defScale(nearest.o, DEF_PRIMARY.dribble(nearest.o)) * nearPr + surroundZ)
+    : 0
+  return { z, worst: def.worst, press: Math.max(0, pressRaw) }
 }
 
 const LABEL = { pass: '패스', dribble: '드리블', shot: '슛' }
