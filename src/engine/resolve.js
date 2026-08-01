@@ -1,5 +1,5 @@
 // engine/resolve.js — 확률 판정 엔진 (CALC_SPEC v2.1, 로그오즈 가법 + 로지스틱).
-// 산식확정 보고서 v2(2026-07-18) + 데이터담당 요청사항(FM 1~20 CSV)을 구현한다. 계수는 constants.js 한 파일에.
+// 산식확정 보고서 v2(2026-07-18) + 데이터담당 요청사항(16스탯 1~20 스케일)을 구현한다. 계수는 constants.js 한 파일에.
 //
 // 구조: 모든 항(거리·각도·스킬·수비압박)을 로그오즈 z에 더하고 마지막에 σ(z) 1회,
 // 전역 clamp(0.02, 0.97). 수비는 오라 이진판정 대신 연속 소프트 프레셔 e^(−d/R).
@@ -52,7 +52,7 @@ export function mulberry32(seed) {
 // 쓰므로 "경계"는 없지만, 가장 넓은 리시버 압박 반경을 시각 안내로 보여준다.
 export const DEF_RADIUS = K.PASS.R_RECV
 
-// 어댑터: FM 1~20 스탯 → [0.335, 1.0] (부록 A — 데이터담당 CSV 이관으로 v/20 채택)
+// 어댑터: 1~20 스탯 → [0.335, 1.0] (부록 A — v/20 채택)
 const norm = (v) => K.STAT_FLOOR + (1 - K.STAT_FLOOR) * (v / K.STAT.FM_MAX)
 // 키(cm) → [0.3, 1.0] (165~200cm 구간)
 const normH = (h) => K.STAT_FLOOR + (1 - K.STAT_FLOOR) * Math.min(1, Math.max(0, (h - K.STAT.H_MIN) / K.STAT.H_RANGE))

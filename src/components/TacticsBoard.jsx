@@ -5,7 +5,7 @@ import { josaGa, josaEun } from '../engine/commentary'
 import { kitsFor } from '../data/kits'
 import { K } from '../engine/constants'
 
-// StatsBomb 좌표계와 동일한 120x80 피치. x: 0(우리 골대) → 120(상대 골대)
+// 120x80 피치 (미터 단위). x: 0(우리 골대) → 120(상대 골대)
 const PITCH_W = 120
 const PITCH_H = 80
 const DOT_R = 1.4
@@ -53,7 +53,6 @@ export default function TacticsBoard({
   tutFocus, // 튜토리얼 지목: { playerId?, ball?, action? } — 그 단계가 가리키는 대상을 점멸시킨다
   shotZone, // 재현 판정 구역: { x, y, rx, ry, label } — 그날 슛이 나온 지점과 타원 허용 반경
   onEggShotMove, // (pt) — 구역 중심 끌어 옮기기. 있으면 마커가 잡힌다 (개발 전용)
-  ghosts, // 실측 기준점: [{ x, y, side, name?, actor?, keeper? }] — 좌표 편집용 (개발 전용)
   ballPos,
   ballTrail, // 재생 중 공 트레일 [{x,y}] — 빠른 패스·슛의 혜성 꼬리 (평시 null)
   displayHome, // 재생 중 애니메이션 위치 (id → {x,y,a}), 평시 null
@@ -485,45 +484,6 @@ export default function TacticsBoard({
               onPointerDown={(e) => startDrag(e, 'eggshot')}
             />
           )}
-        </g>
-      )}
-
-      {/* 실측 유령 — StatsBomb이 그 순간에 실제로 기록한 자리.
-          좌표 편집 때 "여기 사람이 있었다"는 증거로만 쓴다. 자동으로 끌어다 놓지 않는 이유는
-          이름이 붙은 점이 슛 순간 12명뿐이고 나머지는 익명이라, 누가 누구인지는
-          영상을 본 사람만 판단할 수 있기 때문이다. 잔디 위·선수 아래에 깔고 클릭도 먹지 않는다. */}
-      {ghosts?.length > 0 && (
-        <g pointerEvents="none" className="ghosts">
-          {ghosts.map((g, i) => {
-            const c = g.side === 'home' ? '#ff8a8a' : '#e8eef6'
-            return (
-              <g key={i} opacity={g.actor ? 0.95 : 0.6}>
-                <circle
-                  cx={g.x}
-                  cy={g.y}
-                  r={g.actor ? 1.9 : 1.5}
-                  fill="none"
-                  stroke={g.actor ? '#ffd23e' : c}
-                  strokeWidth={g.actor ? 0.42 : 0.3}
-                  strokeDasharray="0.9 0.7"
-                />
-                {/* 가운데 점 — 정확히 어느 좌표인지 (원 테두리는 두꺼워서 애매하다) */}
-                <circle cx={g.x} cy={g.y} r="0.28" fill={g.actor ? '#ffd23e' : c} />
-                {g.name && (
-                  <text
-                    x={g.x}
-                    y={g.y - 2.4}
-                    textAnchor="middle"
-                    fontSize="1.7"
-                    fontWeight="600"
-                    fill={g.actor ? '#ffd23e' : c}
-                  >
-                    {g.name}
-                  </text>
-                )}
-              </g>
-            )
-          })}
         </g>
       )}
 
