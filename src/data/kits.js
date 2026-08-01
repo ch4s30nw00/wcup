@@ -23,11 +23,13 @@ export const KIT = {
   RED_GKTEAL: { body: '#c8102e', gk: '#17a2b8', ring: '#fff', num: '#fff' }, // 2022 한국 — 빨강 킷, GK 청록
   WHITE_GKGOLD: { body: '#f4f6fa', gk: '#ffd23e', ring: '#10141c', num: '#10141c' }, // 2022 포르투갈 — 흰 킷·검은 테두리/번호, GK 노랑
   BRAZIL: { body: '#ffcb05', gk: '#7b2cbf', ring: '#009c3b', num: '#009c3b' }, // 브라질 — 노랑 킷·초록 테두리/번호, GK 보라
+  WHITE_GKSKY: { body: '#f2f5fa', gk: '#75aadb', ring: '#1a2330', num: '#10141c' }, // 체코 — 흰 킷, GK 하늘색
 }
 
 // match_id → [홈 킷, 원정 킷]
 const MATCH_KIT = {
   kor_por_2022: [KIT.RED_GKTEAL, KIT.WHITE_GKGOLD], // 홈=한국 빨강(GK 청록) / 원정=포르투갈 흰색(GK 노랑)
+  kor_cze_2026_g1: [KIT.RED, KIT.WHITE_GKSKY], // 홈=한국 빨강 / 원정=체코 흰색(GK 하늘색)
   por_esp_2026_r16: [KIT.WHITE, KIT.RED], // 홈=ESP 흰색 / 원정=포르투갈 빨강
   bra_nor_2026_r16: [KIT.RED_GKGREEN, KIT.BRAZIL], // 홈=노르웨이 빨강(GK 녹색) / 원정=브라질 노랑(GK 보라)
   eng_arg_2026_sf: [KIT.NAVY_GKTEAL, KIT.WHITE_GKYELLOW], // 홈=아르헨티나 남색(GK 청록) / 원정=잉글랜드 흰색(GK 노랑)

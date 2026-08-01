@@ -117,7 +117,7 @@
             "images": [],
             "video": {
               "youtubeId": "Bj1CFtGUOvc",
-              "start": 129,
+              "start": 125,
               "credit": "KBS News"
             },
             "sequence": [
@@ -515,6 +515,11 @@
             "title": "그날, 진짜로 있었던 일",
             "caption": "2026년 7월 15일 애틀랜타. 밀어붙이던 아르헨티나가 메시를 거쳐 공을 뒤로 뺐고, 엔소 페르난데스가 박스 앞에서 그대로 감아 찼다. 85분 동점골 — 7분 뒤 라우타로의 역전 헤더까지, 잉글랜드의 결승행은 여기서부터 무너졌다.",
             "images": [],
+            "video": {
+              "youtubeId": "1IU9F_uQxEw",
+              "start": 149,
+              "credit": "KBS News"
+            },
             "sequence": [
               "arg_07",
               "arg_10",
@@ -643,6 +648,11 @@
             "title": "그날, 진짜로 있었던 일",
             "caption": "2026년 7월 19일 뉴저지. 페드로 포로의 크로스를 니코 윌리엄스가 뒤로 떨궜고, 페란 토레스가 원터치로 골문 천장에 꽂았다. 스페인 1:0 — 사상 두 번째 월드컵 우승, 그리고 메시의 마지막 결승전.",
             "images": [],
+            "video": {
+              "youtubeId": "DIMMvsGO12U",
+              "start": 129,
+              "credit": "KBS News"
+            },
             "sequence": [
               "esp_19",
               "esp_17",

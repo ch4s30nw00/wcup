@@ -301,7 +301,7 @@ const scenes = {
             caption:
               '2026년 6월 11일 과달라하라. 동점골의 주인공 황인범이 이번엔 측면에서 크로스를 올렸고, 쇄도하던 오현규가 왼발로 밀어 넣었다. 손흥민 대신 들어와 11분 만에 터뜨린 생애 첫 월드컵 골이었다. 대한민국 2:1 체코 — 한국이 월드컵 조별리그 첫 경기를 이긴 건 16년 만이자 통산 네 번째였다.',
             images: [],
-            video: { youtubeId: 'Bj1CFtGUOvc', start: 129, credit: 'KBS News' },
+            video: { youtubeId: 'Bj1CFtGUOvc', start: 125, credit: 'KBS News' },
           },
         },
       ],
@@ -391,6 +391,7 @@ const scenes = {
             caption:
               '2026년 7월 15일 애틀랜타. 밀어붙이던 아르헨티나가 메시를 거쳐 공을 뒤로 뺐고, 엔소 페르난데스가 박스 앞에서 그대로 감아 찼다. 85분 동점골 — 7분 뒤 라우타로의 역전 헤더까지, 잉글랜드의 결승행은 여기서부터 무너졌다.',
             images: [],
+            video: { youtubeId: '1IU9F_uQxEw', start: 149, credit: 'KBS News' },
           },
         },
       ],
@@ -424,6 +425,7 @@ const scenes = {
             caption:
               '2026년 7월 19일 뉴저지. 페드로 포로의 크로스를 니코 윌리엄스가 뒤로 떨궜고, 페란 토레스가 원터치로 골문 천장에 꽂았다. 스페인 1:0 — 사상 두 번째 월드컵 우승, 그리고 메시의 마지막 결승전.',
             images: [],
+            video: { youtubeId: 'DIMMvsGO12U', start: 129, credit: 'KBS News' },
           },
         },
       ],
