@@ -493,11 +493,28 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           ownerId = leg.actorId
         } else if (!done) {
           ownerId = null
+          const t = Math.min(k, capFrac)
+          const planned = pointAtLength(leg.pts, t * leg.len)
           ball = {
-            ...pointAtLength(leg.pts, Math.min(k, capFrac) * leg.len),
+            ...planned,
             // 로빙은 비행 중 작아지는 공으로 높이를 표현한다. 시작·도착에서는 0이라
             // 자연스럽게 발밑 공으로 돌아온다.
-            height: leg.aerial ? K.PLAY.LOB_HEIGHT * Math.sin(Math.PI * Math.min(k, capFrac)) : 0,
+            height: leg.aerial ? K.PLAY.LOB_HEIGHT * Math.sin(Math.PI * t) : 0,
+          }
+          // 끊기는 패스는 **뺏는 선수의 실제 위치**로 모은다.
+          //
+          // 차단 지점은 defense.js의 판정 좌표로 계산된 궤적 위의 점인데, 화면 속
+          // 그 선수는 조향·노이즈·목줄로 거기서 밀려나 있다. 그대로 두면 공이 궤적 위
+          // 빈 잔디에 멈췄다가 소유가 넘어가는 순간 선수에게 순간이동한다 —
+          // 실측 2.2m(한 프레임 16ms에). 성공하는 패스에서 이미 겪고 고친 것과 같은
+          // 구멍이 뺏기는 쪽에 남아 있었다.
+          //
+          // 보정을 (t/capFrac)²로 실어 초반 비행은 그린 궤적 그대로 두고, 차단 지점에
+          // 가까워질수록 실제 위치로 당긴다. 도달 시점에는 가중치가 1이라 스냅이 없다.
+          if (interceptor && leg.step.interceptorId === interceptor.id && capFrac > 0) {
+            const p = getPos(interceptor.id)
+            const w = Math.min(1, t / capFrac) ** 2
+            ball = { x: planned.x + (p.x - planned.x) * w, y: planned.y + (p.y - planned.y) * w, height: ball.height * (1 - w) }
           }
           // 성공할 패스는 리시버의 "실제" 위치로 유도한다.
           // 궤적은 계획 좌표로 그려지는데 선수는 조향·노이즈로 그 자리에서 밀려나 있을 수 있고,
@@ -509,8 +526,13 @@ export function playSequence({ actions, result, runLegs, players, opponents, byI
           // 대신 리시버가 약속 지점을 지키게 해서(아래 3번 블록) 애초에 어긋나지 않게 한다.
         } else if (leg.step.success && leg.type === 'pass') {
           ownerId = leg.receiverId
+        } else if (interceptor && leg.step.interceptorId === interceptor.id) {
+          // 끊긴 패스 — 공은 궤적 끝이 아니라 뺏은 선수 발밑에 있다.
+          // 비행 마지막에 이미 그리로 모아 놨으므로 여기서도 이어서 따라간다.
+          ownerId = null
+          ball = { ...getPos(interceptor.id), height: 0 }
         } else {
-          ownerId = null // 슛(골/빗나감) 또는 실패한 패스 — 공은 궤적 끝에
+          ownerId = null // 슛(골/빗나감) 또는 아무도 안 건드린 패스 — 공은 궤적 끝에
           ball = pointAtLength(leg.pts, capFrac * leg.len)
         }
       }

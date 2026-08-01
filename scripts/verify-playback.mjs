@@ -365,4 +365,60 @@ console.log('\n[차단자] 지목된 수비수가 그 지점에 시간 안에 �
   chk(`도달 불가 ${impossible}건 — 최대 요구 ${worstWho || '-'}`, impossible === 0)
 }
 
+// --- 뺏기는 순간에도 공이 튀지 않는가 ---------------------------------------
+// 위 스냅 검사는 **성공하는 패스**만 본다(전부 성공하는 시드를 찾아 쓴다). 그래서
+// 뺏기는 쪽에 같은 구멍이 남아 있는 걸 놓쳤다 — 차단 지점은 판정 좌표로 계산된
+// 궤적 위의 점인데 화면 속 그 선수는 거기서 밀려나 있어서, 소유가 넘어가는 순간
+// 공이 선수에게 순간이동했다(실측 2.2m). 실패·차단 케이스까지 검사를 넓힌다.
+console.log('\n[차단] 공을 뺏기는 순간에도 공이 튀지 않는가')
+{
+  const carrier = byId.kor_07
+  const receiver = byId.kor_11
+  const pass = {
+    type: 'pass', actorId: carrier.id, receiverId: receiver.id, actor: carrier, index: 0,
+    from: { x: carrier.x, y: carrier.y }, to: { x: receiver.x, y: receiver.y },
+    ctrl: midpoint({ x: carrier.x, y: carrier.y }, { x: receiver.x, y: receiver.y }),
+  }
+  let checked = 0
+  let worstJump = 0
+  let worstGap = 0
+  let worstWho = ''
+  // 재생 한 번이 실시간 프레임을 다 돌리므로 표본을 적게 잡는다 (8건이면 충분히 잡힌다)
+  for (let seed = 1; seed <= 200 && checked < 8; seed++) {
+    const r = resolveSequence([pass], { opponents, players: home, seed })
+    const step = r.steps[0]
+    if (step.success !== false || !step.interceptorId) continue
+    checked++
+    const frames = []
+    await new Promise((done) => {
+      playSequence({
+        actions: [pass], result: r, runLegs: [], players: home, opponents, byId,
+        ballOwnerId: carrier.id, seed,
+        onFrame: (f) => frames.push({ elapsed: f.elapsed, ball: { ...f.ball }, who: { ...f.opp[step.interceptorId] } }),
+        onDone: done,
+      })
+    })
+    // 거리가 아니라 **속도**로 잰다. node 하네스는 프레임 간격이 16ms로 일정하지 않아
+    // (setTimeout 지터), 느린 프레임 하나만으로도 비행 중 이동 거리가 커 보인다.
+    // 순간이동은 dt와 무관하게 벌어지므로 속도로 보면 확실히 갈린다.
+    for (let i = 1; i < frames.length; i++) {
+      const dt = (frames[i].elapsed - frames[i - 1].elapsed) / 1000
+      if (dt <= 0) continue
+      const v = Math.hypot(frames[i].ball.x - frames[i - 1].ball.x, frames[i].ball.y - frames[i - 1].ball.y) / dt
+      if (v > worstJump) { worstJump = v; worstWho = byId[step.interceptorId].name }
+    }
+    // 소유가 넘어가기 직전, 공과 뺏는 선수가 얼마나 떨어져 있었나
+    const ownIdx = frames.findIndex((f) => Math.hypot(f.who.x - f.ball.x, f.who.y - f.ball.y) < 0.01)
+    if (ownIdx > 0) {
+      const b = frames[ownIdx - 1]
+      worstGap = Math.max(worstGap, Math.hypot(b.who.x - b.ball.x, b.who.y - b.ball.y))
+    }
+  }
+  chk(`표본이 있는가 (차단 ${checked}건)`, checked >= 5)
+  // 패스 공 속도는 K.SPEED.pass(22 m/s)이고 이징 가속으로 잠깐 그 위로 뜬다.
+  // 순간이동은 dt와 무관해 수백 m/s로 나오므로 여유 있게 잡아도 확실히 갈린다.
+  chk(`공 최대 속도 ${worstJump.toFixed(0)} m/s (${worstWho}) — 순간이동 아님`, worstJump <= K.SPEED.pass * 2.5)
+  chk(`소유 이전 직전 공↔선수 ${worstGap.toFixed(2)}m — 발밑에서 뺏는가`, worstGap <= SNAP_LIMIT)
+}
+
 process.exit(fails === 0 ? 0 : 1)
